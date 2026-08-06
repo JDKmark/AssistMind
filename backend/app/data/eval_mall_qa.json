@@ -1,0 +1,202 @@
+[
+  {
+    "question": "mall 项目在 Windows 环境下如何启动 mall-admin 后端模块？",
+    "ground_truth": "mall 在 Windows 环境下的部署参见官方文档 deploy-windows.md：安装 MySQL（下载 5.7 后按提示安装，导入 document/sql 下的 mall.sql 文件）和 Redis（下载后启动 redis-server.exe redis.windows.conf），然后直接运行 com.macro.mall.MallAdminApplication 的 main 方法即可启动 mall-admin，接口文档地址为 http://localhost:8080/swagger-ui.html。",
+    "adversarial": false
+  },
+  {
+    "question": "mall 项目只启动 mall-admin 一个模块，需要安装哪些中间件？",
+    "ground_truth": "按官方 README 环境搭建章节说明：如果只启动 mall-admin 模块，仅需安装 MySQL、Redis 即可；不需要 Elasticsearch、MongoDB、RabbitMQ 等其它组件。",
+    "adversarial": false
+  },
+  {
+    "question": "Windows 下如何安装并启动 Elasticsearch 及中文分词插件？",
+    "ground_truth": "按 deploy-windows.md：从 Elastic 官网下载 elasticsearch-6.2.2 的 .zip 文件解压到指定目录；安装中文分词插件在 elasticsearch-6.2.2\\bin 目录下执行 elasticsearch-plugin install https://github.com/medcl/elasticsearch-analysis-ik/releases/download/v6.2.2/elasticsearch-analysis-ik-6.2.2.zip；启动时运行 elasticsearch-6.2.2\\bin\\elasticsearch.bat。",
+    "adversarial": false
+  },
+  {
+    "question": "mall-search 模块首次使用前需要做什么？启动失败怎么排查？",
+    "ground_truth": "按 deploy-windows.md：mall-search 启动方式为直接运行 com.macro.mall.search.MallSearchApplication 的 main 方法，接口文档地址为 http://localhost:8081/swagger-ui.html；使用前需要先调用接口 http://localhost:8081/esProduct/importAll 导入数据；如出现无法启动的问题，可以先删除 elasticsearch 里面的数据再启动。",
+    "adversarial": false
+  },
+  {
+    "question": "mall-admin 生产环境（application-prod.yml）的 MySQL 连接是怎么配置的？",
+    "ground_truth": "按 mall-admin 的 application-prod.yml：数据源 url 为 jdbc:mysql://db:3306/mall?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false，用户名 username: reader，密码 password: 123456；使用 Druid 连接池，initial-size: 5（初始化大小）、min-idle: 10（最小空闲连接数）、max-active: 20（最大连接数），监控网页登录账号为 druid/druid。",
+    "adversarial": false
+  },
+  {
+    "question": "如何修改 mall-admin 的 Redis 连接配置？",
+    "ground_truth": "按 mall-admin 的 application.yml / application-dev.yml / application-prod.yml：Redis 配置在 spring.data.redis 下，开发环境 host: localhost、生产环境 host: redis（容器名）、database: 0（Redis 数据库索引默认为 0）、port: 6379（连接端口）、password 默认为空、timeout: 300ms（连接超时时间）。修改 host/port/password 后重启 mall-admin 即可生效。",
+    "adversarial": false
+  },
+  {
+    "question": "mall-search 中 Elasticsearch 的 cluster-name 修改后需要注意什么？",
+    "ground_truth": "按 deploy-windows.md 的说明：如果你修改了 mall-search 中的 es 的 cluster-name: mall-es，你需要在 elasticsearch-6.2.2\\config\\elasticsearch.yml 文件中同步修改 cluster.name: mall-es，否则 mall-search 无法连接 Elasticsearch。",
+    "adversarial": false
+  },
+  {
+    "question": "mall 生产环境 MySQL 报 Access denied for user 'reader' 应该怎么排查？",
+    "ground_truth": "mall 生产配置（application-prod.yml）使用 MySQL 账号 reader，密码 123456，连接 db:3306 的 mall 库。出现 Access denied 时按 mysql.md 的权限相关命令排查：先用 show grants for 'reader'@'localhost' 查看账号权限，再用 grant all privileges on *.* to 'reader'@'localhost' identified by '123456'（或按需授予 select,insert 等权限）重新授权，并确认 application-prod.yml 中的密码与数据库账号密码一致。",
+    "adversarial": false
+  },
+  {
+    "question": "MySQL 全局时区怎么改成北京时间（东八区）？",
+    "ground_truth": "按 mysql.md：修改 mysql 全局时区为北京时间（东八区）执行 set global time_zone = '+8:00';，修改当前会话时区执行 set time_zone = '+8:00'，然后 flush privileges 使其立即生效。",
+    "adversarial": false
+  },
+  {
+    "question": "mall 的订单表 oms_order 是做什么的？包含哪些关键字段？",
+    "ground_truth": "按 mall_tables.sql（节选自 document/sql/mall.sql）：oms_order 为订单表，表级注释 COMMENT '订单表'，共 44 个字段。关键字段包括：id 订单id、member_id（会员id）、order_sn 订单编号、create_time 提交时间、member_username 用户帐号、total_amount（订单总金额）、pay_amount（应付金额）、freight_amount（运费金额）、promotion_amount（促销优惠金额）等。",
+    "adversarial": false
+  },
+  {
+    "question": "mall 后台用户表 ums_admin 的字段结构是什么样的？",
+    "ground_truth": "按 mall_tables.sql（节选自 document/sql/mall.sql）：ums_admin 为后台用户表，表级注释 COMMENT '后台用户表'，字段包括 id、username（用户名）、password（密码）、icon 头像、email 邮箱、nick_name 昵称、note 备注信息、create_time 创建时间、login_time 最后登录时间，以及 status 帐号启用状态（0->禁用；1->启用）。",
+    "adversarial": false
+  },
+  {
+    "question": "Docker Compose 环境下 mall 的容器管理常用命令有哪些？",
+    "ground_truth": "按 docker.md 的 Docker compose 常用命令：构建、创建、启动相关容器用 docker-compose up；列出所有容器用 docker-compose ps；删除指定服务的容器用 docker-compose rm 服务名（如 docker-compose rm eureka）；对容器动态扩容用 docker-compose scale 服务名=数量；停止/启动相关容器用 docker-compose stop / docker-compose start 服务名。",
+    "adversarial": false
+  },
+  {
+    "question": "把 application-prod.yml 中 Druid 的 max-active 从 20 调到 500，是不是就能彻底解决 mall 的数据库连接问题？",
+    "ground_truth": "不是。Druid 连接池的 max-active（生产默认 20）只是最大连接数上限，调大并不能解决慢 SQL 或连接未释放导致连接被长期占用的问题；mall 官方文档（README 技术选型与 application-prod.yml）只给出了 initial-size/min-idle/max-active 等默认参数，没有调大 max-active 的建议，遇到连接问题应先排查慢查询与连接占用，再考虑连接池参数。",
+    "adversarial": true
+  },
+  {
+    "question": "mall 订单服务接入了什么监控告警系统，告警阈值怎么配置？",
+    "ground_truth": "未找到相关文档。mall 知识库取材于 GitHub 官方仓库（README、document/reference、mall-admin 配置与 mall.sql 表结构），未包含监控告警系统的接入说明与告警阈值配置方法。",
+    "adversarial": true
+  },
+  {
+    "question": "华为 Mate 60 Pro 多少钱？",
+    "ground_truth": "按《演示商品与订单数据》：华为 Mate 60 Pro（P001）售价 ¥6999，规格 256G 雅丹黑，库存 200 件，服务标识为无忧退货、免费包邮（service_ids 1,3）；价格口径以 pms_product.price 为准。",
+    "adversarial": false
+  },
+  {
+    "question": "小米电视 65 英寸还有货吗？",
+    "ground_truth": "按《演示商品与订单数据》：小米电视 65 英寸（P002）当前库存 100 件，售价 ¥3499，无额外服务标识；库存以 pms_product.stock 为准，售完即止。",
+    "adversarial": false
+  },
+  {
+    "question": "戴森 V12 吸尘器什么价格，库存多少？",
+    "ground_truth": "按《演示商品与订单数据》：戴森 V12 吸尘器（P003）售价 ¥4990，库存 80 件，服务标识为无忧退货、快速退款、免费包邮（service_ids 1,2,3）。",
+    "adversarial": false
+  },
+  {
+    "question": "P003 支持快速退款吗？",
+    "ground_truth": "支持。按《服务承诺与话术》：P003 戴森 V12 吸尘器的 service_ids 为 1,2,3，含「快速退款」服务，验收通过后 24 小时内原路退回（常规商品为 3 个工作日）。",
+    "adversarial": false
+  },
+  {
+    "question": "联想拯救者笔记本 P005 有什么服务承诺？",
+    "ground_truth": "按《服务承诺与话术》：P005 联想拯救者笔记本未配置服务标识（service_ids 为空），仅适用平台通用 7 天无理由退货政策；客服不得对其承诺极速退款、免费包邮等未配置权益。",
+    "adversarial": false
+  },
+  {
+    "question": "订单状态 0 到 5 分别代表什么意思？",
+    "ground_truth": "按《发货与物流规则》：oms_order.status 枚举 0 待付款（下单未支付，超过超时时间自动关闭）/ 1 待发货（已支付，等待商家发货）/ 2 已发货（商家已发货，物流在途）/ 3 已完成（确认收货或系统自动确认收货）/ 4 已关闭（超时未支付或用户取消）/ 5 无效订单（异常订单）。",
+    "adversarial": false
+  },
+  {
+    "question": "订单 20240801003 现在什么状态？",
+    "ground_truth": "按《演示商品与订单数据》：订单 20240801003 状态为 3 已完成，商品为戴森 V12 吸尘器（P003）×1，实付 ¥4990，物流已签收。",
+    "adversarial": false
+  },
+  {
+    "question": "订单 20240801001 包含什么商品，实付多少？",
+    "ground_truth": "按《演示商品与订单数据》：订单 20240801001 状态为 2 已发货，包含华为 Mate 60 Pro（P001）×1，实付金额 ¥6999，物流为顺丰速运、单号 SF1234567890。",
+    "adversarial": false
+  },
+  {
+    "question": "订单 20240801002 为什么实付 5398 元？",
+    "ground_truth": "按《演示商品与订单数据》：订单 20240801002 含两件商品——小米电视 65 英寸（P002）¥3499 与 Apple AirPods Pro（P004）¥1899，合计实付 ¥5398，与固定清单一致（无促销/优惠参与，pay_amount = total_amount）。",
+    "adversarial": false
+  },
+  {
+    "question": "7 天无理由退货是怎么规定的？",
+    "ground_truth": "按《售后服务政策》：商品自签收次日起 7 天内支持无理由退货（法律法规另有规定的商品除外）；退货前提是订单已完成支付且处于可售后状态（oms_order.status 为 2 已发货或 3 已完成），且未超过自动完成交易天数（演示配置 30 天）。以下情况不支持无理由退货：定制类商品、已激活/已拆封影响二次销售的电子产品、一次性密封商品已破损、人为损坏商品。",
+    "adversarial": false
+  },
+  {
+    "question": "退货申请提交后多久审核？审核通过后多久退款到账？",
+    "ground_truth": "按《售后服务政策》：退货申请提交后 24 小时内审核（演示承诺）；商家收到退货并验收通过后，常规商品 3 个工作日内原路退回（支付宝/微信），带「快速退款」服务的商品 24 小时内到账；具体到账时间以支付渠道为准。",
+    "adversarial": false
+  },
+  {
+    "question": "退货的运费由谁承担？",
+    "ground_truth": "按《售后服务政策》运费承担规则：7 天无理由退货（不喜欢/拍错等用户责任原因）运费由用户承担；质量问题、商品破损、发错货、商品与描述不符（商家责任）运费由商家承担（用户先行垫付，退款时一并返还）；附赠「免费包邮」服务的商品仅首程运费免，退货运费仍按上述规则执行。",
+    "adversarial": false
+  },
+  {
+    "question": "申请退货需要满足什么前提？",
+    "ground_truth": "按《售后服务政策》：①商品自签收次日起 7 天内（无理由退货时间窗）；②订单已完成支付；③订单状态为 2 已发货或 3 已完成（可售后状态）；④未超过 oms_order_setting.finish_overtime 自动完成交易天数（演示配置 30 天）。",
+    "adversarial": false
+  },
+  {
+    "question": "退货申请被拒绝了怎么办？",
+    "ground_truth": "按《售后服务政策》客服答复示例：转述拒绝处理备注（handle_note）中的原因，告知用户可补充凭证（proof_pics）后重新提交申请。",
+    "adversarial": false
+  },
+  {
+    "question": "下单后多久发货？",
+    "ground_truth": "按《发货与物流规则》：现货商品支付成功后 48 小时内发货（演示承诺）；预售/定制商品以商品详情页「发货时间」说明为准；发货动作完成后订单由 1 待发货流转为 2 已发货，并写入物流公司（delivery_company）与物流单号（delivery_sn）。",
+    "adversarial": false
+  },
+  {
+    "question": "怎么查询我的物流？",
+    "ground_truth": "按《发货与物流规则》物流查询方式：①用户自助：订单详情页点击「查看物流」，凭 delivery_sn 跳转快递公司官方渠道查询；②客服代查：用户提供订单号（order_sn），客服核对 delivery_company + delivery_sn 后代查轨迹，禁止仅凭用户口述单号作答；演示订单 20240801001 使用顺丰速运，可通过官网 www.sf-express.com、顺丰速运 App 或客服热线 95338 查询，单号 SF1234567890。",
+    "adversarial": false
+  },
+  {
+    "question": "订单 20240801001 的物流信息是什么？",
+    "ground_truth": "按《演示商品与订单数据》与《服务承诺与话术》物流话术：订单 20240801001 已发货，顺丰速运，单号 SF1234567890，当前轨迹：已揽收 → 运输中，预计明天送达。",
+    "adversarial": false
+  },
+  {
+    "question": "为什么订单发货后物流一直不更新？",
+    "ground_truth": "按《发货与物流规则》异常物流场景应答：物流信息多日无更新时，建议用户联系快递公司核实，客服同步登记反馈；丢件/破损时安抚用户，协助联系快递理赔，或引导走售后流程（退货/补发）。",
+    "adversarial": false
+  },
+  {
+    "question": "优惠券能和满减一起用吗？",
+    "ground_truth": "可以。按《价格与优惠规则》：满减为商品级促销（pms_product_full_reduction，只针对同商品），优惠券为订单级（sms_coupon），二者可叠加；同一商品同一时间只能启用一种促销类型（促销价/满减/阶梯价/限时购互斥）。",
+    "adversarial": false
+  },
+  {
+    "question": "积分怎么抵现金？",
+    "ground_truth": "按《价格与优惠规则》与《会员与积分规则》：每 100 积分抵 1 元（deduction_per_amount），单笔订单最高抵用 50%（max_percent_per_order），且须按 100 的整数倍使用（use_unit）；积分可与优惠券同用（coupon_status=1）。",
+    "adversarial": false
+  },
+  {
+    "question": "积分会过期吗？",
+    "ground_truth": "按《会员与积分规则》积分问答话术：本商城演示规则下积分长期有效（以平台公告为准）；积分在订单完成后发放，订单金额低于 1 元不计，单笔最高 2000 积分。",
+    "adversarial": false
+  },
+  {
+    "question": "怎么升级会员？",
+    "ground_truth": "按《会员与积分规则》：消费获得成长值（每消费 1 元 = 1 成长值，单笔订单最高 2000 点），成长值累计达到等级阈值自动升级：普通会员 0 / 黄金会员 1000 / 铂金会员 5000 / 钻石会员 10000。",
+    "adversarial": false
+  },
+  {
+    "question": "会员有什么特权？",
+    "ground_truth": "按《会员与积分规则》等级特权表：黄金会员起开通免邮（订单金额达到 free_freight_point 标准时包邮）、签到、评论奖励；铂金会员起开通会员价、生日特权；钻石会员全部开通（含专享活动特权）。",
+    "adversarial": false
+  },
+  {
+    "question": "商城支持白条或花呗分期付款吗？",
+    "ground_truth": "未找到相关文档。mall 知识库取材于 GitHub 官方仓库（README、document/reference、mall-admin 配置与 mall.sql 表结构）与《演示商品与订单数据》《售后服务政策》等业务文档，未包含支付分期（白条/花呗分期）的接入说明，不应杜撰分期规则，建议如实告知并转人工核实。",
+    "adversarial": true
+  },
+  {
+    "question": "Apple AirPods Pro 支持快速退款吗？",
+    "ground_truth": "不支持承诺。按《服务承诺与话术》：P004 Apple AirPods Pro 未配置服务标识（service_ids 为空），不属于「快速退款」商品，客服话术不得对未配置服务的商品承诺极速退款；P004 仅适用常规 3 个工作日退款口径与平台通用 7 天无理由退货政策。",
+    "adversarial": true
+  },
+  {
+    "question": "戴森 V12 是免费包邮的，那退货运费是不是也全免？",
+    "ground_truth": "不是全免。按《售后服务政策》运费承担规则：「免费包邮」服务（service_ids 含 3）仅免首程运费，退货运费仍按责任划分执行：7 天无理由（不喜欢/拍错）由用户承担，质量问题/破损/发错货由商家承担。P003 戴森 V12 虽然包邮，但不等于退货运费全免。",
+    "adversarial": true
+  }
+]
