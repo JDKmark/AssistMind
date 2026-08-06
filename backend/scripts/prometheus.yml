@@ -1,0 +1,11 @@
+# AssistMind 演示 Prometheus 配置：采集 ops-exporter 业务指标
+# 注意：不要在此处给 target 加 service 标签（honor_labels=false 会覆盖指标自带标签，
+# 导致 label_values("service") 只能拿到单一值）
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: ops-exporter
+    static_configs:
+      - targets: ["ops-exporter:9100"]

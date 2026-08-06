@@ -1,0 +1,7 @@
+{
+  "cpu_usage": "ops_cpu_usage{service=\"{service}\"}",
+  "memory_usage": "ops_memory_usage{service=\"{service}\"}",
+  "error_rate": "ops_error_rate{service=\"{service}\"}",
+  "latency_p95": "ops_latency_p95_ms{service=\"{service}\"}",
+  "qps": "ops_qps{service=\"{service}\"}"
+}

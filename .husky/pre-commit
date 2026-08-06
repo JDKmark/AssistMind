@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "[pre-commit] lint-staged (Prettier)"
+npx lint-staged
+
+echo "[pre-commit] backend unit tests"
+cd backend
+venv\Scripts\python.exe -m pytest tests -q -k "not integration"
+if ($LASTEXITCODE -ne 0) { exit 1 }
+cd ..
+
+echo "[pre-commit] frontend unit tests"
+cd frontend
+npx vitest run
+if ($LASTEXITCODE -ne 0) { exit 1 }
+cd ..

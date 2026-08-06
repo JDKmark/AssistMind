@@ -1,0 +1,127 @@
+[
+  {
+    "question": "服务接口大面积超时，错误日志里出现 Connection is not available, request timed out，这通常是什么问题？",
+    "ground_truth": "这通常是数据库连接池耗尽（Connection Pool Exhausted）。典型症状：服务接口大面积超时，错误日志出现 Connection is not available, request timed out，连接池监控 active 连接数等于 max_pool_size 且 waiting 数持续增长，下游服务同步调用报 Remote call failed 或 upstream timeout。",
+    "adversarial": false
+  },
+  {
+    "question": "数据库连接池被占满，常见根因有哪些？",
+    "ground_truth": "常见根因有三类：1) 配置变更错误缩小连接池，例如 max_pool_size 从 50 调成 10；2) 慢 SQL 或未释放连接导致连接被长期占用；3) 突发流量超过连接池容量。",
+    "adversarial": false
+  },
+  {
+    "question": "数据库连接池耗尽后应该采取哪些恢复动作？",
+    "ground_truth": "恢复动作：1) 回滚或调大连接池参数，例如 max_pool_size 恢复为 50；2) 重启受影响实例让连接池重建；3) 对同步调用增加超时与熔断，避免故障扩散。",
+    "adversarial": false
+  },
+  {
+    "question": "如何按步骤排查数据库连接池耗尽问题？",
+    "ground_truth": "排查步骤：1) 查看告警，确认哪个服务哪个指标触发告警；2) 查看指标，包括连接池使用率、等待数、下游接口错误率与延迟；3) 查看日志，搜索 connection pool / pool stats / timed out 关键线索；4) 查看变更记录，排查故障前最近一次配置变更或发布。",
+    "adversarial": false
+  },
+  {
+    "question": "连接池使用率接近 100%，除了配置过小，还有哪些可能的根因？",
+    "ground_truth": "除了配置过小（例如 max_pool_size 被误调小），还有两类根因：慢 SQL 或未释放连接导致连接被长期占用；突发流量超过连接池容量。",
+    "adversarial": false
+  },
+  {
+    "question": "数据库 CPU 持续高位、接口延迟明显上升，日志出现 Slow query detected，怎么排查？",
+    "ground_truth": "这是慢 SQL 的典型症状。排查步骤：1) 查看延迟类告警（latency_p95 / cpu_usage）；2) 查看数据库 CPU、连接等待数、接口延迟指标；3) 查看日志，搜索 slow query / lock wait / full table scan 关键线索；4) 查看变更记录，排查故障前最近一次发布版本。",
+    "adversarial": false
+  },
+  {
+    "question": "排查慢 SQL 的步骤和恢复动作是什么？",
+    "ground_truth": "排查步骤：查看延迟类告警（latency_p95 / cpu_usage）、查看数据库 CPU 与连接等待数指标、搜索 slow query / lock wait / full table scan 日志线索、核对故障前最近一次发布版本。恢复动作：为慢 SQL 涉及的字段补充索引、紧急时可回滚问题版本、对复杂查询做分页与缓存优化。",
+    "adversarial": false
+  },
+  {
+    "question": "如何判断慢 SQL 的根因是索引失效（全表扫描）还是锁竞争？",
+    "ground_truth": "通过日志线索区分：日志出现 full table scan 提示查询未走索引（新发布查询未建索引，或数据量增长导致原有索引失效）；日志出现 lock wait / Lock wait timeout exceeded 提示锁竞争（长事务占用行锁）。",
+    "adversarial": false
+  },
+  {
+    "question": "日志出现 Lock wait timeout exceeded，通常是什么问题？",
+    "ground_truth": "这是锁竞争的典型线索：长事务占用行锁导致其他查询等待超时。属于慢 SQL 类问题的常见根因之一，需结合数据库 CPU、连接等待数指标与故障前最近的发布版本核对。",
+    "adversarial": false
+  },
+  {
+    "question": "慢 SQL 的恢复动作有哪些？",
+    "ground_truth": "恢复动作：1) 为慢 SQL 涉及的字段补充索引；2) 紧急时可回滚问题版本；3) 对复杂查询做分页与缓存优化。",
+    "adversarial": false
+  },
+  {
+    "question": "内存占用持续爬升直至触发 OOM，常见原因有哪些？",
+    "ground_truth": "常见根因：1) 缓存/会话数据无 TTL 或容量上限，无限增长；2) 静态集合持有对象引用未释放；3) 线程池/连接池对象泄漏。",
+    "adversarial": false
+  },
+  {
+    "question": "服务频繁 OOM 自动重启，应该怎么恢复？",
+    "ground_truth": "恢复动作：为缓存设置 TTL 与最大容量（如 LRU）；紧急时重启实例临时恢复，再定位泄漏点修复。排查时查看内存占用曲线是否单调上升与 GC 频率，搜索 OutOfMemoryError / GC / heap space 日志线索，并核对故障前最近一次发布是否引入缓存逻辑。",
+    "adversarial": false
+  },
+  {
+    "question": "线程池/连接池对象泄漏这类内存泄漏，排查时重点看什么？",
+    "ground_truth": "排查时查看内存占用曲线是否单调上升与 GC 频率，日志搜索 OutOfMemoryError / GC / heap space 关键线索，并核对故障前最近一次发布（是否引入缓存逻辑或池对象未释放）。",
+    "adversarial": false
+  },
+  {
+    "question": "日志出现 GC overhead limit exceeded，应该怎么排查？",
+    "ground_truth": "这是内存泄漏的典型症状之一（内存占用持续爬升触发 OOM 时出现）。排查：1) 查看内存类告警（memory_usage）；2) 查看内存占用曲线是否单调上升、GC 频率；3) 查看日志搜索 OutOfMemoryError / GC / heap space；4) 查看变更记录核对是否引入缓存逻辑。",
+    "adversarial": false
+  },
+  {
+    "question": "给缓存设置 TTL 与 LRU 容量上限，能解决哪类故障？",
+    "ground_truth": "能解决缓存/会话数据无 TTL 或容量上限导致的内存泄漏：缓存数据无限增长占用堆内存，最终触发 OOM 与实例重启。恢复动作为缓存设置 TTL 与最大容量（如 LRU）。",
+    "adversarial": false
+  },
+  {
+    "question": "微服务出现故障时，应该按什么顺序诊断？",
+    "ground_truth": "按先全局后局部的顺序：1) 确认告警（哪个服务、哪个指标、严重级别）；2) 分析指标（错误率、延迟、CPU、内存、QPS 的异常形态）；3) 检索日志（按服务与关键字定位异常堆栈与错误消息）；4) 核对变更（故障前最近一次发布或配置变更）；5) 参考案例（检索历史故障案例手册匹配相似症状）。",
+    "adversarial": false
+  },
+  {
+    "question": "上游服务报 Remote call failed，应该优先怀疑哪里？",
+    "ground_truth": "优先怀疑下游服务：下游服务异常会传导到上游，上游出现 Remote call failed 时要检查下游服务的状态、指标与错误率。",
+    "adversarial": false
+  },
+  {
+    "question": "诊断时为什么要先看告警，而不是直接翻日志？",
+    "ground_truth": "因为诊断遵循先全局后局部的顺序：告警能先确认是哪个服务、哪个指标、什么严重级别，缩小排查范围；直接翻日志缺乏定位依据，效率低。",
+    "adversarial": false
+  },
+  {
+    "question": "指标形态陡增和缓慢爬升分别提示什么？",
+    "ground_truth": "指标异常形态有提示性：陡增多为突发流量或变更引入；爬升多为资源泄漏（如缓存无 TTL 导致内存持续增长）。",
+    "adversarial": false
+  },
+  {
+    "question": "故障发生前刚好有一次发布或配置变更，应该优先怀疑什么？",
+    "ground_truth": "优先怀疑变更引入：变更先于故障出现时，故障前最近一次发布或配置变更往往是根因。需核对变更记录并考虑回滚。",
+    "adversarial": false
+  },
+  {
+    "question": "诊断报告应该包含哪些内容？",
+    "ground_truth": "诊断报告需包含：症状 → 证据（指标/日志/变更） → 根因 → 恢复建议，证据要可回溯。",
+    "adversarial": false
+  },
+  {
+    "question": "AssistMind 的会话列表支持按客服导出 Excel 吗？",
+    "ground_truth": "未找到相关文档。知识库中的文档为运维故障排查手册，未涉及 AssistMind 会话列表功能说明。",
+    "adversarial": true
+  },
+  {
+    "question": "OPS-005 集群扩容的标准操作流程是什么？",
+    "ground_truth": "未找到相关文档。知识库中不存在 OPS-005 集群扩容手册（现有手册为 OPS-001 至 OPS-004）。",
+    "adversarial": true
+  },
+  {
+    "question": "把连接池 max_pool_size 配置成 50 是不是就能彻底避免连接池耗尽？",
+    "ground_truth": "不能彻底避免。max_pool_size 从 50 被误调成 10 是连接池耗尽的根因之一，恢复为 50 可解决配置过小的问题；但慢 SQL 或未释放连接导致连接被长期占用、突发流量超过连接池容量仍会导致耗尽，还需要配合超时与熔断。",
+    "adversarial": true
+  },
+  {
+    "question": "订单服务的限流阈值应该配置成多少 QPS？",
+    "ground_truth": "未找到相关文档。知识库中的运维手册未包含限流阈值配置建议，无法给出具体数值。",
+    "adversarial": true
+  }
+]
