@@ -312,7 +312,9 @@ def build_ragas_llm(async_client: bool = False):
     return llm_factory(
         model,
         client=client,
-        max_tokens=2048,
+        # 2048 在 deepseek-v4-flash 等长 JSON 结构化输出（ragas NLI 语句列表）下
+        # 频繁截断 → IncompleteOutputException 重试拖慢且产生 NaN，调大到 4096
+        max_tokens=4096,
     )
 
 

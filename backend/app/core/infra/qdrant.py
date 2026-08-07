@@ -214,6 +214,7 @@ class QdrantClient:
                                 "doc_id": payload.get("doc_id", ""),
                                 "title": payload.get("title", ""),
                                 "source": payload.get("source", ""),
+                                "category": payload.get("category", ""),
                                 "text": payload.get("text", ""),
                                 "security_group": payload.get(
                                     "security_group", ["user", "agent", "admin"]
