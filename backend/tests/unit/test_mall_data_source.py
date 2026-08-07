@@ -6,10 +6,14 @@
 - 商品信息（固定清单数据完全一致）
 - 退款状态机（待付款拒绝、其他状态成功、重复申请幂等、未知订单拒绝）
 - 门面转发与 reset_source 隔离
+- MALL_DATA_SOURCE 配置切换（mock/real/auto 与健康探测降级）
 """
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from app.config import Settings
 from app.core.mall import data_source as ds
 
 
@@ -171,3 +175,72 @@ async def test_reset_source_clears_refund_records():
     again = await ds.apply_refund("20240801001", "重置测试")
     assert again["refund_id"] == "AF20240801001"
     assert "已提交" in again["message"]
+
+
+# ---- MALL_DATA_SOURCE 配置切换 ----
+
+async def test_mode_mock_uses_mock_impl(monkeypatch):
+    """MALL_DATA_SOURCE=mock：恒用 MockMallDataSource，source_mode=mock。"""
+    from app.core.mall.mock_source import MockMallDataSource
+
+    monkeypatch.setattr(ds, "settings", Settings(MALL_DATA_SOURCE="mock"))
+    ds.reset_source()
+    await ds._resolve_source()
+    assert isinstance(ds._source, MockMallDataSource)
+    assert await ds.get_source_mode() == "mock"
+
+
+async def test_mode_real_uses_real_impl(monkeypatch):
+    """MALL_DATA_SOURCE=real：恒用 RealMallDataSource，source_mode=real。"""
+    from app.core.mall.real_source import RealMallDataSource
+
+    monkeypatch.setattr(ds, "settings", Settings(MALL_DATA_SOURCE="real"))
+    ds.reset_source()
+    await ds._resolve_source()
+    assert isinstance(ds._source, RealMallDataSource)
+    assert await ds.get_source_mode() == "real"
+
+
+async def test_mode_auto_pg_healthy_uses_real(monkeypatch):
+    """MALL_DATA_SOURCE=auto 且健康探测通过：用 real。"""
+    from app.core.mall.real_source import RealMallDataSource
+
+    monkeypatch.setattr(ds, "settings", Settings(MALL_DATA_SOURCE="auto"))
+    monkeypatch.setattr(ds, "_pg_healthy", AsyncMock(return_value=True))
+    ds.reset_source()
+    await ds._resolve_source()
+    assert isinstance(ds._source, RealMallDataSource)
+    assert await ds.get_source_mode() == "real"
+
+
+async def test_mode_auto_pg_down_falls_back_to_mock(monkeypatch):
+    """MALL_DATA_SOURCE=auto 且健康探测失败：降级 mock（不抛异常）。"""
+    from app.core.mall.mock_source import MockMallDataSource
+
+    monkeypatch.setattr(ds, "settings", Settings(MALL_DATA_SOURCE="auto"))
+    monkeypatch.setattr(ds, "_pg_healthy", AsyncMock(return_value=False))
+    ds.reset_source()
+    await ds._resolve_source()
+    assert isinstance(ds._source, MockMallDataSource)
+    assert await ds.get_source_mode() == "mock"
+
+
+async def test_pg_healthy_returns_false_on_connection_error(monkeypatch):
+    """_pg_healthy：PostgreSQL 连接失败返回 False 不抛异常。"""
+    mock_engine = MagicMock()
+    mock_engine.connect = MagicMock(side_effect=Exception("connection refused"))
+    monkeypatch.setattr(ds, "engine", mock_engine)
+    assert await ds._pg_healthy() is False
+
+
+async def test_facade_forwards_through_mode_switch(monkeypatch):
+    """门面转发不依赖具体实现：切 real 后调用仍走同一门面函数。"""
+    fake_source = MagicMock()
+    fake_source.source_mode = "real"
+    fake_source.query_order = AsyncMock(return_value={"order_sn": "20240801001"})
+    fake_source.apply_refund = AsyncMock(
+        return_value={"refund_id": "AF20240801001", "status": "处理中", "message": "ok"}
+    )
+    monkeypatch.setattr(ds, "_resolve_source", AsyncMock(return_value=fake_source))
+    assert (await ds.query_order("20240801001"))["order_sn"] == "20240801001"
+    assert (await ds.apply_refund("20240801001", "测试"))["status"] == "处理中"

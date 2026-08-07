@@ -128,6 +128,12 @@ class Settings(BaseSettings):
     # ===== 工单 =====
     TICKET_ID_RANDOM_SUFFIX: int = 7
 
+    # ===== 电商业务数据源（订单/物流/商品/售后）=====
+    # mock: 恒用内存演示数据（默认，无需外部依赖）
+    # real: 恒用 PostgreSQL 实现（需先跑 scripts/init_db.py + seed_mall_db.py）
+    # auto: 配置了 DATABASE_URL 且 PostgreSQL 健康探测通过 → real；否则降级 mock
+    MALL_DATA_SOURCE: str = "mock"
+
     # ===== 运维数据源（Prometheus / ELK）=====
     # auto: 配置了 PROMETHEUS_URL 用真实数据源，未配置或整体不可用降级 mock
     # mock: 恒用预置故障场景模拟数据

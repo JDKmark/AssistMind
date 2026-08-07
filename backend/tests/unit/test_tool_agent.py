@@ -256,3 +256,107 @@ def test_get_tools_includes_mall_tools():
     assert {"query_order", "query_logistics", "query_product", "apply_refund"} <= names
     assert "search_knowledge" in names
 
+
+# ---------- 9. 实体识别参数补填 ----------
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_entity_fill_missing_order_sn(mock_call):
+    """LLM 决策 query_order 但 input 缺 order_sn：实体补填后调用。
+
+    场景：用户问题含订单号 20240801001，LLM 输出 Action 但参数为空。
+    Retrieval Before Agency 首轮检索 → 实体提示注入（空转一轮）→ LLM 决策 → 补填调用。
+    """
+    mcp = _make_mcp_mock(call_tool_return={"order_sn": "20240801001", "status": "已发货"})
+    mock_call.side_effect = [
+        'Action: query_order\nAction Input: {}',
+        "Final Answer: 您的订单 20240801001 已发货。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    result = await agent.run("查一下订单 20240801001 到哪了")
+
+    # 工具调用参数被实体补填
+    order_calls = [
+        call for call in mcp.call_tool.await_args_list if call.args[0] == "query_order"
+    ]
+    assert len(order_calls) == 1
+    assert order_calls[0].args[1]["order_sn"] == "20240801001"
+    assert "已发货" in result["answer"]
+    assert result["degraded"] is False
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_entity_fill_product_id(mock_call):
+    """LLM 决策 query_product 但 input 缺 product_id：实体补填。"""
+    mcp = _make_mcp_mock(call_tool_return={"id": "P001", "name": "华为 Mate 60 Pro"})
+    mock_call.side_effect = [
+        'Action: query_product\nAction Input: {}',
+        "Final Answer: 华为 Mate 60 Pro 当前在售。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    result = await agent.run("P001 这个商品还有货吗")
+
+    product_calls = [
+        call for call in mcp.call_tool.await_args_list if call.args[0] == "query_product"
+    ]
+    assert len(product_calls) == 1
+    assert product_calls[0].args[1]["product_id"] == "P001"
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_no_entity_no_fill_keeps_original(mock_call):
+    """无实体时参数原样传递（create_ticket 不受影响）。"""
+    ticket_result = {"ticket_id": "TK-1234567", "created": True, "ticket": {}}
+    mcp = _make_mcp_mock(call_tool_return=ticket_result)
+    mock_call.side_effect = [
+        'Action: create_ticket\nAction Input: {"title":"标题","description":"描述"}',
+        "Final Answer: 已创建工单 TK-1234567。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    result = await agent.run("帮我创建一个工单，标题是标题，描述是描述")
+
+    name, args = mcp.call_tool.await_args_list[-1].args
+    assert name == "create_ticket"
+    assert args == {"title": "标题", "description": "描述"}
+    assert "TK-1234567" in result["answer"]
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_multiturn_entity_from_history_fills_args(mock_call):
+    """多轮「物流到哪了」：当前问题无实体，从历史提取订单号并补填参数。
+
+    Retrieval Before Agency 首轮检索 → 实体提示注入（空转）→ LLM 决策
+    但 input 缺 order_sn → 从历史实体补填。
+    """
+    mcp = _make_mcp_mock(
+        call_tool_return=[
+            {"ts": "2024-08-01 16:00:00", "content": "已揽收"},
+            {"ts": "2024-08-01 18:30:00", "content": "运输中"},
+        ]
+    )
+    mock_call.side_effect = [
+        'Action: query_logistics\nAction Input: {}',
+        "Final Answer: 物流轨迹：已揽收 → 运输中。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    result = await agent.run(
+        "物流到哪了？",
+        history=[
+            {"role": "user", "content": "查一下订单 20240801001"},
+            {"role": "assistant", "content": "您的订单 20240801001 已发货。"},
+        ],
+    )
+
+    logistics_calls = [
+        call
+        for call in mcp.call_tool.await_args_list
+        if call.args[0] == "query_logistics"
+    ]
+    assert len(logistics_calls) == 1
+    assert logistics_calls[0].args[1]["order_sn"] == "20240801001"
+    assert result["degraded"] is False
+

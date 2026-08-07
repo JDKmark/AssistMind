@@ -46,7 +46,7 @@
 
 每一步的工具调用都以 `tool_call` / `tool_result` SSE 事件实时推送到前端，用户可见"正在查订单 → 正在申请售后 → 已创建售后工单"的过程——这也是面试中展示"Agent 不是黑盒"的现场素材。
 
-> 说明：订单 / 物流 / 售后数据均为演示清单（见[知识来源与演示口径](#六知识来源与演示口径诚实透明)）。
+> 说明：订单 / 物流 / 售后数据为项目自建演示清单，默认走内存 mock（零依赖）；配置 `MALL_DATA_SOURCE=real` 后可落 PostgreSQL 持久化（含售后单跨进程幂等），详见[五、快速启动](#五快速启动完整闭环)。
 
 ### 2.3 扩展能力：智能运维诊断（系统底座能力的延伸）
 
@@ -81,7 +81,7 @@
 
 ### 3.2 Agent
 
-- **ToolAgent（电商客服 Agent）**：LangGraph StateGraph 驱动的 ReAct 循环（think → act → …），含 Loop Breaker（迭代上限熔断）、参数缺失澄清（`CLARIFY:` 追问）、MCP 不可用降级。设计原则 **Retrieval Before Agency**：Agent 在已排序检索结果之上工作，不取代检索。
+- **ToolAgent（电商客服 Agent）**：LangGraph StateGraph 驱动的 ReAct 循环（think → act → …），含 Loop Breaker（迭代上限熔断）、参数缺失澄清（`CLARIFY:` 追问）、**实体识别参数补填**（规则抽取订单号/商品 ID → 自动补填 query_order 等工具参数，减少 LLM 编造与追问，多轮对话从历史回溯实体）、MCP 不可用降级。设计原则 **Retrieval Before Agency**：Agent 在已排序检索结果之上工作，不取代检索。
 - **OpsSupervisorAgent（运维诊断 Agent）**：LangGraph 三节点编排（supervisor 规划 → collect 多源证据采集 → analyze 根因推理），输出根因报告 + 置信度 + 证据清单（含 degraded 标注），联动自动建单。
 
 ### 3.3 MCP 双向架构
@@ -182,6 +182,8 @@ docker-compose up -d
 
 `OPS_DATA_SOURCE` 配置运维数据源模式：`auto`（默认，配置了 `PROMETHEUS_URL` 且健康探测通过则用真实数据，否则降级 mock）/ `mock` / `real`。未配置 `ALERTMANAGER_URL` / `ELASTICSEARCH_URL` 时，告警与日志证据返回空并标记 degraded。
 
+`MALL_DATA_SOURCE` 配置电商业务数据源模式：`mock`（默认，内存演示清单，零依赖）/ `real`（PostgreSQL，先跑 init_db + seed_mall_db）/ `auto`（`SELECT 1` 健康探测通过则用 real，否则降级 mock）。real 模式下售后单（apply_refund）落库持久化，跨进程幂等（order_sn 唯一约束）。
+
 ### 3. 初始化数据库 + 灌知识库
 
 ```powershell
@@ -189,6 +191,10 @@ cd backend
 
 # 建表 + 初始用户（admin/agent/user）
 venv\Scripts\python.exe scripts/init_db.py
+
+# 电商业务数据落 PostgreSQL（MALL_DATA_SOURCE=real 时使用；默认 mock 可跳过）
+# 数据来源与 mock 演示清单同源（scripts/seed_mall_db.py 从 mock_source 导入，幂等）
+venv\Scripts\python.exe scripts/seed_mall_db.py
 
 # 电商知识库（knowledge/mall/：官方文档 + 自建业务规则，结构感知切块）
 venv\Scripts\python.exe scripts/seed_mall_kb.py --reset
@@ -243,13 +249,13 @@ AssistMind/
 │   │   │   ├── cache/      # L2 语义缓存（Redis 版本号失效）
 │   │   │   ├── infra/      # Qdrant/Redis/PostgreSQL/LLM/Prometheus/ES/Alertmanager/Langfuse/断路器
 │   │   │   ├── mcp/        # MCP Server（13 工具）+ Client
-│   │   │   ├── mall/       # 电商业务数据源（门面 + mock，字段锚定 mall.sql）
+│   │   │   ├── mall/       # 电商业务数据源（门面 + mock/real 双实现 + 实体识别，字段锚定 mall.sql）
 │   │   │   ├── ops/        # 运维数据源（门面 + mock/real 双实现 + 预置场景）
 │   │   │   └── security/   # JWT + RBAC
-│   │   ├── models/         # SQLAlchemy 模型（user/ticket/feedback）
+│   │   ├── models/         # SQLAlchemy 模型（user/ticket/feedback/mall 业务表）
 │   │   ├── schemas/        # Pydantic 模型
 │   │   └── data/           # intent_routes.json / eval_qa.json / eval_mall_qa.json / ops_metric_exprs.json
-│   ├── scripts/            # init_db / seed_mall_kb / seed_ops_kb / run_eval / run_eval_ops / ops_exporter
+│   ├── scripts/            # init_db / seed_mall_db / seed_mall_kb / seed_ops_kb / run_eval / run_eval_ops / ops_exporter
 │   └── tests/              # 单元 + 集成测试
 ├── frontend/
 │   └── src/
