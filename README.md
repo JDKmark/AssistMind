@@ -122,6 +122,7 @@ FastMCP（Python 官方 SDK）实现 **Server（AssistOps，13 个工具）+ Cli
 |---|---|---|
 | RAG 质量 | `scripts/run_eval.py` + RAGAS 4 指标（faithfulness / answer_relevancy / context_precision / context_recall） | 39 条数据集：`eval_qa.json`（25 条，运维手册，含 4 条对抗样本）+ `eval_mall_qa.json`（14 条，电商知识库，含 2 条对抗样本），对抗样本单独分组统计；常规样本预期四项 ≥ 0.7 |
 | Agent 工具调用 | 单测覆盖（`tests/unit/test_tool_agent.py` 等）：task 意图触发工具、Retrieval Before Agency、参数缺失澄清、MCP 不可用降级、循环熔断 | 工具调用路径行为由测试保障 |
+| Agent 端到端成功率 | `scripts/run_eval_agent.py --entity-fill both`：9 个多轮客服任务（查单/查物流/多轮物流/商品/退货流程/退款被拒/未找到订单/服务承诺/退款时限），进程内 MCP + BM25 兜底，逐任务断言工具链与回答 | 实测 **9/9（100%）**，含实体识别 on/off 对比 |
 | 诊断根因命中率 | `scripts/run_eval_ops.py`：3 个预置故障场景（连接池耗尽 / 慢 SQL / 内存泄漏）强制 mock 数据源，报告 root_cause 与预期关键词比对 | 目标 3/3 命中 |
 
 评估已知限制（面试可讲透）：`answer_relevancy` 对「诊断意图 → 枚举知识」型问答天然偏低（约 0.4-0.6），因反向生成的问题聚焦回答中的高密度实体而非原问题意图——属指标语义特性，不作为质量闸门；事实性看 faithfulness、检索质量看 context_precision / context_recall、诊断链路看根因命中率。
