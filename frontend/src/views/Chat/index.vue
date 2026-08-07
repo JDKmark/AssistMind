@@ -47,6 +47,77 @@
                   <el-tag size="small" type="warning">工具调用</el-tag>
                   <span class="tool-name">调用 {{ toolLabel(tc.tool_name) }}</span>
                   <span v-if="toolArgsText(tc)" class="tool-args">{{ toolArgsText(tc) }}</span>
+
+                  <!-- 工具结果卡片（订单/物流/商品/售后） -->
+                  <div v-if="cardOf(tc)" class="tool-result-card">
+                    <!-- 订单卡片 -->
+                    <template v-if="cardOf(tc).type === 'order'">
+                      <el-descriptions :column="1" border size="small" class="card-desc">
+                        <el-descriptions-item label="订单号">
+                          {{ cardOf(tc).data.order_sn }}
+                        </el-descriptions-item>
+                        <el-descriptions-item label="状态">
+                          {{ cardOf(tc).data.status }}
+                        </el-descriptions-item>
+                        <el-descriptions-item label="实付金额">
+                          ¥{{ cardOf(tc).data.pay_amount }}
+                        </el-descriptions-item>
+                        <el-descriptions-item label="物流单号">
+                          {{ cardOf(tc).data.logistics_no || '未发货' }}
+                        </el-descriptions-item>
+                        <el-descriptions-item label="商品明细">
+                          <div v-for="(it, j) in cardOf(tc).data.items" :key="j">
+                            {{ it.name }}（{{ it.spec }}）×{{ it.quantity }} ¥{{ it.price }}
+                          </div>
+                        </el-descriptions-item>
+                      </el-descriptions>
+                    </template>
+
+                    <!-- 物流轨迹卡片 -->
+                    <template v-else-if="cardOf(tc).type === 'logistics'">
+                      <el-timeline class="logistics-timeline">
+                        <el-timeline-item
+                          v-for="(t, j) in cardOf(tc).data"
+                          :key="j"
+                          :timestamp="t.ts"
+                          size="small"
+                        >
+                          {{ t.content }}
+                        </el-timeline-item>
+                      </el-timeline>
+                    </template>
+
+                    <!-- 商品卡片 -->
+                    <template v-else-if="cardOf(tc).type === 'product'">
+                      <el-descriptions :column="1" border size="small" class="card-desc">
+                        <el-descriptions-item label="商品">{{ cardOf(tc).data.name }}</el-descriptions-item>
+                        <el-descriptions-item label="规格">{{ cardOf(tc).data.spec }}</el-descriptions-item>
+                        <el-descriptions-item label="价格">¥{{ cardOf(tc).data.price }}</el-descriptions-item>
+                        <el-descriptions-item label="库存">{{ cardOf(tc).data.stock }}</el-descriptions-item>
+                        <el-descriptions-item v-if="cardOf(tc).data.services && cardOf(tc).data.services.length" label="服务">
+                          <el-tag
+                            v-for="(s, k) in cardOf(tc).data.services"
+                            :key="k"
+                            size="small"
+                            type="success"
+                            effect="plain"
+                            class="service-tag"
+                          >
+                            {{ s }}
+                          </el-tag>
+                        </el-descriptions-item>
+                      </el-descriptions>
+                    </template>
+
+                    <!-- 售后结果卡片 -->
+                    <template v-else-if="cardOf(tc).type === 'refund'">
+                      <el-descriptions :column="1" border size="small" class="card-desc">
+                        <el-descriptions-item label="售后单号">{{ cardOf(tc).data.refund_id }}</el-descriptions-item>
+                        <el-descriptions-item label="状态">{{ cardOf(tc).data.status }}</el-descriptions-item>
+                        <el-descriptions-item label="说明">{{ cardOf(tc).data.message }}</el-descriptions-item>
+                      </el-descriptions>
+                    </template>
+                  </div>
                 </div>
               </div>
 
@@ -239,6 +310,35 @@ function toolArgsText(tc) {
   return text.length > 80 ? `${text.slice(0, 80)}…` : text
 }
 
+// 工具结果 → 卡片结构化数据（订单/物流/商品/售后）；不可解析返回 null（回退 JSON 文本）
+function parseToolResult(tc) {
+  const name = tc.tool_name
+  const result = tc.result
+  if (result === undefined || result === null) return null
+  // MCP 工具返回可能是 {result: ...} 包装，也可能是直接 dict/list
+  const data = result && typeof result === 'object' && 'result' in result ? result.result : result
+
+  if (name === 'query_order' && data && typeof data === 'object' && !Array.isArray(data) && data.order_sn) {
+    return { type: 'order', data }
+  }
+  if (name === 'query_logistics' && Array.isArray(data) && data.length && data[0].ts) {
+    return { type: 'logistics', data }
+  }
+  if (name === 'query_product' && data && typeof data === 'object' && !Array.isArray(data) && data.id) {
+    return { type: 'product', data }
+  }
+  if (name === 'apply_refund' && data && typeof data === 'object' && !Array.isArray(data) && data.refund_id) {
+    return { type: 'refund', data }
+  }
+  return null
+}
+
+// 惰性缓存解析结果（模板中多次引用只算一次）
+function cardOf(tc) {
+  if (!tc._card) tc._card = parseToolResult(tc)
+  return tc._card
+}
+
 // 从工具结果中提取工单号（MCP create_ticket / transfer_human 返回 {ticket_id}）
 function extractTicketId(result) {
   if (!result) return ''
@@ -282,6 +382,8 @@ function handleEvent(msg, name, data) {
     case 'tool_result': {
       const tc = msg.toolCalls[msg.toolCalls.length - 1]
       if (tc) {
+        // 保存工具结果（订单/物流/商品/退款卡片渲染用）
+        tc.result = data.result
         const ticketId = extractTicketId(data.result)
         if (ticketId) {
           tc.ticketId = ticketId
@@ -485,6 +587,25 @@ watch(messages, scrollToBottom, { deep: true })
   font-size: 12px;
   font-family: Consolas, Menlo, monospace;
   word-break: break-all;
+}
+
+/* 工具结果卡片 */
+.tool-result-card {
+  margin-top: 6px;
+  padding: 8px;
+  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  width: 100%;
+}
+.card-desc {
+  width: 100%;
+}
+.logistics-timeline {
+  padding-left: 4px;
+}
+.service-tag {
+  margin-right: 4px;
 }
 
 /* 知识来源 */
