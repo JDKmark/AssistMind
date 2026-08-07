@@ -27,12 +27,14 @@ from fastapi.responses import StreamingResponse
 
 from app.agents.tool_agent import ToolAgent
 from app.api.ops import _diagnose_stream, DiagnoseRequest
+from app.config import get_settings
 from app.core.infra.llm_factory import call_llm
 from app.core.rag import engine as rag_engine
 from app.core.router.intent import route
 from app.schemas.chat import ChatRequest
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 router = APIRouter()
 
@@ -73,16 +75,20 @@ async def _event_stream(req: ChatRequest) -> AsyncIterator[str]:
         history = (
             [h.model_dump() for h in req.history] if req.history else None
         )
+        # 记忆窗口裁剪：与 engine.generate 同一语义（history[-MEMORY_WINDOW:]），
+        # 防止超长历史撑爆 LLM 上下文
+        if history:
+            history = history[-settings.MEMORY_WINDOW:]
 
         # 3. 按意图分流
         if intent == "faq":
             async for chunk in _handle_faq(req.query, history):
                 yield chunk
         elif intent == "task":
-            async for chunk in _handle_task(req.query):
+            async for chunk in _handle_task(req.query, history):
                 yield chunk
         elif intent == "chat":
-            async for chunk in _handle_chat(req.query):
+            async for chunk in _handle_chat(req.query, history):
                 yield chunk
         elif intent == "diagnose":
             async for chunk in _diagnose_stream(
@@ -120,10 +126,16 @@ async def _handle_faq(
     )
 
 
-async def _handle_task(query: str) -> AsyncIterator[str]:
-    """task 意图：start → tool_call → tool_result → (多轮) → done。"""
+async def _handle_task(
+    query: str, history: list[dict[str, str]] | None = None
+) -> AsyncIterator[str]:
+    """task 意图：start → tool_call → tool_result → (多轮) → done。
+
+    history 传入 ToolAgent：多轮场景（如「查订单 20240801001」→「物流到哪了？」）
+    依赖上文订单号，ToolAgent 内部实体识别会从历史回溯补填工具参数。
+    """
     agent = ToolAgent()
-    result = await agent.run(query)
+    result = await agent.run(query, history=history)
 
     tool_calls = result.get("tool_calls") or []
     for tc in tool_calls:
@@ -140,10 +152,22 @@ async def _handle_task(query: str) -> AsyncIterator[str]:
     yield _sse_event("done", {"answer": result.get("answer", "")})
 
 
-async def _handle_chat(query: str) -> AsyncIterator[str]:
-    """chat 意图：start → generating → done。"""
+async def _handle_chat(
+    query: str, history: list[dict[str, str]] | None = None
+) -> AsyncIterator[str]:
+    """chat 意图：start → generating → done（历史拼入 prompt）。
+
+    历史格式与 engine.generate 一致（用户/客服: 内容），按 MEMORY_WINDOW 已裁剪。
+    """
     yield _sse_event("generating", {})
-    answer = await call_llm(query, system=_CHAT_SYSTEM, generation=True)
+    history_text = ""
+    if history:
+        history_text = "\n".join(
+            [f"{'用户' if h.get('role') == 'user' else '客服'}: {h.get('content', '')}"
+             for h in history]
+        )
+    prompt = f"对话历史：\n{history_text}\n\n{query}" if history_text else query
+    answer = await call_llm(prompt, system=_CHAT_SYSTEM, generation=True)
     yield _sse_event("done", {"answer": answer})
 
 
