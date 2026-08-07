@@ -203,8 +203,95 @@ def test_chat_task_tool_call_events():
     # done 携带最终答案
     assert _events_dict(events)["done"]["answer"] == "工单已创建"
 
-    # ToolAgent 实例化一次，run 调用一次
-    fake_agent.run.assert_awaited_once_with("创建工单")
+    # ToolAgent 实例化一次，run 调用一次（无 history 时传 None）
+    fake_agent.run.assert_awaited_once_with("创建工单", history=None)
+
+
+# ---------- 3b. task 意图多轮 history 传递 ----------
+
+
+def test_chat_task_passes_history():
+    """task 意图带 history：完整传入 ToolAgent.run，超出记忆窗口时裁剪。"""
+    fake_agent = MagicMock()
+    fake_agent.run = AsyncMock(
+        return_value={
+            "answer": "您的订单 20240801001 物流轨迹：已揽收。",
+            "tool_calls": [
+                {
+                    "name": "query_logistics",
+                    "input": {"order_sn": "20240801001"},
+                    "result": [{"ts": "2024-08-01 16:00:00", "content": "已揽收"}],
+                },
+            ],
+            "iterations": 1,
+            "degraded": False,
+        }
+    )
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "task",
+                "confidence": 1.0,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.ToolAgent", return_value=fake_agent):
+        resp = client.post(
+            "/api/v1/chat/ask",
+            json={
+                "query": "物流到哪了？",
+                "history": [
+                    {"role": "user", "content": "查一下订单 20240801001"},
+                    {"role": "assistant", "content": "您的订单已发货。"},
+                ],
+            },
+        )
+
+    assert resp.status_code == 200
+    events = _parse_sse(resp.text)
+    assert _events_dict(events)["done"]["answer"] == "您的订单 20240801001 物流轨迹：已揽收。"
+
+    # history 完整传入 ToolAgent.run（实体回溯依赖它）
+    fake_agent.run.assert_awaited_once()
+    call_args = fake_agent.run.await_args
+    assert call_args.args[0] == "物流到哪了？"
+    assert call_args.kwargs["history"] == [
+        {"role": "user", "content": "查一下订单 20240801001"},
+        {"role": "assistant", "content": "您的订单已发货。"},
+    ]
+
+
+def test_chat_task_history_truncated_to_memory_window(monkeypatch):
+    """history 超过 MEMORY_WINDOW 时只保留最近 N 条（与 faq 同一窗口语义）。"""
+    from app.api import chat as chat_module
+
+    monkeypatch.setattr(chat_module.settings, "MEMORY_WINDOW", 2)
+
+    fake_agent = MagicMock()
+    fake_agent.run = AsyncMock(return_value={"answer": "ok", "tool_calls": [], "iterations": 0, "degraded": False})
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(return_value={"intent": "task", "confidence": 1.0, "source": "rule", "low_confidence": False}),
+    ), patch("app.api.chat.ToolAgent", return_value=fake_agent):
+        resp = client.post(
+            "/api/v1/chat/ask",
+            json={
+                "query": "查订单",
+                "history": [
+                    {"role": "user", "content": f"第{i}条" if i < 4 else f"第{i}条"}
+                    for i in range(1, 5)
+                ],
+            },
+        )
+
+    assert resp.status_code == 200
+    sent = fake_agent.run.await_args.kwargs["history"]
+    assert len(sent) == 2
+    # 保留的是最近两条
+    assert sent[0]["content"] == "第3条"
+    assert sent[1]["content"] == "第4条"
 
 
 # ---------- 4. unclear 返回澄清话术 ----------
@@ -257,6 +344,41 @@ def test_chat_chat_intent_direct_llm():
     names = [e for e, _ in events]
     assert names == ["start", "generating", "done"]
     assert _events_dict(events)["done"]["answer"] == "你好呀"
+
+
+def test_chat_chat_intent_history_in_prompt():
+    """chat 意图带 history：历史以「用户/客服: 内容」格式拼入 LLM prompt。"""
+    mock_llm = AsyncMock(return_value="记得啦")
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "chat",
+                "confidence": 0.9,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.call_llm", new=mock_llm):
+        resp = client.post(
+            "/api/v1/chat/ask",
+            json={
+                "query": "那我的订单呢",
+                "history": [
+                    {"role": "user", "content": "查一下订单 20240801001"},
+                    {"role": "assistant", "content": "您的订单已发货。"},
+                ],
+            },
+        )
+
+    assert resp.status_code == 200
+    assert _events_dict(_parse_sse(resp.text))["done"]["answer"] == "记得啦"
+
+    # prompt 含历史（用户/客服格式）与当前问题
+    prompt = mock_llm.await_args.args[0]
+    assert "用户: 查一下订单 20240801001" in prompt
+    assert "客服: 您的订单已发货。" in prompt
+    assert "那我的订单呢" in prompt
 
 
 # ---------- 6. error 事件（RAGEngine 抛异常，流已开始）----------
