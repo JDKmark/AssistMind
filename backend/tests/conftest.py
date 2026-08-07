@@ -44,6 +44,22 @@ def force_mock_ops_source(monkeypatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def force_mock_mall_source(monkeypatch) -> None:
+    """每个测试强制电商业务数据源为 mock 模式。
+
+    避免 MALL_DATA_SOURCE=auto 时对真实 PostgreSQL 做健康探测（网络/超时/状态污染）。
+    需要测试 real/auto 切换的用例自行 monkeypatch 覆盖 settings / _pg_healthy。
+    """
+    from app.config import Settings
+    from app.core.mall import data_source
+
+    monkeypatch.setattr(data_source, "settings", Settings(MALL_DATA_SOURCE="mock"))
+    data_source.reset_source()
+    yield
+    data_source.reset_source()
+
+
+@pytest.fixture(autouse=True)
 def mock_ticket_queries() -> None:
     """mock 工单检索，避免诊断链路 collect 阶段连接真实 PostgreSQL。
 

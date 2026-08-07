@@ -54,6 +54,8 @@ docker-compose up -d
 - **BM25 一等公民**：BM25 不可被关闭，Qdrant 失败时 BM25 独立可用（失败降级兜底）
 - **BM25 词粒度分词**：中文用 jieba 词粒度（非单字 unigram），英文/数字/下划线标识符整词保留（order_item 不拆泛词），带停用词表；改分词时保持 `_tokenize` 签名与区分度（相关文档得分显著高于无关文档，见 test_bm25_tokenize.py）
 - **结构感知 chunk**：chunk_text 识别 Markdown 标题（→ section_title）、fenced 代码块整体保留（允许超限）、表格不拆行；mall.sql 按 CREATE TABLE 切块（→ table_comment）；SOURCES.md 类取材说明不入库
+- **MALL_DATA_SOURCE 配置**：电商业务数据源 `mock`（内存演示，默认）/ `real`（PostgreSQL）/ `auto`（`SELECT 1` 健康探测通过 → real，否则降级 mock）；seed 数据必须从 `mock_source.py` 常量导入（单一数据来源，mock 与 real 永远一致），禁止在 seed 脚本里另写一份数据
+- **实体识别参数补填**：订单号/商品 ID 抽取在 `app/core/mall/entity_extractor.py`（规则层确定性优先），ToolAgent `execute_tool` 按 `ENTITY_TO_TOOLS` 映射补填缺失参数；订单号正则用数字边界 `(?<!\d)20\d{9}(?!\d)`（中文语境 `\b` 不生效），不要改成 `\b` 或放宽到任意 11 位数字（会误匹配手机号）
 - **查询改写前置**：Multi-Query 默认启用（3 变体），CRAG 低分时被动改写是补充而非替代
 - **Langfuse 埋点旁路**：LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY 任一未配置即视为未启用（`is_langfuse_enabled()` 返回 False），埋点必须全程 no-op：不构造客户端、不阻塞、不抛异常、不改变返回值与异常语义
 - **LLM 单点埋点**：所有 LLM 调用统一由 `llm_factory.call_llm` 埋点（每次调用一个 span，name=llm.call），调用方不要重复埋 LLM；调用方只负责编排级 trace/span（如 ops_diagnose）
@@ -79,10 +81,11 @@ docker-compose up -d
 | Reranker 失败 | 跳过重排，用 RRF 结果 |
 | Redis 缓存失败 | 跳过缓存直查 |
 | Redis 记忆失败 | 用请求内上下文 |
-| PostgreSQL 失败 | 工单类返回 503，聊天类不受影响 |
+| PostgreSQL 失败 | 工单类返回 503，聊天类不受影响；mall 数据源各方法降级（query_order/product → None、logistics → []、apply_refund → 失败 dict），auto 模式整体降级 mock |
 | Prometheus 失败 | 指标返回空 + degraded；auto 模式下整体不可用降级 mock |
 | Elasticsearch 失败 | 日志/变更返回空 + degraded |
 | Alertmanager 失败 | 告警返回空 + degraded |
+| 实体抽取 LLM 兜底失败 | 返回空实体 dict + degraded 语义，不阻塞 Agent 主链路 |
 
 ## 项目坑点
 
@@ -132,6 +135,11 @@ docker-compose up -d
 | 运维数据源接口 | `backend/app/core/ops/base.py` | OpsDataSource ABC（async） |
 | 运维数据源实现 | `backend/app/core/ops/mock_source.py` / `real_source.py` | Mock / Prometheus+ELK |
 | 运维数据源门面 | `backend/app/core/ops/data_source.py` | 配置切换 + 降级（消费方 import 此处） |
+| 电商数据源实现 | `backend/app/core/mall/mock_source.py` / `real_source.py` | Mock / PostgreSQL |
+| 电商数据源门面 | `backend/app/core/mall/data_source.py` | 配置切换（消费方 import 此处） |
+| 实体识别 | `backend/app/core/mall/entity_extractor.py` | 规则抽取 + 工具参数补填映射 |
+| 电商业务模型 | `backend/app/models/mall.py` | MallProduct/Order/OrderItem/Logistics/Refund |
+| 电商数据 seed | `backend/scripts/seed_mall_db.py` | 从 mock_source 常量导入（单一数据来源，幂等） |
 | 可观测客户端 | `backend/app/core/infra/` | prometheus.py / elasticsearch.py / alertmanager.py |
 | 指标表达式映射 | `backend/app/data/` | ops_metric_exprs.json（外置，热加载） |
 | 测试 | `backend/tests/` | test_功能名.py |

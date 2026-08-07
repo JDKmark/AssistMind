@@ -17,6 +17,7 @@ from typing import Any
 from langchain_core.messages import AIMessage
 
 from app.agents.base import AgentState, BaseReActAgent
+from app.core.mall.entity_extractor import extract, fill_tool_args
 from app.core.mcp.client import MCPClient, get_mcp_client
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ DEFAULT_SYSTEM_PROMPT = """你是 AssistMind 电商智能客服，帮用户处�
 6. 参数缺失澄清：如果用户要创建工单但缺少必填参数（title/description），不要直接调用 create_ticket，而是输出 "CLARIFY: <追问内容>" 询问用户。
 7. 商品价格/库存/服务承诺等知识性问题，基于 search_knowledge 检索结果回答，不要编造。
 8. 多轮对话：用户已在上文提供过的关键信息（如订单号）不要重复索要，优先从「已有对话」中提取；apply_refund 只需订单号与退款原因，用户已给出时直接调用工具，不要按知识库表单流程索要会员账号、商品明细、凭证等额外信息。
+9. 实体预填：系统可能已自动识别用户问题中的订单号/商品 ID 并补填到工具参数（query_order / query_logistics / apply_refund 的 order_sn、query_product 的 product_id）；调用工具时以补填后的参数为准，不要重复索要或编造。
 
 执行示例（订单/物流/退款必须照此调用工具）：
 用户：查一下订单 20240801001
@@ -93,6 +95,8 @@ class ToolAgent(BaseReActAgent):
     ) -> None:
         super().__init__(system_prompt or DEFAULT_SYSTEM_PROMPT)
         self.mcp_client = mcp_client or get_mcp_client()
+        # 本轮抽取的实体（订单号/商品 ID），run() 开头赋值，execute_tool 补填用
+        self._entities: dict[str, str] = {}
 
     def get_tools(self) -> list[dict]:
         """返回 MCP Server 暴露的 8 个工具及其参数 schema（含电商业务工具）。"""
@@ -174,11 +178,23 @@ class ToolAgent(BaseReActAgent):
             for tc in state.get("tool_calls", [])
         )
 
-    async def think(self, state: AgentState) -> dict:
-        """思考节点：强制 Retrieval Before Agency。
+    def _has_entity_note(self, state: AgentState) -> bool:
+        """检查本轮是否已注入实体识别提示（避免重复注入）。"""
+        prefix = "（系统实体识别"
+        return any(
+            isinstance(m, AIMessage)
+            and str(getattr(m, "content", "")).startswith(prefix)
+            for m in state.get("messages", [])
+        )
 
-        若本轮尚未检索且 query 非纯工单操作，优先调用 search_knowledge，
-        不调用 LLM（节省 token），直接返回检索动作。
+    async def think(self, state: AgentState) -> dict:
+        """思考节点：强制 Retrieval Before Agency + 实体提示注入。
+
+        1. 若本轮尚未检索且 query 非纯工单操作，优先调用 search_knowledge，
+           不调用 LLM（节省 token），直接返回检索动作。
+        2. 已抽取到实体（订单号/商品 ID）且未注入过时，向 messages 注入提示
+           （不消耗迭代，act 空转后回到 think 再决策），
+           帮助 LLM 多轮对话正确选参（如「物流到哪了」依赖上文订单号）。
         否则委托基类 think 调用 LLM 决策。
         """
         query = self._extract_query(state.get("messages", []))
@@ -199,15 +215,33 @@ class ToolAgent(BaseReActAgent):
                 "messages": [AIMessage(content="（系统：先检索知识库）")],
             }
 
+        if self._entities and not self._has_entity_note(state):
+            hints = []
+            if self._entities.get("order_sn"):
+                hints.append(f"订单号 {self._entities['order_sn']}")
+            if self._entities.get("product_id"):
+                hints.append(f"商品 ID {self._entities['product_id']}")
+            if hints:
+                note = f"（系统实体识别：已从用户问题提取 {'、'.join(hints)}，可直接用于工具参数）"
+                logger.info("[ToolAgent] 注入实体识别提示: %s", note)
+                return {"messages": [AIMessage(content=note)]}
+
         return await super().think(state)
 
     async def execute_tool(self, name: str, input_data: dict) -> Any:
-        """通过 MCP Client 调用工具。
+        """通过 MCP Client 调用工具，先做实体参数补填。
+
+        LLM 决策调用业务工具但 input 缺关键参数（order_sn/product_id）时，
+        用实体识别结果补填（减少编造订单号与 CLARIFY 次数）。
 
         MCPClient.call_tool 内部已处理失败降级（返回 {"error": ...}），
         此处不额外捕获异常。
         """
-        return await self.mcp_client.call_tool(name, input_data)
+        input_data = input_data or {}
+        filled_args, filled = fill_tool_args(name, input_data, self._entities)
+        if filled:
+            logger.info("[ToolAgent] 实体补填 %s 参数: %s -> %s", name, input_data, filled_args)
+        return await self.mcp_client.call_tool(name, filled_args)
 
     async def run(
         self, query: str, history: list[dict[str, str]] | None = None
@@ -221,6 +255,9 @@ class ToolAgent(BaseReActAgent):
 
         MCP 不可用时直接返回降级话术，不进入 ReAct 循环。
         """
+        # 实体识别：当前问题 + 多轮历史 → 订单号/商品 ID（execute_tool 补填用）
+        self._entities = extract(query, history) if query else {}
+
         if not self.mcp_client.is_connected:
             connected = await self.mcp_client.connect()
             if not connected:

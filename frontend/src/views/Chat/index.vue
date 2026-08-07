@@ -184,6 +184,9 @@ const TOOL_LABELS = {
   transfer_human: '转人工客服',
   get_ticket_status: '查询工单状态',
   apply_refund: '申请退款',
+  query_order: '查询订单',
+  query_logistics: '查询物流',
+  query_product: '查询商品',
 }
 
 const inputText = ref('')

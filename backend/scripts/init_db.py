@@ -13,6 +13,7 @@ from app.core.infra.postgres import async_session, engine
 from app.models.user import Base, User
 from app.models import ticket as _ticket_model  # noqa: F401 注册到 metadata
 from app.models import feedback as _feedback_model  # noqa: F401 注册到 metadata
+from app.models import mall as _mall_model  # noqa: F401 注册到 metadata（订单/商品/物流/售后表）
 from app.core.security.auth import hash_password
 
 logger = logging.getLogger(__name__)
