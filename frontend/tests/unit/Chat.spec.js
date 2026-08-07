@@ -42,6 +42,18 @@ const stubs = {
   'el-icon': { template: '<span class="el-icon-stub"><slot /></span>' },
   Loading: { template: '<i class="icon-stub" />' },
   'router-link': { template: '<a class="router-link-stub"><slot /></a>' },
+  'el-descriptions': { template: '<div class="el-descriptions-stub"><slot /></div>' },
+  'el-descriptions-item': {
+    props: ['label'],
+    template:
+      '<div class="el-descriptions-item-stub"><span class="el-descriptions-label">{{ label }}</span><slot /></div>',
+  },
+  'el-timeline': { template: '<div class="el-timeline-stub"><slot /></div>' },
+  'el-timeline-item': {
+    props: ['timestamp'],
+    template:
+      '<div class="el-timeline-item-stub"><span class="el-timeline-timestamp">{{ timestamp }}</span><slot /></div>',
+  },
 }
 
 describe('Chat 组件', () => {
@@ -192,6 +204,88 @@ describe('Chat 组件', () => {
     expect(wrapper.text()).toContain('运维诊断页')
     expect(wrapper.text()).toContain('TK-20260805002')
     expect(wrapper.text()).toContain('已创建故障工单')
+  })
+
+  it('SSE 工具结果卡片：query_order 渲染订单卡片', async () => {
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'task' })
+      onEvent('tool_call', { tool_name: 'query_order', arguments: { order_sn: '20240801001' } })
+      onEvent('tool_result', {
+        tool_name: 'query_order',
+        result: {
+          order_sn: '20240801001',
+          status: '已发货',
+          items: [{ product_id: 'P001', name: '华为 Mate 60 Pro', spec: '256G 雅丹黑', price: 6999, quantity: 1 }],
+          pay_amount: 6999,
+          logistics_no: 'SF1234567890',
+          created_at: '2024-08-01 09:30:00',
+        },
+      })
+      onEvent('done', { answer: '您的订单 20240801001 已发货。' })
+      onDone({ answer: '您的订单 20240801001 已发货。' })
+      return Promise.resolve()
+    })
+
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '查一下订单 20240801001')
+
+    const text = wrapper.text()
+    // 订单卡片渲染（el-descriptions stub）
+    expect(wrapper.find('.tool-result-card').exists()).toBe(true)
+    expect(text).toContain('订单号')
+    expect(text).toContain('20240801001')
+    expect(text).toContain('已发货')
+    expect(text).toContain('6999')
+    expect(text).toContain('SF1234567890')
+    expect(text).toContain('华为 Mate 60 Pro')
+  })
+
+  it('SSE 工具结果卡片：query_logistics 渲染物流轨迹卡片', async () => {
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'task' })
+      onEvent('tool_call', { tool_name: 'query_logistics', arguments: { order_sn: '20240801001' } })
+      onEvent('tool_result', {
+        tool_name: 'query_logistics',
+        result: [
+          { ts: '2024-08-01 16:00:00', content: '已揽收' },
+          { ts: '2024-08-01 18:30:00', content: '运输中（预计明天送达）' },
+        ],
+      })
+      onEvent('done', { answer: '您的订单 20240801001 物流轨迹：已揽收 → 运输中。' })
+      onDone({ answer: '您的订单 20240801001 物流轨迹：已揽收 → 运输中。' })
+      return Promise.resolve()
+    })
+
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '物流到哪了')
+
+    const text = wrapper.text()
+    // 物流轨迹卡片（el-timeline stub 渲染 ts + content）
+    expect(wrapper.find('.el-timeline-stub').exists()).toBe(true)
+    expect(text).toContain('2024-08-01 16:00:00')
+    expect(text).toContain('已揽收')
+    expect(text).toContain('2024-08-01 18:30:00')
+    expect(text).toContain('运输中（预计明天送达）')
+  })
+
+  it('无工具结果时保持 JSON 文本回退（不渲染卡片）', async () => {
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'task' })
+      onEvent('tool_call', { tool_name: 'search_knowledge', arguments: { query: q } })
+      onEvent('tool_result', {
+        tool_name: 'search_knowledge',
+        result: [{ doc_id: 'doc1', title: '退货政策', text: '…', score: 0.9 }],
+      })
+      onEvent('done', { answer: '根据售后政策，订单已发货/已完成可申请退货。' })
+      onDone({ answer: '根据售后政策，订单已发货/已完成可申请退货。' })
+      return Promise.resolve()
+    })
+
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '怎么退货')
+
+    // search_knowledge 结果不匹配任何卡片类型 → 不渲染卡片，保持文本
+    expect(wrapper.find('.tool-result-card').exists()).toBe(false)
   })
 
   it('SSE error 事件渲染错误提示', async () => {
