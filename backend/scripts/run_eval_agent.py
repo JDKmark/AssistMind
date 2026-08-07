@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import contextlib
 import glob
 import json
@@ -178,18 +179,32 @@ def check_refund_turn3(ctx: dict, turn: dict) -> tuple[bool, str]:
 
 
 def check_refund_reject(ctx: dict, turn: dict) -> tuple[bool, str]:
-    """待付款退款被拒：apply_refund 失败，回答含「待付款」原因。"""
+    """待付款退款被拒：apply_refund 失败，回答含「待付款」原因。
+
+    接受两种正确行为（DeepSeek 实测都出现过）：
+    1. 调 apply_refund → 数据源返回 failed（验证状态机拒绝逻辑）
+    2. 调 query_order 确认待付款后直接告知不可退（更高效，业务语义同样正确）
+    """
     atc = _find(turn, "apply_refund")
-    if atc is None:
-        return False, f"未调用 apply_refund（实际工具: {_names(turn) or '无'}）"
-    if _arg(atc, "order_sn") != "20240801004":
-        return False, f"apply_refund 参数错误: {atc.get('input')}"
-    result = atc.get("result") or {}
-    if result.get("status") != "failed":
-        return False, f"apply_refund 未被拒绝: {str(result)[:80]}"
-    if "待付款" not in turn["answer"]:
-        return False, f"回答未说明「待付款」拒绝原因: {turn['answer'][:60]}"
-    return True, "apply_refund 被拒绝且回答说明待付款原因"
+    if atc is not None:
+        if _arg(atc, "order_sn") != "20240801004":
+            return False, f"apply_refund 参数错误: {atc.get('input')}"
+        result = atc.get("result") or {}
+        if result.get("status") != "failed":
+            return False, f"apply_refund 未被拒绝: {str(result)[:80]}"
+        if "待付款" not in turn["answer"]:
+            return False, f"回答未说明「待付款」拒绝原因: {turn['answer'][:60]}"
+        return True, "apply_refund 被拒绝且回答说明待付款原因"
+    # 路径 2：先查订单，确认待付款后直接拒绝
+    qtc = _find(turn, "query_order")
+    if qtc is not None and _arg(qtc, "order_sn") == "20240801004":
+        result = qtc.get("result") or {}
+        if result.get("status") != "待付款":
+            return False, f"query_order 未返回待付款: {str(result)[:80]}"
+        if not any(k in turn["answer"] for k in ("待付款", "未支付", "未完成支付")):
+            return False, f"回答未说明「待付款」原因: {turn['answer'][:60]}"
+        return True, "查单确认待付款后直接告知不可退（高效路径）"
+    return False, f"既未调 apply_refund 也未正确查单（实际工具: {_names(turn) or '无'}）"
 
 
 def check_order_not_found(ctx: dict, turn: dict) -> tuple[bool, str]:
@@ -201,7 +216,8 @@ def check_order_not_found(ctx: dict, turn: dict) -> tuple[bool, str]:
     if "不存在" not in str(result):
         return False, f"query_order 未返回订单不存在: {str(result)[:80]}"
     answer = turn["answer"]
-    if not any(k in answer for k in ("不存在", "未找到", "没有找到", "查不到")):
+    # 语义等价词都接受（修复：agent 常用「未查询到」而非「不存在」）
+    if not any(k in answer for k in ("不存在", "未找到", "没有找到", "查不到", "未查询到", "查询不到", "查无", "没有查询到")):
         return False, f"回答未如实告知订单不存在: {answer[:60]}"
     if "人工" not in answer:
         return False, f"回答未建议转人工: {answer[:60]}"
@@ -242,6 +258,13 @@ TASKS: list[dict] = [
         "name": "查物流（query_logistics 命中）",
         "turns": [
             {"user": "帮我查物流 20240801001", "check": check_logistics_query},
+        ],
+    },
+    {
+        "name": "多轮物流（第二轮不带订单号，依赖实体回溯）",
+        "turns": [
+            {"user": "查一下订单 20240801001", "check": check_order_query},
+            {"user": "物流到哪了？", "check": check_logistics_query},
         ],
     },
     {
@@ -428,9 +451,73 @@ async def run_task(agent: ToolAgent, task: dict) -> dict:
     return {"task": task, "turns": turn_results, "checks": checks, "ok": ok}
 
 
+async def run_all_tasks(agent: ToolAgent, label: str) -> list[dict]:
+    """运行全部 TASKS，返回结果列表（含打印）。"""
+    print(f"\n===== 客服 Agent 工具调用成功率评估（{len(TASKS)} 个任务，{label}） =====")
+    results: list[dict] = []
+    for idx, task in enumerate(TASKS, 1):
+        if task.get("reset_mall"):
+            mall_ds.reset_source()
+            print(f"[信息] 任务「{task['name']}」前已重置 mall 数据源（售后单记录清空）")
+        started = time.perf_counter()
+        result = await run_task(agent, task)
+        elapsed = time.perf_counter() - started
+
+        print(f"\n[任务 {idx}/{len(TASKS)}] {task['name']}")
+        for i, (turn, check) in enumerate(zip(result["turns"], result["checks"]), 1):
+            _print_turn(i, turn, check["passed"], check["reason"])
+        print(f"  耗时: {elapsed:.1f}s  结果: {'通过' if result['ok'] else '失败'}")
+        results.append(result)
+    return results
+
+
+def _summarize(results: list[dict], label: str) -> tuple[int, int, dict[str, bool]]:
+    """汇总一次评估：返回 (passed, total, 逐任务通过表)。"""
+    passed = sum(1 for r in results if r["ok"])
+    total = len(results)
+    per_task = {r["task"]["name"]: r["ok"] for r in results}
+    print(f"\n===== 评估结果（{label}） =====")
+    print(f"总体成功率: {passed}/{total}（{passed / total * 100:.1f}%）")
+    failed = [r["task"]["name"] for r in results if not r["ok"]]
+    if failed:
+        print(f"失败任务: {', '.join(failed)}")
+        for r in results:
+            if r["ok"]:
+                continue
+            for i, check in enumerate(r["checks"], 1):
+                if not check["passed"]:
+                    print(f"  - {r['task']['name']} / 轮次 {i}（{r['turns'][i - 1]['user']}）: {check['reason']}")
+    return passed, total, per_task
+
+
+def _print_comparison(on: tuple, off: tuple) -> None:
+    """打印实体识别 on/off 对比表。"""
+    print("\n===== 实体识别开关对比（before/after） =====")
+    header = f"{'任务':<28} {'实体识别 ON':<10} {'实体识别 OFF':<10}"
+    print(header)
+    print("-" * len(header))
+    on_passed, on_total, on_map = on
+    off_passed, off_total, off_map = off
+    for name in on_map:
+        on_ok = "✅ 通过" if on_map[name] else "❌ 失败"
+        off_ok = "✅ 通过" if off_map.get(name) else "❌ 失败"
+        print(f"{name[:26]:<28} {on_ok:<10} {off_ok:<10}")
+    print("-" * len(header))
+    print(f"{'成功率':<28} {f'{on_passed}/{on_total}':<10} {f'{off_passed}/{off_total}':<10}")
+
+
 async def main() -> None:
     with contextlib.suppress(Exception):
         sys.stdout.reconfigure(line_buffering=True)
+
+    parser = argparse.ArgumentParser(description="电商客服 Agent 工具调用成功率评估")
+    parser.add_argument(
+        "--entity-fill",
+        choices=["on", "off", "both"],
+        default="both",
+        help="实体识别参数补填开关（默认 both：跑 on/off 两遍并对比）",
+    )
+    args = parser.parse_args()
 
     # ---- LLM 连通性预检（DeepSeek → Ollama 自动降级） ----
     print("[信息] LLM 连通性预检中（DeepSeek → Ollama 自动降级）…")
@@ -459,38 +546,20 @@ async def main() -> None:
         bm25_chunks = build_bm25_index()
         print(f"[信息] BM25 索引构建完成（knowledge/mall，{bm25_chunks} 个 chunk，Qdrant 不依赖）")
 
-        # ---- 逐任务评估 ----
-        agent = ToolAgent(mcp_client=client)
-        print(f"\n===== 客服 Agent 工具调用成功率评估（{len(TASKS)} 个任务） =====")
-        results: list[dict] = []
-        for idx, task in enumerate(TASKS, 1):
-            if task.get("reset_mall"):
-                mall_ds.reset_source()
-                print(f"[信息] 任务「{task['name']}」前已重置 mall 数据源（售后单记录清空）")
-            started = time.perf_counter()
-            result = await run_task(agent, task)
-            elapsed = time.perf_counter() - started
+        # ---- 逐任务评估（实体识别开关对比） ----
+        mode = args.entity_fill
+        summary: dict[str, tuple[int, int, dict[str, bool]]] = {}
+        if mode in ("on", "both"):
+            agent_on = ToolAgent(mcp_client=client, entity_fill=True)
+            results_on = await run_all_tasks(agent_on, "实体识别 ON")
+            summary["on"] = _summarize(results_on, "实体识别 ON")
+        if mode in ("off", "both"):
+            agent_off = ToolAgent(mcp_client=client, entity_fill=False)
+            results_off = await run_all_tasks(agent_off, "实体识别 OFF")
+            summary["off"] = _summarize(results_off, "实体识别 OFF")
 
-            print(f"\n[任务 {idx}/{len(TASKS)}] {task['name']}")
-            for i, (turn, check) in enumerate(zip(result["turns"], result["checks"]), 1):
-                _print_turn(i, turn, check["passed"], check["reason"])
-            print(f"  耗时: {elapsed:.1f}s  结果: {'通过' if result['ok'] else '失败'}")
-            results.append(result)
-
-        # ---- 汇总 ----
-        passed = sum(1 for r in results if r["ok"])
-        total = len(results)
-        print("\n===== 评估结果 =====")
-        print(f"总体成功率: {passed}/{total}（{passed / total * 100:.1f}%）")
-        failed = [r["task"]["name"] for r in results if not r["ok"]]
-        if failed:
-            print(f"失败任务: {', '.join(failed)}")
-            for r in results:
-                if r["ok"]:
-                    continue
-                for i, check in enumerate(r["checks"], 1):
-                    if not check["passed"]:
-                        print(f"  - {r['task']['name']} / 轮次 {i}（{r['turns'][i - 1]['user']}）: {check['reason']}")
+        if mode == "both":
+            _print_comparison(summary["on"], summary["off"])
     finally:
         await client.close()
         await stop_mcp_server(server, server_task, session_cm)

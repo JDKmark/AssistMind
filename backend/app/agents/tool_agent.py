@@ -92,9 +92,13 @@ class ToolAgent(BaseReActAgent):
         self,
         system_prompt: str | None = None,
         mcp_client: MCPClient | None = None,
+        entity_fill: bool = True,
     ) -> None:
         super().__init__(system_prompt or DEFAULT_SYSTEM_PROMPT)
         self.mcp_client = mcp_client or get_mcp_client()
+        # 实体识别开关：True 时抽取实体 + 参数补填（默认）；False 时关闭
+        # （评估脚本 run_eval_agent 用它做 before/after 对比，验证功能有效性）
+        self.entity_fill = entity_fill
         # 本轮抽取的实体（订单号/商品 ID），run() 开头赋值，execute_tool 补填用
         self._entities: dict[str, str] = {}
 
@@ -256,7 +260,8 @@ class ToolAgent(BaseReActAgent):
         MCP 不可用时直接返回降级话术，不进入 ReAct 循环。
         """
         # 实体识别：当前问题 + 多轮历史 → 订单号/商品 ID（execute_tool 补填用）
-        self._entities = extract(query, history) if query else {}
+        # entity_fill=False 时关闭（评估脚本 before/after 对比用）
+        self._entities = extract(query, history) if (query and self.entity_fill) else {}
 
         if not self.mcp_client.is_connected:
             connected = await self.mcp_client.connect()
