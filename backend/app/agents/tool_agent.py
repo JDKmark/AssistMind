@@ -17,6 +17,7 @@ from typing import Any
 from langchain_core.messages import AIMessage
 
 from app.agents.base import AgentState, BaseReActAgent
+from app.core.dialog import extract_query
 from app.core.mall.entity_extractor import extract, fill_tool_args
 from app.core.mcp.client import MCPClient, get_mcp_client
 
@@ -201,7 +202,7 @@ class ToolAgent(BaseReActAgent):
            帮助 LLM 多轮对话正确选参（如「物流到哪了」依赖上文订单号）。
         否则委托基类 think 调用 LLM 决策。
         """
-        query = self._extract_query(state.get("messages", []))
+        query = extract_query(state.get("messages", []))
 
         if (
             query

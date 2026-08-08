@@ -17,6 +17,7 @@ import logging
 from typing import Any
 
 from app.config import get_settings
+from app.core.dialog import format_history
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm
 from app.core.infra.qdrant import get_qdrant
 from app.core.rag.bm25 import get_bm25
@@ -219,12 +220,7 @@ async def generate(
         for c in contexts
     ]
 
-    history_text = ""
-    if history:
-        history_text = "\n".join(
-            [f"{'用户' if h.get('role') == 'user' else '客服'}: {h.get('content', '')}"
-             for h in history[-settings.MEMORY_WINDOW:]]
-        )
+    history_text = format_history(history)
 
     prompt = f"""你是 AssistMind 智能客服。根据以下检索结果回答用户问题。
 

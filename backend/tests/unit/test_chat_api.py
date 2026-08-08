@@ -264,10 +264,14 @@ def test_chat_task_passes_history():
 
 
 def test_chat_task_history_truncated_to_memory_window(monkeypatch):
-    """history 超过 MEMORY_WINDOW 时只保留最近 N 条（与 faq 同一窗口语义）。"""
-    from app.api import chat as chat_module
+    """history 超过 MEMORY_WINDOW 时只保留最近 N 条（与 faq 同一窗口语义）。
 
-    monkeypatch.setattr(chat_module.settings, "MEMORY_WINDOW", 2)
+    裁剪逻辑已集中到 DialogManager（core/dialog），此处通过 dialog 模块的
+    settings 控制窗口，验证 API 层仍按统一语义裁剪。
+    """
+    from app.core.dialog import manager as dialog_manager
+
+    monkeypatch.setattr(dialog_manager.settings, "MEMORY_WINDOW", 2)
 
     fake_agent = MagicMock()
     fake_agent.run = AsyncMock(return_value={"answer": "ok", "tool_calls": [], "iterations": 0, "degraded": False})
