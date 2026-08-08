@@ -124,6 +124,13 @@ def chunk_sql_ddl(
                 "table_comment": _extract_table_comment(stmt),
             }
         )
+    # table_comment 注入 text 开头：SQL DDL 词面与自然语言查询差距大
+    # （"订单表 oms_order 是做什么的"），表级注释（订单表）拼入后 embedding
+    # 与 reranker 才能感知语义（payload 中 table_comment 保持原样）
+    for c in chunks:
+        comment = c.get("table_comment")
+        if comment:
+            c["text"] = f"【{comment}】{c['text']}"
     return chunks
 
 

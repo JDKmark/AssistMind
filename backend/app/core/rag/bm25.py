@@ -87,13 +87,25 @@ class BM25Index:
         self._lock = asyncio.Lock()
 
     def build(self, docs: list[dict[str, Any]]) -> None:
-        """构建索引（同步，仅在初始化时调用）。"""
+        """构建索引（同步，仅在初始化时调用）。
+
+        检索文本 = text + title + section_title + table_comment 拼接：
+        SQL DDL 的 CREATE TABLE oms_order(...) 词面与自然语言查询差距大
+        （"订单表 oms_order 是做什么的"），把表级注释（订单表）与标题注入
+        打分词项，中文语义词才能命中（不改变 chunk 存储文本，仅索引侧增强）。
+        """
         if not docs:
             self._bm25 = None
             self._docs = []
             return
         self._docs = docs
-        tokenized = [_tokenize(d["text"]) for d in docs]
+        tokenized = [
+            _tokenize(
+                f"{d.get('text', '')} {d.get('title', '')} "
+                f"{d.get('section_title', '')} {d.get('table_comment', '')}"
+            )
+            for d in docs
+        ]
         self._bm25 = BM25Okapi(tokenized)
         logger.info("[BM25] 索引构建完成，%d 文档", len(docs))
 
