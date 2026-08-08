@@ -360,3 +360,28 @@ async def test_multiturn_entity_from_history_fills_args(mock_call):
     assert logistics_calls[0].args[1]["order_sn"] == "20240801001"
     assert result["degraded"] is False
 
+
+# ---------- 10. 缺失槽位提示注入 ----------
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_think_injects_missing_slot_hint(mock_call):
+    """用户已提供订单号但缺退款原因：think 注入缺失槽位提示，不重复索要订单号。
+
+    场景：query 含订单号（实体提示注入分支触发）+ 退货意图缺 reason →
+    注入「还缺reason」提示；LLM mock 直接返回 Final Answer，整体 run 正常结束。
+    """
+    mcp = _make_mcp_mock(call_tool_return={"order_sn": "20240801001", "status": "已发货"})
+    mock_call.return_value = "Final Answer: 好的，已收到订单号 20240801001，请问退款原因是？"
+    agent = ToolAgent(mcp_client=mcp)
+
+    result = await agent.run("订单号是 20240801001，我要退货")
+
+    # LLM 提示（已有对话）中注入了缺失槽位提示：还缺 reason
+    prompt = mock_call.await_args.args[0]
+    assert "还缺reason" in prompt
+    # 不重复索要已有槽位：订单号不在缺失清单中
+    assert "还缺order_sn" not in prompt
+    assert "订单号 20240801001" in prompt
+    assert result["degraded"] is False
+

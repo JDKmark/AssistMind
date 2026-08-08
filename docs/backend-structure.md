@@ -37,7 +37,7 @@ response_generator）逐项对账后发现一个明确缺口：
 | `core/mall/entity_extractor` | 订单号/商品 ID 规则抽取 + 工具参数补填 | `extract(query, history) -> {order_sn, product_id}` | 无 |
 | `core/rag/engine` | RAG 检索 + 生成编排 | `retrieve(query) -> {contexts, crag}` / `generate(...)` | core/rag/*、core/dialog |
 | `core/mcp/server` | MCP 工具注册（13 个） | `@mcp.tool()` 声明 | core/mall、core/ops、core/rag |
-| `core/dialog`（**新增**） | 对话上下文管理：裁剪/提取/格式化 | `trim_history(history)` / `extract_query(messages)` / `format_history(history)` | 无 |
+| `core/dialog` | 对话上下文管理：裁剪/提取/格式化 + 槽位状态机 | `trim_history(history)` / `extract_query(messages)` / `format_history(history)` / `extract_slots(query, history)` / `missing_slots(intent, slots)` | 无 |
 
 ## 层间数据契约
 
@@ -69,9 +69,9 @@ HTTP POST /api/v1/chat/ask {query, history?}
     │        └──> [core/mall/entity_extractor]
     ├──> [core/rag/engine] ──> [core/rag/*]（chunking/bm25/qdrant/reranker/critic）
     ├──> [agents/ops_supervisor] ──> [core/ops/*]
-    └──> [core/dialog]（全部意图共用：裁剪 history / 提取 query / 格式化历史）
+    └──> [core/dialog]（全部意图共用：裁剪 history / 提取 query / 格式化历史 / 槽位状态机）
                 ▲
-                └── 消费方：api/chat、agents/base、core/rag/engine
+                └── 消费方：api/chat、agents/base、agents/tool_agent、core/rag/engine
 ```
 
 ## 与现有代码映射
