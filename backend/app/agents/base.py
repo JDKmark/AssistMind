@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.graph import END, StateGraph, add_messages
 
 from app.config import get_settings
+from app.core.dialog import extract_query
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm
 
 logger = logging.getLogger(__name__)
@@ -112,19 +113,6 @@ class BaseReActAgent:
             lines.append(f"{role}: {content}")
         return "\n".join(lines)
 
-    def _extract_query(self, messages: list) -> str:
-        """从消息列表中提取用户当前问题（最后一条 HumanMessage）。
-
-        单轮对话时仅有一条 HumanMessage；多轮对话（history 注入）时
-        当前问题总是追加在最后，取最后一条而非第一条，保证检索与
-        LLM 提示中的「用户问题」是当前轮次的输入。
-        """
-        query = ""
-        for m in messages:
-            if isinstance(m, HumanMessage):
-                query = m.content if hasattr(m, "content") else str(m)
-        return query
-
     async def think(self, state: AgentState) -> dict:
         """思考节点：调用 LLM 决定下一步动作。
 
@@ -132,7 +120,7 @@ class BaseReActAgent:
         """
         iterations = state.get("iterations", 0) + 1
         messages = state.get("messages", [])
-        query = self._extract_query(messages)
+        query = extract_query(messages)
         prompt = (
             f"你可以使用以下工具：\n{self.format_tools_prompt()}\n\n"
             f"已有对话：\n{self._format_messages(messages)}\n\n"

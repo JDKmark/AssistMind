@@ -27,14 +27,13 @@ from fastapi.responses import StreamingResponse
 
 from app.agents.tool_agent import ToolAgent
 from app.api.ops import _diagnose_stream, DiagnoseRequest
-from app.config import get_settings
+from app.core.dialog import trim_history
 from app.core.infra.llm_factory import call_llm
 from app.core.rag import engine as rag_engine
 from app.core.router.intent import route
 from app.schemas.chat import ChatRequest
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 router = APIRouter()
 
@@ -75,10 +74,8 @@ async def _event_stream(req: ChatRequest) -> AsyncIterator[str]:
         history = (
             [h.model_dump() for h in req.history] if req.history else None
         )
-        # 记忆窗口裁剪：与 engine.generate 同一语义（history[-MEMORY_WINDOW:]），
-        # 防止超长历史撑爆 LLM 上下文
-        if history:
-            history = history[-settings.MEMORY_WINDOW:]
+        # 记忆窗口裁剪：统一由 DialogManager 处理（chat/faq/task 同语义）
+        history = trim_history(history)
 
         # 3. 按意图分流
         if intent == "faq":
