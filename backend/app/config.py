@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 64
     VECTOR_TOP_K: int = 40
     BM25_TOP_K: int = 40
-    RERANK_TOP_K: int = 8
+    RERANK_TOP_K: int = 20
     RRF_K: int = 60
     RRF_VECTOR_WEIGHT: float = 1.0
     RRF_BM25_WEIGHT: float = 1.0

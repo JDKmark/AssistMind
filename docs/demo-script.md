@@ -137,15 +137,16 @@ cd ..\frontend; npm run dev
 
 ### Q3 怎么迭代（复盘与演进）
 
-**话术**（三个真实迭代案例，面试最加分）：
+**话术**（四个真实迭代案例，面试最加分）：
 > 1. **检索质量**：早期单字切分 BM25 无区分度，改成 jieba 词粒度后相关文档得分显著高于无关（区分度从 0 到 0.575，有专项测试 `test_bm25_tokenize.py` 守卫）。
 > 2. **生成质量**：answer_relevancy 低分做了三层归因——评分工具链单点退化（Instructor LLM 不支持 n>1 → 换 ragas collections 版 3 问题均值采样）、运维枚举问答天然偏低（指标语义特性，不作为闸门）、prompt 约束（仅基于检索结果回答，不确定宁可不写）。修工具链 + prompt 后 DeepSeek 下 answer_relevancy 从 ~0.53 → **0.703**、faithfulness **0.955**。
-> 3. **多轮闭环断裂**：发现前端已发 history 但 task 意图后端丢弃（`chat.py` 只传 query）——「查订单 → 物流到哪了」被当独立问题。修复 API 层传递 + 记忆窗口裁剪，配合实体回溯，多轮链路端到端跑通。**教训：链路闭环要端到端验证，不能只测单点。**
+> 3. **检索召回优化（用数据定位根因）**：评估发现一批 context_recall=0 样本，逐条对账发现三类根因——① 重排候选太小（RERANK_TOP_K=8 把排名 9-20 的正确文档挡在重排之外）；② SQL DDL 词面与自然语言查询的词汇鸿沟（`CREATE TABLE oms_order` 无法被「订单表是做什么的」命中）；③ YAML 配置语义弱。对应修复：重排候选扩到 20（且**修复重排后未截断的 bug**——候选扩大后必须截回 top-8 上下文，否则噪声淹没生成）、BM25 索引注入 title/section_title/table_comment 词项、SQL chunk 把表级注释拼进检索文本（`【订单表】CREATE TABLE...`）后重灌。效果：oms_order 主表从 top-20 外 → 检索第 3 名，常规样本 faithfulness 0.955→**0.972**、context_precision 0.858→**0.877**、context_recall 0.809→**0.824**。**教训：先逐条对账失败样本再动手，一次改动同时验证检索链路与生成链路的耦合。**
+> 4. **多轮闭环断裂**：发现前端已发 history 但 task 意图后端丢弃（`chat.py` 只传 query）——「查订单 → 物流到哪了」被当独立问题。修复 API 层传递 + 记忆窗口裁剪，配合实体回溯，多轮链路端到端跑通。**教训：链路闭环要端到端验证，不能只测单点。**
 
 ### Q4 怎么验证价值（评估体系）
 
 **话术**：
-> 三层验证：① **检索与生成质量**：RAGAS 4 指标，**65 条双数据集**（25 条运维 + 40 条电商，9 条对抗样本单独统计），DeepSeek 下常规样本——电商集 answer_relevancy 0.703 / faithfulness 0.955 / context_precision 0.858 / context_recall 0.809，运维集 faithfulness 0.949 / context_recall 0.976 / answer_relevancy 0.612；② **Agent 闭环**：9 个多轮客服任务端到端 **9/9（100%）**，断言工具链 + 回答 + 参数；③ **功能对照**：实体识别 on/off 对比实验证明确定性收益（成功率持平，但消除重复工具调用）。
+> 三层验证：① **检索与生成质量**：RAGAS 4 指标，**65 条双数据集**（25 条运维 + 40 条电商，9 条对抗样本单独统计），DeepSeek 下常规样本——电商集 faithfulness 0.972 / context_precision 0.877 / context_recall 0.824 / answer_relevancy 0.673，运维集 faithfulness 0.949 / context_recall 0.976 / answer_relevancy 0.612；② **Agent 闭环**：9 个多轮客服任务端到端 **9/9（100%）**，断言工具链 + 回答 + 参数；③ **功能对照**：实体识别 on/off 对比实验证明确定性收益（成功率持平，但消除重复工具调用）。
 >
 > 评估基建本身也迭代过：早期断言过严（agent 答"未查询到"被判失败，因为断言只认"不存在"）——**先修评估再信评估**，这是评估可信度的关键。
 

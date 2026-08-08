@@ -344,7 +344,8 @@ def test_chunk_sql_ddl_wide_table_not_cut():
     assert len(sql) > 512
     chunks = chunk_sql_ddl(sql)
     assert len(chunks) == 1
-    assert chunks[0]["text"] == sql.strip()
+    # table_comment 注入 text 开头（检索语义增强：SQL 词面与自然语言查询差距大）
+    assert chunks[0]["text"].startswith("【订单表】")
     assert chunks[0]["section_title"] == "oms_order"
     assert chunks[0]["table_comment"] == "订单表"
     assert "`col_029` varchar(64) DEFAULT NULL COMMENT '字段29'" in chunks[0]["text"]  # 末列完整
