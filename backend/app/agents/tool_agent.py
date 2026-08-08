@@ -14,10 +14,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agents.base import AgentState, BaseReActAgent
 from app.core.dialog import extract_query
+from app.core.dialog.state import extract_slots, missing_slots
 from app.core.mall.entity_extractor import extract, fill_tool_args
 from app.core.mcp.client import MCPClient, get_mcp_client
 
@@ -79,6 +80,14 @@ Action Input: {"order_sn": "999999"}
 
 # 工单操作动作词
 _TICKET_ACTION_VERBS = ("创建", "提交", "建", "查", "查询", "转", "转接")
+
+# 意图粗判关键词（按优先级：退款 > 物流 > 订单 > 工单；无法判断则跳过）
+_INTENT_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
+    ("refund", ("退", "退款", "退货")),
+    ("logistics", ("物流", "快递", "到哪")),
+    ("order", ("查订单", "订单")),
+    ("ticket", ("工单", "建单")),
+]
 
 
 class ToolAgent(BaseReActAgent):
@@ -227,11 +236,56 @@ class ToolAgent(BaseReActAgent):
             if self._entities.get("product_id"):
                 hints.append(f"商品 ID {self._entities['product_id']}")
             if hints:
-                note = f"（系统实体识别：已从用户问题提取 {'、'.join(hints)}，可直接用于工具参数）"
+                note = f"（系统实体识别：已从用户问题提取 {'、'.join(hints)}，可直接用于工具参数"
+                # 顺带注入缺失槽位提示（确定性规则）：意图可判且还缺槽位时追加
+                missing = self._missing_slots(query, state)
+                if missing:
+                    note += f"，还缺{'、'.join(missing)}"
+                note += "）"
                 logger.info("[ToolAgent] 注入实体识别提示: %s", note)
                 return {"messages": [AIMessage(content=note)]}
 
         return await super().think(state)
+
+    @staticmethod
+    def _guess_intent(query: str) -> str | None:
+        """从 query 关键词粗判当前意图（退款 > 物流 > 订单 > 工单；无法判断返回 None）。"""
+        for intent, keywords in _INTENT_KEYWORDS:
+            if any(keyword in query for keyword in keywords):
+                return intent
+        return None
+
+    @staticmethod
+    def _history_from_state(messages: list) -> list[dict[str, str]]:
+        """把 state messages 转成 [{role, content}] 历史（供槽位提取）。
+
+        去掉当前 query（最后一条 HumanMessage，extract_query 语义），
+        跳过工具消息（ToolMessage 不参与槽位提取）。
+        """
+        last_human_idx = -1
+        for i, m in enumerate(messages):
+            if isinstance(m, HumanMessage):
+                last_human_idx = i
+        history: list[dict[str, str]] = []
+        for i, m in enumerate(messages):
+            if i == last_human_idx:
+                continue
+            content = getattr(m, "content", "")
+            if not isinstance(content, str):
+                continue
+            if isinstance(m, HumanMessage):
+                history.append({"role": "user", "content": content})
+            elif isinstance(m, AIMessage):
+                history.append({"role": "assistant", "content": content})
+        return history
+
+    def _missing_slots(self, query: str, state: AgentState) -> list[str]:
+        """计算当前意图还缺的槽位（确定性规则，供提示注入；无法判断意图返回空列表）。"""
+        intent = self._guess_intent(query)
+        if intent is None:
+            return []
+        slots = extract_slots(query, self._history_from_state(state.get("messages", [])))
+        return missing_slots(intent, slots)
 
     async def execute_tool(self, name: str, input_data: dict) -> Any:
         """通过 MCP Client 调用工具，先做实体参数补填。
