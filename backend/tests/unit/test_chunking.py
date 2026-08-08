@@ -133,15 +133,20 @@ def test_chunk_empty_text():
 
 
 def test_chunk_code_block_200_lines_java_kept_whole():
-    """200 行 Java fenced 代码块整体保留为一个 chunk，不被字符硬切。"""
+    """200 行 Java fenced 代码块整体保留为一个 chunk，不被字符硬切。
+
+    标题行后紧跟代码块：标题并入块首（孤儿标题修复），代码块仍整体保留。
+    """
     code_lines = [f'    log.info("处理订单 {i}");' for i in range(200)]
     java_code = "\n".join(code_lines)
     doc = f"## 排查步骤\n\n```java\n{java_code}\n```"
     chunks = chunk_text(doc)
-    # chunk 0 = 标题文本流，chunk 1 = 代码块
-    assert len(chunks) == 2
-    code_chunk = chunks[1]
-    assert code_chunk["text"] == f"```java\n{java_code}\n```"
+    # 标题行并入块首，只有 1 个 chunk（无孤儿标题 chunk）
+    assert len(chunks) == 1
+    code_chunk = chunks[0]
+    assert code_chunk["text"].startswith("## 排查步骤\n```java\n")
+    assert code_chunk["text"].endswith(f"\n```")
+    assert code_chunk["text"] == f"## 排查步骤\n```java\n{java_code}\n```"
     assert len(code_chunk["text"]) > 512  # 允许超过 chunk_size，证明未硬切
     assert code_chunk["section_title"] == "排查步骤"
     # 首尾行完整（未被切碎）
@@ -195,7 +200,10 @@ def test_chunk_heading_section_title():
         if "连接池耗尽提示" in c["text"]:
             assert c["section_title"] == "症状"
         if c["text"].startswith("# 排查手册"):
-            assert c["section_title"] == "排查手册"
+            # 文档标题行后紧跟 `## 症状`（无正文）：标题并入首个节的文本流
+            # （孤儿标题修复），chunk 归属其内容所在的最深节
+            assert c["section_title"] == "症状"
+            assert "连接池耗尽提示" in c["text"]
 
 
 def test_chunk_heading_no_cross_section_mix():
@@ -244,11 +252,13 @@ def test_chunk_table_kept_whole():
 
 
 def test_chunk_table_section_title():
-    """表格 chunk 继承最近标题。"""
+    """表格 chunk 继承最近标题，且 text 前拼标题行（表格带语义上下文）。"""
     doc = f"## 数据字典\n\n{_sample_table()}"
     chunks = chunk_text(doc)
-    table_chunks = [c for c in chunks if c["text"].startswith("|")]
+    # 标题后紧跟表格：标题并入块首（孤儿标题修复），text 以标题行开头
+    table_chunks = [c for c in chunks if "| 字段 | 类型 | 说明 |" in c["text"]]
     assert table_chunks
+    assert all(c["text"].startswith("## 数据字典") for c in table_chunks)
     assert all(c["section_title"] == "数据字典" for c in table_chunks)
 
 
@@ -265,6 +275,98 @@ def test_chunk_table_overlong_split_by_row():
             assert line in rows, f"单元格被切断: {line!r}"
     # 按序拼接后与原表完全一致（只在行边界切）
     assert "\n".join(c["text"] for c in chunks) == table
+
+
+# ---------------------------------------------------------------------------
+# 孤儿标题：标题行并入结构块（表格/fence）
+# ---------------------------------------------------------------------------
+
+
+def test_markdown_heading_followed_by_table_no_orphan():
+    """标题后紧跟表格：标题行并入表格块，不产生仅含标题的孤儿 chunk。"""
+    doc = "## 订单状态\n\n| 状态值 | 含义 |\n|---|---|\n| 0 | 待付款 |"
+    chunks = chunk_text(doc)
+    assert len(chunks) == 1
+    assert chunks[0]["text"].startswith("## 订单状态")
+    assert "| 0 | 待付款 |" in chunks[0]["text"]
+    # 不存在仅含标题行的孤儿 chunk
+    assert not any(c["text"].strip() == "## 订单状态" for c in chunks)
+    assert chunks[0]["section_title"] == "订单状态"
+
+
+def test_markdown_table_splits_keep_heading_prefix():
+    """标题后跟超长表格：按行边界切出的每个块都以标题行开头。"""
+    rows = [f"| row_{i:02d} | " + "x" * 100 + " |" for i in range(12)]
+    table = "\n".join(rows)
+    assert len(table) > 512
+    doc = f"## 订单状态\n\n{table}"
+    chunks = chunk_text(doc)
+    assert len(chunks) >= 2
+    for c in chunks:
+        assert c["text"].startswith("## 订单状态"), c["text"][:60]
+        assert c["section_title"] == "订单状态"
+
+
+def test_markdown_heading_followed_by_fence_no_orphan():
+    """标题后紧跟 fenced 代码块：标题行并入代码块，无孤儿标题。"""
+    doc = "## 代码\n\n```python\nx = 1\n```\n"
+    chunks = chunk_text(doc)
+    assert len(chunks) == 1
+    assert chunks[0]["text"].startswith("## 代码")
+    assert "```python" in chunks[0]["text"]
+    assert "x = 1" in chunks[0]["text"]
+    assert not any(c["text"].strip() == "## 代码" for c in chunks)
+    assert chunks[0]["section_title"] == "代码"
+
+
+def test_markdown_heading_plain_text_merged():
+    """标题后跟普通文本：标题与正文同一 chunk，跨章节不混块。"""
+    doc = "## 第一章\n\n正文段落内容。\n\n## 第二章\n\n另一段内容。"
+    chunks = chunk_text(doc)
+    assert chunks[0]["text"].startswith("## 第一章")
+    assert "正文段落内容。" in chunks[0]["text"]
+    assert chunks[0]["section_title"] == "第一章"
+    # 跨章节隔离：单个 chunk 不允许同时含两章内容
+    assert all(
+        not ("第一章" in c["text"] and "第二章" in c["text"]) for c in chunks
+    )
+
+
+def _no_orphan_heading_chunk(chunks) -> None:
+    """断言不存在「仅含标题行」的孤儿 chunk。"""
+    for c in chunks:
+        lines = [l for l in c["text"].splitlines() if l.strip()]
+        assert not (1 <= len(lines) <= 2 and all(l.strip().startswith("#") for l in lines)), (
+            f"孤儿标题 chunk: {c['text']!r}"
+        )
+
+
+def test_markdown_heading_followed_by_heading_no_orphan():
+    """标题后紧跟标题（无正文）：上一级标题并入下一节文本流，不产生孤儿标题。"""
+    doc = (
+        "# 排查手册\n\n"
+        "## 症状\n\n"
+        "服务接口大面积超时，错误日志出现连接池耗尽提示。\n\n"
+        "## 排查步骤\n\n"
+        "1. 查看告警\n2. 查看指标\n3. 查看日志\n"
+    )
+    chunks = chunk_text(doc)
+    _no_orphan_heading_chunk(chunks)
+    # 文档标题行并入首个节的文本流
+    title_chunks = [c for c in chunks if c["text"].startswith("# 排查手册")]
+    assert title_chunks
+    assert "连接池耗尽提示" in title_chunks[0]["text"]
+
+
+def test_markdown_heading_followed_by_overlong_paragraph_no_orphan():
+    """标题后跟超长段落（无标点、无结构元素）：标题并入正文块首，不单独成 chunk。"""
+    content = "\n".join(["功能 | 完成", "----|----"] + [f"集成模块{i:02d} | ✔" for i in range(60)])
+    assert len(content) > 512
+    doc = f"## 框架搭建\n\n{content}"
+    chunks = chunk_text(doc)
+    assert chunks[0]["text"].startswith("## 框架搭建")
+    _no_orphan_heading_chunk(chunks)
+    assert chunks[0]["section_title"] == "框架搭建"
 
 
 # ---------------------------------------------------------------------------
