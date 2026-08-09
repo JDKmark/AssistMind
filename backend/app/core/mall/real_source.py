@@ -11,9 +11,7 @@ query_product 返回 None、query_logistics 返回 []、apply_refund 返回失�
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from decimal import Decimal
-from typing import Any
 
 from sqlalchemy import select
 

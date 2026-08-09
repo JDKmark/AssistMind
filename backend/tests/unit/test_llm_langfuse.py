@@ -98,13 +98,11 @@ async def test_call_llm_langfuse_error_marks_span(fake_langfuse):
     with patch(
         "app.core.infra.llm_factory._deepseek_with_retry",
         new=AsyncMock(side_effect=Exception("DeepSeek 挂了")),
-    ):
-        with patch(
-            "app.core.infra.llm_factory._ollama_with_retry",
-            new=AsyncMock(side_effect=Exception("Ollama 挂了")),
-        ):
-            with pytest.raises(LLMUnavailableError):
-                await call_llm("你好")
+    ), patch(
+        "app.core.infra.llm_factory._ollama_with_retry",
+        new=AsyncMock(side_effect=Exception("Ollama 挂了")),
+    ), pytest.raises(LLMUnavailableError):
+        await call_llm("你好")
 
     assert len(fake_langfuse.spans) == 1
     span = fake_langfuse.spans[0]
@@ -132,12 +130,11 @@ async def test_call_llm_langfuse_fallback_metadata(fake_langfuse):
     with patch(
         "app.core.infra.llm_factory._deepseek_with_retry",
         new=AsyncMock(side_effect=Exception("DeepSeek 挂了")),
+    ), patch(
+        "app.core.infra.llm_factory._ollama_with_retry",
+        new=AsyncMock(return_value="Ollama 兜底响应"),
     ):
-        with patch(
-            "app.core.infra.llm_factory._ollama_with_retry",
-            new=AsyncMock(return_value="Ollama 兜底响应"),
-        ):
-            result = await call_llm("你好")
+        result = await call_llm("你好")
     assert result == "Ollama 兜底响应"
     meta = fake_langfuse.spans[0].updates[0]["metadata"]
     assert meta["provider"] == "ollama"

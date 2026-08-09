@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.core.infra.llm_factory import LLMUnavailableError
 from app.core.rag import engine
 
@@ -28,11 +26,10 @@ async def test_retrieve_full_chain(mock_embedding, mock_qdrant, bm25_with_docs, 
         "hyde": None,
         "all_queries": ["AssistMind 是什么", "AssistMind 介绍"],
         "degraded": False,
+    })), patch("app.core.rag.engine.crag_evaluate", new=AsyncMock(return_value={
+        "score": 0.9, "action": "generate", "degraded": False,
     })):
-        with patch("app.core.rag.engine.crag_evaluate", new=AsyncMock(return_value={
-            "score": 0.9, "action": "generate", "degraded": False,
-        })):
-            result = await engine.retrieve("AssistMind 是什么")
+        result = await engine.retrieve("AssistMind 是什么")
 
     assert len(result["contexts"]) > 0
     assert result["crag"]["action"] == "generate"
@@ -49,11 +46,10 @@ async def test_retrieve_embedding_degrades_to_bm25_only(
         "hyde": None,
         "all_queries": ["AssistMind"],
         "degraded": False,
+    })), patch("app.core.rag.engine.crag_evaluate", new=AsyncMock(return_value={
+        "score": 0.8, "action": "generate", "degraded": False,
     })):
-        with patch("app.core.rag.engine.crag_evaluate", new=AsyncMock(return_value={
-            "score": 0.8, "action": "generate", "degraded": False,
-        })):
-            result = await engine.retrieve("AssistMind")
+        result = await engine.retrieve("AssistMind")
 
     assert "embedding" in result["degraded"]
     assert "qdrant" in result["degraded"]  # embedding 失败导致 vector_results 为空
@@ -91,11 +87,10 @@ async def test_retrieve_reranker_fail_uses_rrf(
         "hyde": None,
         "all_queries": ["AssistMind"],
         "degraded": False,
+    })), patch("app.core.rag.engine.crag_evaluate", new=AsyncMock(return_value={
+        "score": 0.8, "action": "generate", "degraded": False,
     })):
-        with patch("app.core.rag.engine.crag_evaluate", new=AsyncMock(return_value={
-            "score": 0.8, "action": "generate", "degraded": False,
-        })):
-            result = await engine.retrieve("AssistMind")
+        result = await engine.retrieve("AssistMind")
 
     assert "reranker" in result["degraded"]
     assert len(result["contexts"]) > 0

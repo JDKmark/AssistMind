@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -71,12 +70,11 @@ def mock_ticket_queries() -> None:
 
     with patch(
         "app.agents.ops_supervisor.search_tickets", new=AsyncMock(return_value=[])
+    ), patch(
+        "app.agents.ops_supervisor.list_tickets",
+        new=AsyncMock(return_value={"tickets": [], "total": 0}),
     ):
-        with patch(
-            "app.agents.ops_supervisor.list_tickets",
-            new=AsyncMock(return_value={"tickets": [], "total": 0}),
-        ):
-            yield
+        yield
 
 
 @pytest.fixture
@@ -101,17 +99,15 @@ def mock_llm_deepseek_fail_ollama_success() -> Any:
 @pytest.fixture
 def mock_llm_all_fail() -> Any:
     """mock 所有 LLM 失败。"""
-    from app.core.infra.llm_factory import LLMUnavailableError
 
     with patch(
         "app.core.infra.llm_factory._deepseek_with_retry",
         new=AsyncMock(side_effect=Exception("DeepSeek 不可用")),
+    ), patch(
+        "app.core.infra.llm_factory._ollama_with_retry",
+        new=AsyncMock(side_effect=Exception("Ollama 不可用")),
     ):
-        with patch(
-            "app.core.infra.llm_factory._ollama_with_retry",
-            new=AsyncMock(side_effect=Exception("Ollama 不可用")),
-        ):
-            yield
+        yield
 
 
 @pytest.fixture

@@ -20,13 +20,14 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from app.agents.tool_agent import ToolAgent
-from app.api.ops import _diagnose_stream, DiagnoseRequest
+from app.api.ops import DiagnoseRequest, _diagnose_stream
 from app.core.dialog import trim_history
 from app.core.infra.llm_factory import call_llm
 from app.core.rag import engine as rag_engine

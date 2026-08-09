@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from langchain_core.messages import HumanMessage
 
 from app.agents.base import AgentState, BaseReActAgent

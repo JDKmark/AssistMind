@@ -16,7 +16,6 @@ from __future__ import annotations
 from app.core.mall import data_source as ds
 from app.core.mcp.server import apply_refund, query_logistics, query_order, query_product
 
-
 # ---------- 1. query_order ----------
 
 

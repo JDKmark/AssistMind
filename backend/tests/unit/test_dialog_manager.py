@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from app.config import Settings
 from app.core.dialog import extract_query, format_history, trim_history
 
 

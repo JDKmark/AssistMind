@@ -24,7 +24,6 @@ from app.core.mcp.server import (
     transfer_human,
 )
 
-
 # ---------- 1. search_knowledge 正常 ----------
 
 

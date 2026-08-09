@@ -145,7 +145,7 @@ def test_chunk_code_block_200_lines_java_kept_whole():
     assert len(chunks) == 1
     code_chunk = chunks[0]
     assert code_chunk["text"].startswith("## 排查步骤\n```java\n")
-    assert code_chunk["text"].endswith(f"\n```")
+    assert code_chunk["text"].endswith("\n```")
     assert code_chunk["text"] == f"## 排查步骤\n```java\n{java_code}\n```"
     assert len(code_chunk["text"]) > 512  # 允许超过 chunk_size，证明未硬切
     assert code_chunk["section_title"] == "排查步骤"
