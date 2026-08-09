@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from app.core.mall.entity_extractor import ENTITY_TO_TOOLS, extract, fill_tool_args
 
-
 # ---------- 规则层抽取 ----------
 
 def test_extract_order_sn():

@@ -16,8 +16,9 @@ Half-Open 行为由库内部处理（一次探测成功即 Closed，失败即 Op
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from aiobreaker import (
     CircuitBreaker,
@@ -25,7 +26,7 @@ from aiobreaker import (
     CircuitBreakerListener,
     CircuitBreakerState,
 )
-from aiobreaker.storage import CircuitMemoryStorage, CircuitRedisStorage
+from aiobreaker.storage import CircuitMemoryStorage
 from redis.asyncio import Redis
 
 from app.config import get_settings

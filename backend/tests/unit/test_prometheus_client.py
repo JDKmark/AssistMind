@@ -8,7 +8,6 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import httpx
-import pytest
 
 from app.core.infra import prometheus as prom_module
 from app.core.infra.prometheus import PrometheusClient

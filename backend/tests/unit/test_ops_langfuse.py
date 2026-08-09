@@ -100,12 +100,11 @@ async def test_run_langfuse_creates_ops_diagnose_trace(fake_langfuse):
     with patch(
         "app.agents.ops_supervisor.call_llm",
         new=AsyncMock(side_effect=[_PLAN_JSON, _REPORT_JSON]),
+    ), patch(
+        "app.agents.ops_supervisor.rag_retrieve",
+        new=AsyncMock(return_value={"contexts": []}),
     ):
-        with patch(
-            "app.agents.ops_supervisor.rag_retrieve",
-            new=AsyncMock(return_value={"contexts": []}),
-        ):
-            result = await agent.run("订单服务故障")
+        result = await agent.run("订单服务故障")
 
     # 根观察 ops_diagnose，内部 plan/collect/analyze 各一个（graph 顺序执行，顺序确定）
     names = [s.name for s in fake_langfuse.spans]

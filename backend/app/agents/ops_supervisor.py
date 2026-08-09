@@ -16,8 +16,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator, TypedDict
+from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
 
@@ -170,11 +171,7 @@ async def _collect_metrics(services: list[str]) -> list[dict[str, Any]]:
                 "user-service": {"error_rate": 0.05, "latency_p95": 60, "cpu_usage": 25, "memory_usage": 45},
             }
             bl = baseline.get(svc, {})
-            if m == "error_rate" and summary["max"] > bl.get("error_rate", 0.2) * 5:
-                abnormal_services.add(svc)
-            elif m == "latency_p95" and summary["max"] > bl.get("latency_p95", 100) * 3:
-                abnormal_services.add(svc)
-            elif m in ("cpu_usage", "memory_usage") and summary["max"] > 80:
+            if m == "error_rate" and summary["max"] > bl.get("error_rate", 0.2) * 5 or m == "latency_p95" and summary["max"] > bl.get("latency_p95", 100) * 3 or m in ("cpu_usage", "memory_usage") and summary["max"] > 80:
                 abnormal_services.add(svc)
 
     # 异常服务细查（error_rate/latency/qps 趋势）

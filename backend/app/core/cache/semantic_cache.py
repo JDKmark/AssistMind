@@ -21,8 +21,8 @@ import logging
 from typing import Any
 
 from app.config import get_settings
-from app.core.infra.redis import get_redis
 from app.core.infra.llm_factory import LLMUnavailableError
+from app.core.infra.redis import get_redis
 from app.core.rag.embedding import embed_one
 
 logger = logging.getLogger(__name__)

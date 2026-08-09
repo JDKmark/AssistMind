@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -74,7 +74,7 @@ async def _find_recent_duplicate(
 ) -> Ticket | None:
     """查找幂等窗口内 title+description 相同的最近工单。"""
     # DB 列为 TIMESTAMP WITHOUT TIME ZONE（naive），threshold 用 naive UTC 保持一致
-    threshold = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=IDEMPOTENCY_WINDOW_SECONDS)
+    threshold = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=IDEMPOTENCY_WINDOW_SECONDS)
     stmt = (
         select(Ticket)
         .where(Ticket.title == title, Ticket.description == description, Ticket.created_at >= threshold)

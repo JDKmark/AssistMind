@@ -20,11 +20,11 @@ from app.config import get_settings
 from app.core.dialog import format_history
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm
 from app.core.infra.qdrant import get_qdrant
+from app.core.query_rewriter import rewrite as rewrite_query
 from app.core.rag.bm25 import get_bm25
+from app.core.rag.critic import evaluate as crag_evaluate
 from app.core.rag.embedding import embed_async
 from app.core.rag.reranker import rerank_async
-from app.core.rag.critic import evaluate as crag_evaluate
-from app.core.query_rewriter import rewrite as rewrite_query
 
 logger = logging.getLogger(__name__)
 settings = get_settings()

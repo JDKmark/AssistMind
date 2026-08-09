@@ -41,12 +41,11 @@ def _orthogonal_sample_vecs():
 
 async def test_rule_match_task():
     """规则命中 task：query 含"创建工单"，应短路返回 rule。"""
-    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)):
-        with patch(
-            "app.core.router.intent.call_llm",
-            new=AsyncMock(side_effect=AssertionError("规则命中不应调用 LLM")),
-        ):
-            result = await intent.route("创建工单")
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)), patch(
+        "app.core.router.intent.call_llm",
+        new=AsyncMock(side_effect=AssertionError("规则命中不应调用 LLM")),
+    ):
+        result = await intent.route("创建工单")
 
     assert result["intent"] == "task"
     assert result["confidence"] == 1.0
@@ -56,12 +55,11 @@ async def test_rule_match_task():
 
 async def test_rule_match_faq():
     """规则命中 faq：query 含"如何配置"。"""
-    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)):
-        with patch(
-            "app.core.router.intent.call_llm",
-            new=AsyncMock(side_effect=AssertionError("规则命中不应调用 LLM")),
-        ):
-            result = await intent.route("如何配置")
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)), patch(
+        "app.core.router.intent.call_llm",
+        new=AsyncMock(side_effect=AssertionError("规则命中不应调用 LLM")),
+    ):
+        result = await intent.route("如何配置")
 
     assert result["intent"] == "faq"
     assert result["confidence"] == 1.0

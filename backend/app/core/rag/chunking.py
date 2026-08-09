@@ -73,13 +73,15 @@ def chunk_text(
     if _looks_like_sql_ddl(text):
         return chunk_sql_ddl(text, metadata=metadata)
 
-    # 配置文件（YAML/yml）：注入文件名前缀——YAML 是键值对，无 Markdown 标题，
-    # chunk 完全裸（LLM 无法确认配置属于哪个文件，如 application-prod.yml 的
-    # datasource 段被当成"未提及"）。与 SQL 表注释注入同构：文件名作为语义锚点。
+    # 配置文件（YAML/yml）：注入文件名前缀 + 大块尺寸。
+    # - 文件名前缀（【application-dev.yml】）：YAML 无 Markdown 标题，裸配置块
+    #   让 LLM 无法确认归属文件而生成「资料未提及」元话语（answer_relevancy=0）
+    # - 大块尺寸（size*2=1024）：config 文件通常 <1KB（dev/prod 935 字），
+    #   整体成块避免 redis 段（host/port）被 512 字硬切埋在 chunk 内导致检索 miss
     title = (metadata or {}).get("title", "")
     if title.lower().endswith((".yml", ".yaml")) and not _HEADING_RE.search(text):
         return _chunk_markdown(
-            f"【{title}】\n{text}", size=size, ovr=ovr, metadata=metadata
+            f"【{title}】\n{text}", size=size * 2, ovr=ovr, metadata=metadata
         )
 
     return _chunk_markdown(text, size=size, ovr=ovr, metadata=metadata)

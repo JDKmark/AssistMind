@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.core.infra.llm_factory import LLMUnavailableError
 from app.core.rag.critic import _SCORE_PATTERN, evaluate
 

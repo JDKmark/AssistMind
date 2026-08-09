@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from app.config import Settings
 from app.core.mall import data_source as ds
