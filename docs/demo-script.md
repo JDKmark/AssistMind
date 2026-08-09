@@ -147,7 +147,7 @@ cd ..\frontend; npm run dev
 ### Q4 怎么验证价值（评估体系）
 
 **话术**：
-> 三层验证：① **检索与生成质量**：RAGAS 4 指标，**65 条双数据集**（25 条运维 + 40 条电商，9 条对抗样本单独统计），DeepSeek 下常规样本——电商集 faithfulness 0.968 / context_precision 0.856 / context_recall 0.851 / answer_relevancy 0.682，运维集 faithfulness 0.949 / context_recall 0.976 / answer_relevancy 0.612；② **Agent 闭环**：9 个多轮客服任务端到端 **9/9（100%）**，断言工具链 + 回答 + 参数；③ **功能对照**：实体识别 on/off 对比实验证明确定性收益（成功率持平，但消除重复工具调用）。
+> 三层验证：① **检索与生成质量**：RAGAS 4 指标，**65 条双数据集**（25 条运维 + 40 条电商，9 条对抗样本单独统计），DeepSeek 下常规样本——电商集 faithfulness 0.964 / context_precision 0.838 / context_recall 0.778 / answer_relevancy 0.675，运维集 faithfulness 0.939 / context_recall 1.000 / answer_relevancy 0.707；② **Agent 闭环**：9 个多轮客服任务端到端 **9/9（100%）**，断言工具链 + 回答 + 参数；③ **功能对照**：实体识别 on/off 对比实验证明确定性收益（成功率持平，但消除重复工具调用）。
 >
 > 评估基建本身也迭代过：早期断言过严（agent 答"未查询到"被判失败，因为断言只认"不存在"）——**先修评估再信评估**，这是评估可信度的关键。
 

@@ -53,7 +53,7 @@ docker-compose up -d
 - **Retrieval Before Agency**：Agent 在已排序检索结果之上工作，不取代检索（论文 arXiv:2607.26497 启发）
 - **BM25 一等公民**：BM25 不可被关闭，Qdrant 失败时 BM25 独立可用（失败降级兜底）
 - **BM25 词粒度分词**：中文用 jieba 词粒度（非单字 unigram），英文/数字/下划线标识符整词保留（order_item 不拆泛词），带停用词表；改分词时保持 `_tokenize` 签名与区分度（相关文档得分显著高于无关文档，见 test_bm25_tokenize.py）
-- **结构感知 chunk**：chunk_text 识别 Markdown 标题（→ section_title）、fenced 代码块整体保留（允许超限）、表格不拆行；**标题行必须并入紧随的结构块/文本缓冲（pending 机制），禁止产生仅含标题的空壳 chunk；表格块 text 以 `## {section_title}` 前缀开头（否则表格脱离标题语义、浪费检索槽位）**；mall.sql 按 CREATE TABLE 切块（→ table_comment，**表级注释会拼进检索文本前缀【注释】，embedding/reranker 才能感知语义，改动后需重灌向量库**）；SOURCES.md 类取材说明不入库
+- **结构感知 chunk**：chunk_text 识别 Markdown 标题（→ section_title）、fenced 代码块整体保留（允许超限）、表格不拆行；**标题行必须并入紧随的结构块/文本缓冲（pending 机制），禁止产生仅含标题的空壳 chunk；表格块 text 以 `## {section_title}` 前缀开头（否则表格脱离标题语义、浪费检索槽位）**；mall.sql 按 CREATE TABLE 切块（→ table_comment，**表级注释会拼进检索文本前缀【注释】，embedding/reranker 才能感知语义，改动后需重灌向量库**）；**YAML 配置（application*.yml）chunk 注入【文件名】前缀——YAML 无 Markdown 标题，裸配置块会让 LLM 无法确认归属文件而生成「资料未提及」元话语（answer_relevancy=0）**；SOURCES.md 类取材说明不入库
 - **RERANK_TOP_K 是重排候选规模**：rerank 后必须截断回 `contexts[:top_k]`（默认 8）——候选扩大让两路排名靠后的正确文档进入重排，截断保证生成上下文不淹没噪声（engine.retrieve 已实现，勿改成直接返回全量 reranked）
 - **BM25 元数据注入**：索引打分文本 = text + title + section_title + table_comment 拼接（SQL DDL 词面与自然语言查询差距大，注释词项注入后才可命中），不改变 chunk 存储文本
 - **MALL_DATA_SOURCE 配置**：电商业务数据源 `mock`（内存演示，默认）/ `real`（PostgreSQL）/ `auto`（`SELECT 1` 健康探测通过 → real，否则降级 mock）；seed 数据必须从 `mock_source.py` 常量导入（单一数据来源，mock 与 real 永远一致），禁止在 seed 脚本里另写一份数据
