@@ -73,6 +73,15 @@ def chunk_text(
     if _looks_like_sql_ddl(text):
         return chunk_sql_ddl(text, metadata=metadata)
 
+    # 配置文件（YAML/yml）：注入文件名前缀——YAML 是键值对，无 Markdown 标题，
+    # chunk 完全裸（LLM 无法确认配置属于哪个文件，如 application-prod.yml 的
+    # datasource 段被当成"未提及"）。与 SQL 表注释注入同构：文件名作为语义锚点。
+    title = (metadata or {}).get("title", "")
+    if title.lower().endswith((".yml", ".yaml")) and not _HEADING_RE.search(text):
+        return _chunk_markdown(
+            f"【{title}】\n{text}", size=size, ovr=ovr, metadata=metadata
+        )
+
     return _chunk_markdown(text, size=size, ovr=ovr, metadata=metadata)
 
 

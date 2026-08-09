@@ -456,3 +456,43 @@ def test_chunk_sql_ddl_wide_table_not_cut():
 def test_chunk_sql_ddl_empty():
     assert chunk_sql_ddl("") == []
     assert chunk_sql_ddl("   \n") == []
+
+
+def test_chunk_yaml_injects_filename_prefix():
+    """YAML 配置 chunk 注入文件名前缀（LLM 语义锚点，与 SQL 表注释同构）。
+
+    application-prod.yml 的 datasource 段此前完全裸（无文件名），生成时被
+    LLM 当成"未提及"→ answer_relevancy=0；注入【application-prod.yml】后
+    embedding 与生成都能感知配置归属文件。
+    """
+    yaml_text = (
+        "spring:\n"
+        "  datasource:\n"
+        "    url: jdbc:mysql://db:3306/mall\n"
+        "    username: reader\n"
+        "    password: '123456'\n"
+    )
+    chunks = chunk_text(
+        yaml_text,
+        metadata={
+            "doc_id": "config/application-prod",
+            "title": "application-prod.yml",
+            "source": "kb",
+            "category": "mall",
+            "security_group": ["user"],
+        },
+    )
+    assert len(chunks) == 1
+    assert chunks[0]["text"].startswith("【application-prod.yml】")
+    assert "jdbc:mysql://db:3306/mall" in chunks[0]["text"]
+
+
+def test_chunk_yaml_no_prefix_when_markdown():
+    """带 Markdown 标题的文本不做 YAML 前缀注入（非裸配置）。"""
+    md_text = "# 部署说明\n\nspring:\n  datasource:\n    url: x\n"
+    chunks = chunk_text(
+        md_text,
+        metadata={"doc_id": "doc", "title": "doc.md", "source": "kb",
+                  "category": "mall", "security_group": ["user"]},
+    )
+    assert all(not c["text"].startswith("【doc") for c in chunks)
