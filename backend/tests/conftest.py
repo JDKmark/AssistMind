@@ -69,9 +69,9 @@ def mock_ticket_queries() -> None:
     from unittest.mock import AsyncMock, patch
 
     with patch(
-        "app.agents.ops_supervisor.search_tickets", new=AsyncMock(return_value=[])
+        "app.core.ops.pipeline.search_tickets", new=AsyncMock(return_value=[])
     ), patch(
-        "app.agents.ops_supervisor.list_tickets",
+        "app.core.ops.pipeline.list_tickets",
         new=AsyncMock(return_value={"tickets": [], "total": 0}),
     ):
         yield

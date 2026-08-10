@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.agents import ops_supervisor
+from app.core.ops import pipeline as ops_supervisor  # patch 目标随流水线迁移
 from app.agents.ops_supervisor import OpsSupervisorAgent
 from app.core.ops import data_source as ds
 
@@ -98,10 +98,10 @@ async def test_run_langfuse_creates_ops_diagnose_trace(fake_langfuse):
     await ds.set_active_scenario("conn_pool_exhausted")
     agent = OpsSupervisorAgent()
     with patch(
-        "app.agents.ops_supervisor.call_llm",
+        "app.core.ops.pipeline.call_llm",
         new=AsyncMock(side_effect=[_PLAN_JSON, _REPORT_JSON]),
     ), patch(
-        "app.agents.ops_supervisor.rag_retrieve",
+        "app.core.ops.pipeline.rag_retrieve",
         new=AsyncMock(return_value={"contexts": []}),
     ):
         result = await agent.run("订单服务故障")
@@ -137,7 +137,7 @@ async def test_run_langfuse_marks_error_when_pipeline_fails(fake_langfuse):
     await ds.set_active_scenario("conn_pool_exhausted")
     agent = OpsSupervisorAgent()
     with patch(
-        "app.agents.ops_supervisor.call_llm",
+        "app.core.ops.pipeline.call_llm",
         new=AsyncMock(side_effect=[_PLAN_JSON, _REPORT_JSON]),
     ):
         # list_services 在 _plan 的 span 内抛出（在 try/except 之外），
@@ -176,11 +176,11 @@ async def test_run_langfuse_disabled_no_langfuse_touch():
     with patch("app.core.infra.langfuse.is_langfuse_enabled", return_value=False):
         with patch.object(ops_supervisor, "get_langfuse", _spy_get):
             with patch(
-                "app.agents.ops_supervisor.call_llm",
+                "app.core.ops.pipeline.call_llm",
                 new=AsyncMock(side_effect=[_PLAN_JSON, _REPORT_JSON]),
             ):
                 with patch(
-                    "app.agents.ops_supervisor.rag_retrieve",
+                    "app.core.ops.pipeline.rag_retrieve",
                     new=AsyncMock(return_value={"contexts": []}),
                 ):
                     result = await agent.run("订单服务故障")

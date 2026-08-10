@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-from app.agents import ops_supervisor
+from app.core.ops import pipeline as ops_supervisor  # patch 目标随流水线迁移
 from app.agents.ops_supervisor import OpsSupervisorAgent
 from app.core.infra.llm_factory import LLMUnavailableError
 from app.core.ops import data_source as ds
@@ -20,7 +20,7 @@ from app.core.ops import data_source as ds
 async def test_plan_parse_success():
     """LLM 返回合法 JSON 时解析计划。"""
     with patch(
-        "app.agents.ops_supervisor.call_llm",
+        "app.core.ops.pipeline.call_llm",
         new=AsyncMock(
             return_value=(
                 '{"services": ["order-service", "inventory-service"], '
@@ -37,7 +37,7 @@ async def test_plan_parse_success():
 async def test_plan_fallback_when_llm_unavailable():
     """LLM 不可用时降级为全量采集。"""
     with patch(
-        "app.agents.ops_supervisor.call_llm",
+        "app.core.ops.pipeline.call_llm",
         new=AsyncMock(side_effect=LLMUnavailableError("unavailable")),
     ):
         plan = await ops_supervisor._plan("订单服务故障")
@@ -48,7 +48,7 @@ async def test_plan_fallback_when_llm_unavailable():
 async def test_plan_fallback_when_invalid_services():
     """LLM 返回非法服务名时回退为全部服务。"""
     with patch(
-        "app.agents.ops_supervisor.call_llm",
+        "app.core.ops.pipeline.call_llm",
         new=AsyncMock(
             return_value='{"services": ["bad-service"], "data_sources": ["metrics"]}'
         ),
@@ -63,7 +63,7 @@ async def test_collect_gathers_evidence():
     await ds.set_active_scenario("conn_pool_exhausted")
     plan = {"services": ["order-service", "inventory-service"], "data_sources": ["metrics", "logs", "changes", "kb"], "keywords": []}
     with patch(
-        "app.agents.ops_supervisor.rag_retrieve",
+        "app.core.ops.pipeline.rag_retrieve",
         new=AsyncMock(return_value={"contexts": [{"doc_id": "ops-1", "title": "t", "text": "x"}]}),
     ):
         result = await ops_supervisor.collect(plan, "订单服务故障")
@@ -88,7 +88,7 @@ async def test_collect_kb_failure_degraded():
     await ds.set_active_scenario("conn_pool_exhausted")
     plan = {"services": ["order-service"], "data_sources": ["metrics", "logs", "kb"], "keywords": []}
     with patch(
-        "app.agents.ops_supervisor.rag_retrieve",
+        "app.core.ops.pipeline.rag_retrieve",
         new=AsyncMock(side_effect=RuntimeError("qdrant down")),
     ):
         result = await ops_supervisor.collect(plan, "x")
@@ -101,7 +101,7 @@ async def test_collect_tickets_and_hosts():
     await ds.set_active_scenario("conn_pool_exhausted")
     plan = {"services": ["order-service"], "data_sources": ["metrics"], "keywords": ["connection"]}
     with patch(
-        "app.agents.ops_supervisor.search_tickets",
+        "app.core.ops.pipeline.search_tickets",
         new=AsyncMock(
             return_value=[
                 {"id": "TK-OLD1", "title": "连接池耗尽故障", "status": "resolved", "category": "incident"}
@@ -119,7 +119,7 @@ async def test_collect_ticket_query_failure_degraded():
     await ds.set_active_scenario("conn_pool_exhausted")
     plan = {"services": ["order-service"], "data_sources": ["metrics"], "keywords": ["connection"]}
     with patch(
-        "app.agents.ops_supervisor.search_tickets",
+        "app.core.ops.pipeline.search_tickets",
         new=AsyncMock(side_effect=RuntimeError("postgres down")),
     ):
         result = await ops_supervisor.collect(plan, "x")
@@ -131,7 +131,7 @@ async def test_analyze_success():
     """LLM 返回合法 JSON 时生成报告。"""
     evidence = {"alerts": [], "metrics": [], "logs": [], "changes": [], "kb": []}
     with patch(
-        "app.agents.ops_supervisor.call_llm",
+        "app.core.ops.pipeline.call_llm",
         new=AsyncMock(
             return_value=(
                 '{"summary": "连接池耗尽", "symptoms": ["错误率上升"], '
@@ -150,7 +150,7 @@ async def test_analyze_fallback_when_llm_unavailable():
     """LLM 不可用时输出规则报告（不抛异常）。"""
     evidence = {"alerts": [], "metrics": [], "logs": [], "changes": [], "kb": []}
     with patch(
-        "app.agents.ops_supervisor.call_llm",
+        "app.core.ops.pipeline.call_llm",
         new=AsyncMock(side_effect=LLMUnavailableError("down")),
     ):
         report = await ops_supervisor.analyze("x", evidence)
@@ -162,7 +162,7 @@ async def test_analyze_fallback_on_bad_json():
     """LLM 返回非 JSON 时降级规则报告。"""
     evidence = {"alerts": [], "metrics": [], "logs": [], "changes": [], "kb": []}
     with patch(
-        "app.agents.ops_supervisor.call_llm",
+        "app.core.ops.pipeline.call_llm",
         new=AsyncMock(return_value="完全不是 JSON 的内容"),
     ):
         report = await ops_supervisor.analyze("x", evidence)
@@ -174,7 +174,7 @@ async def test_run_end_to_end():
     await ds.set_active_scenario("conn_pool_exhausted")
     agent = OpsSupervisorAgent()
     with patch(
-        "app.agents.ops_supervisor.call_llm",
+        "app.core.ops.pipeline.call_llm",
         new=AsyncMock(
             side_effect=[
                 '{"services": ["order-service"], "data_sources": ["metrics", "logs"], "keywords": []}',
@@ -183,7 +183,7 @@ async def test_run_end_to_end():
         ),
     ):
         with patch(
-            "app.agents.ops_supervisor.rag_retrieve",
+            "app.core.ops.pipeline.rag_retrieve",
             new=AsyncMock(return_value={"contexts": []}),
         ):
             result = await agent.run("订单服务故障")

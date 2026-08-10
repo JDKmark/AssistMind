@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.agents.ops_supervisor import _langfuse_span, _plan, analyze, collect
+from app.core.ops.pipeline import _langfuse_span, _plan, analyze, collect
 from app.api.deps import get_current_user
 from app.core.infra.langfuse import get_langfuse
 from app.core.ops import data_source as ops_ds

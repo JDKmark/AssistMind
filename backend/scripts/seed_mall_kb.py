@@ -18,9 +18,8 @@ import logging
 import os
 import sys
 
-from app.core.infra.qdrant import get_qdrant
 from app.core.rag.chunking import chunk_text
-from app.core.rag.embedding import embed_sync
+from app.core.rag.seeder import seed_docs
 
 logger = logging.getLogger(__name__)
 
@@ -67,58 +66,8 @@ def _chunk_metadata(doc: dict) -> dict:
 
 
 async def seed(reset: bool = False) -> dict:
-    """灌库主逻辑。返回统计：{docs, chunks, vector_written, bm25_built, qdrant_ok}。"""
-    qdrant = get_qdrant()
-    await qdrant.connect()
-    qdrant_ok = qdrant.is_connected
-    if not qdrant_ok:
-        logger.warning("[SeedMallKB] Qdrant 不可用，跳过向量写入（仅输出切分统计）")
-        return {"docs": 0, "chunks": 0, "vector_written": 0, "bm25_built": 0, "qdrant_ok": False}
-
-    docs = _load_docs()
-    total_chunks = 0
-
-    for doc in docs:
-        doc_id = doc["doc_id"]
-        if reset:
-            await qdrant.delete_by_doc(doc_id)
-
-        chunks = chunk_text(doc["text"], metadata=_chunk_metadata(doc))
-        if not chunks:
-            continue
-        texts = [c["text"] for c in chunks]
-        embeddings = embed_sync(texts)
-        if embeddings is None:
-            logger.warning("[SeedMallKB] embedding 失败，跳过 %s", doc_id)
-            continue
-        ok = await qdrant.upsert(chunks, embeddings)
-        logger.info(
-            "[SeedMallKB] %s: %d chunks, upsert=%s",
-            doc_id,
-            len(chunks),
-            ok,
-        )
-        if ok:
-            total_chunks += len(chunks)
-
-    # BM25 内存索引（当前进程）
-    bm25_docs = []
-    for doc in docs:
-        chunks = chunk_text(doc["text"], metadata=_chunk_metadata(doc))
-        bm25_docs.extend(chunks)
-    if bm25_docs:
-        from app.core.rag.bm25 import get_bm25
-
-        get_bm25().build(bm25_docs)
-
-    await qdrant.close()
-    return {
-        "docs": len(docs),
-        "chunks": total_chunks,
-        "vector_written": total_chunks,
-        "bm25_built": len(bm25_docs),
-        "qdrant_ok": True,
-    }
+    """灌库主逻辑（chunk → embedding → upsert → BM25，见 seeder.seed_docs）。"""
+    return await seed_docs(_load_docs(), metadata_fn=_chunk_metadata, reset=reset, log_prefix="SeedMallKB")
 
 
 async def main() -> None:
