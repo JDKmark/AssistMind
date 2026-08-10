@@ -1,0 +1,320 @@
+Building prefix dict from the default dictionary ...
+Loading model from cache C:\Users\sss208\AppData\Local\Temp\jieba.cache
+Loading model cost 1.071 seconds.
+Prefix dict has been built successfully.
+2026-08-10 16:30:39,493 INFO [Eval] 数据集加载完成：25 条有效（含 4 条对抗样本），跳过 0 条
+2026-08-10 16:30:39,494 WARNING [CB:llm_deepseek] 断路器未初始化，自动用内存存储创建
+2026-08-10 16:30:39,494 INFO [CB] 已初始化 10 个断路器（Redis=False）
+2026-08-10 16:30:39,495 INFO langchain-openai detected system proxy configuration and no explicit `http_socket_options` / `http_client` / `http_async_client` / `openai_proxy`; skipping the custom `httpx` transport so httpx's env-proxy auto-detection applies. Pass `http_socket_options=[...]` to opt back into kernel-level TCP keepalive tuning on top of the env proxy.
+2026-08-10 16:30:58,891 INFO [Eval] LLM 连通性探测通过（回复: 正常）
+2026-08-10 16:31:00,110 INFO [Qdrant] 连接成功，collection=assistmind_docs
+2026-08-10 16:31:00,195 INFO [BM25] 索引构建完成，294 文档
+2026-08-10 16:31:00,195 INFO [Eval] Qdrant 连接成功，BM25 索引构建 294 文档
+2026-08-10 16:31:00,196 INFO [Eval] 开始逐条执行 RAG 链路（25 条）
+2026-08-10 16:31:00,196 INFO [Eval] [1/25] 检索生成: 服务接口大面积超时，错误日志里出现 Connection i
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-08-10 16:31:24,591 WARNING Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-08-10 16:31:25,068 INFO Loading SentenceTransformer model from BAAI/bge-base-zh-v1.5.
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 43929.82it/s]
+2026-08-10 16:31:32,085 INFO [Embedding] 模型加载完成: BAAI/bge-base-zh-v1.5
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.83it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.83it/s]
+2026-08-10 16:31:32,430 INFO No device provided, using cpu
+2026-08-10 16:31:32,666 INFO No modules.json found for BAAI/bge-reranker-v2-m3, initializing a new CrossEncoder model.
+Loading weights:   0%|          | 0/393 [00:00<?, ?it/s]Loading weights: 100%|██████████| 393/393 [00:00<00:00, 5988.51it/s]
+2026-08-10 16:31:38,798 INFO [Reranker] 模型加载完成: BAAI/bge-reranker-v2-m3
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:29<00:59, 29.54s/it]Batches:  67%|██████▋   | 2/3 [01:01<00:30, 30.73s/it]Batches: 100%|██████████| 3/3 [01:07<00:00, 19.45s/it]Batches: 100%|██████████| 3/3 [01:07<00:00, 22.38s/it]
+2026-08-10 16:32:54,586 INFO [Eval] [2/25] 检索生成: 数据库连接池被占满，常见根因有哪些？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.72s/it]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.72s/it]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [01:44<03:28, 104.15s/it]Batches:  67%|██████▋   | 2/3 [02:26<01:08, 68.02s/it] Batches: 100%|██████████| 3/3 [02:28<00:00, 37.52s/it]Batches: 100%|██████████| 3/3 [02:28<00:00, 49.36s/it]
+2026-08-10 16:36:07,070 INFO [Eval] [3/25] 检索生成: 数据库连接池耗尽后应该采取哪些恢复动作？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.45it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.44it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:46<01:33, 46.71s/it]Batches:  67%|██████▋   | 2/3 [01:06<00:30, 30.80s/it]Batches: 100%|██████████| 3/3 [01:08<00:00, 17.59s/it]Batches: 100%|██████████| 3/3 [01:08<00:00, 22.75s/it]
+2026-08-10 16:37:59,556 INFO [Eval] [4/25] 检索生成: 如何按步骤排查数据库连接池耗尽问题？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.48s/it]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.48s/it]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [01:13<02:26, 73.03s/it]Batches:  67%|██████▋   | 2/3 [01:36<00:43, 43.99s/it]Batches: 100%|██████████| 3/3 [01:37<00:00, 24.29s/it]Batches: 100%|██████████| 3/3 [01:37<00:00, 32.52s/it]
+2026-08-10 16:40:04,851 INFO [Eval] [5/25] 检索生成: 连接池使用率接近 100%，除了配置过小，还有哪些可能的根因
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.12it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.11it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:00<04:01, 120.99s/it]Batches:  67%|██████▋   | 2/3 [02:23<01:03, 63.31s/it] Batches: 100%|██████████| 3/3 [02:29<00:00, 36.78s/it]Batches: 100%|██████████| 3/3 [02:29<00:00, 49.71s/it]
+2026-08-10 16:43:01,379 INFO [Eval] [6/25] 检索生成: 数据库 CPU 持续高位、接口延迟明显上升，日志出现 Slo
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.33s/it]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.33s/it]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:38<01:17, 38.89s/it]Batches:  67%|██████▋   | 2/3 [01:15<00:37, 37.44s/it]Batches: 100%|██████████| 3/3 [01:16<00:00, 20.99s/it]Batches: 100%|██████████| 3/3 [01:16<00:00, 25.58s/it]
+2026-08-10 16:44:48,277 INFO [Eval] [7/25] 检索生成: 排查慢 SQL 的步骤和恢复动作是什么？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.14it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.13it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:01<04:03, 121.72s/it]Batches:  67%|██████▋   | 2/3 [02:57<01:23, 83.03s/it] Batches: 100%|██████████| 3/3 [03:09<00:00, 50.47s/it]Batches: 100%|██████████| 3/3 [03:09<00:00, 63.13s/it]
+2026-08-10 16:48:30,985 INFO [Eval] [8/25] 检索生成: 如何判断慢 SQL 的根因是索引失效（全表扫描）还是锁竞争？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  2.45it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  2.45it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:59<01:59, 59.90s/it]Batches:  67%|██████▋   | 2/3 [01:33<00:44, 44.54s/it]Batches: 100%|██████████| 3/3 [01:34<00:00, 24.38s/it]Batches: 100%|██████████| 3/3 [01:34<00:00, 31.36s/it]
+2026-08-10 16:50:43,067 INFO [Eval] [9/25] 检索生成: 日志出现 Lock wait timeout exceede
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.13s/it]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.13s/it]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [01:08<02:16, 68.11s/it]Batches:  67%|██████▋   | 2/3 [01:28<00:39, 39.88s/it]Batches: 100%|██████████| 3/3 [01:29<00:00, 22.32s/it]Batches: 100%|██████████| 3/3 [01:29<00:00, 29.88s/it]
+2026-08-10 16:53:00,994 INFO [Eval] [10/25] 检索生成: 慢 SQL 的恢复动作有哪些？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.30it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.30it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:13<04:27, 133.89s/it]Batches:  67%|██████▋   | 2/3 [02:52<01:18, 78.09s/it] Batches: 100%|██████████| 3/3 [02:59<00:00, 45.44s/it]Batches: 100%|██████████| 3/3 [02:59<00:00, 59.84s/it]
+2026-08-10 16:56:10,253 INFO [Eval] [11/25] 检索生成: 内存占用持续爬升直至触发 OOM，常见原因有哪些？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.37it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.36it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [03:01<06:03, 181.79s/it]Batches:  67%|██████▋   | 2/3 [03:28<01:30, 90.45s/it] Batches: 100%|██████████| 3/3 [03:32<00:00, 50.85s/it]Batches: 100%|██████████| 3/3 [03:32<00:00, 70.68s/it]
+2026-08-10 17:00:14,443 INFO [Eval] [12/25] 检索生成: 服务频繁 OOM 自动重启，应该怎么恢复？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.32it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.31it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:33<01:06, 33.35s/it]Batches:  67%|██████▋   | 2/3 [00:50<00:23, 23.65s/it]Batches: 100%|██████████| 3/3 [00:54<00:00, 14.67s/it]Batches: 100%|██████████| 3/3 [00:54<00:00, 18.07s/it]
+2026-08-10 17:02:24,869 INFO [Eval] [13/25] 检索生成: 线程池/连接池对象泄漏这类内存泄漏，排查时重点看什么？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.48it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.46it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:59<01:59, 59.90s/it]Batches:  67%|██████▋   | 2/3 [01:11<00:31, 31.46s/it]Batches: 100%|██████████| 3/3 [01:12<00:00, 17.70s/it]Batches: 100%|██████████| 3/3 [01:12<00:00, 24.26s/it]
+2026-08-10 17:03:49,721 INFO [Eval] [14/25] 检索生成: 日志出现 GC overhead limit exceede
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 14.10it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:26<04:53, 146.61s/it]Batches:  67%|██████▋   | 2/3 [02:46<01:11, 71.81s/it] Batches: 100%|██████████| 3/3 [02:48<00:00, 40.05s/it]Batches: 100%|██████████| 3/3 [02:48<00:00, 56.10s/it]
+2026-08-10 17:06:47,995 INFO [Eval] [15/25] 检索生成: 给缓存设置 TTL 与 LRU 容量上限，能解决哪类故障？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.21it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:48<01:36, 48.44s/it]Batches:  67%|██████▋   | 2/3 [01:10<00:32, 32.80s/it]Batches: 100%|██████████| 3/3 [01:15<00:00, 20.38s/it]Batches: 100%|██████████| 3/3 [01:15<00:00, 25.30s/it]
+2026-08-10 17:08:12,900 INFO [Eval] [16/25] 检索生成: 微服务出现故障时，应该按什么顺序诊断？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 11.27it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:38<05:16, 158.00s/it]Batches:  67%|██████▋   | 2/3 [02:48<01:11, 71.50s/it] Batches: 100%|██████████| 3/3 [02:51<00:00, 40.21s/it]Batches: 100%|██████████| 3/3 [02:51<00:00, 57.31s/it]
+2026-08-10 17:11:55,072 INFO [Eval] [17/25] 检索生成: 上游服务报 Remote call failed，应该优先怀
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.28it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.26it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:50<01:41, 50.50s/it]Batches:  67%|██████▋   | 2/3 [01:00<00:26, 26.39s/it]Batches: 100%|██████████| 3/3 [01:01<00:00, 14.89s/it]Batches: 100%|██████████| 3/3 [01:01<00:00, 20.41s/it]
+2026-08-10 17:13:07,656 INFO [Eval] [18/25] 检索生成: 诊断时为什么要先看告警，而不是直接翻日志？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.42it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.42it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [01:45<03:31, 105.85s/it]Batches:  67%|██████▋   | 2/3 [02:07<00:56, 56.31s/it] Batches: 100%|██████████| 3/3 [02:14<00:00, 33.78s/it]Batches: 100%|██████████| 3/3 [02:14<00:00, 44.82s/it]
+2026-08-10 17:16:07,029 INFO [Eval] [19/25] 检索生成: 指标形态陡增和缓慢爬升分别提示什么？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.69it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.65it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:25<04:50, 145.44s/it]Batches:  67%|██████▋   | 2/3 [02:44<01:10, 70.93s/it] Batches: 100%|██████████| 3/3 [02:47<00:00, 39.99s/it]Batches: 100%|██████████| 3/3 [02:47<00:00, 55.80s/it]
+2026-08-10 17:19:01,751 INFO [Eval] [20/25] 检索生成: 故障发生前刚好有一次发布或配置变更，应该优先怀疑什么？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.61it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:28<00:56, 28.48s/it]Batches:  67%|██████▋   | 2/3 [00:43<00:20, 20.78s/it]Batches: 100%|██████████| 3/3 [00:48<00:00, 13.43s/it]Batches: 100%|██████████| 3/3 [00:48<00:00, 16.18s/it]
+2026-08-10 17:20:26,113 INFO [Eval] [21/25] 检索生成: 诊断报告应该包含哪些内容？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.99it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.97it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:31<05:03, 151.90s/it]Batches:  67%|██████▋   | 2/3 [02:49<01:13, 73.04s/it] Batches: 100%|██████████| 3/3 [02:54<00:00, 41.74s/it]Batches: 100%|██████████| 3/3 [02:54<00:00, 58.08s/it]
+2026-08-10 17:24:12,651 INFO [Eval] [22/25] 检索生成: AssistMind 的会话列表支持按客服导出 Excel 
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.15it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.14it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:26<04:52, 146.13s/it]Batches:  67%|██████▋   | 2/3 [02:47<01:12, 72.73s/it] Batches: 100%|██████████| 3/3 [02:52<00:00, 41.93s/it]Batches: 100%|██████████| 3/3 [02:52<00:00, 57.58s/it]
+2026-08-10 17:27:55,475 INFO [Eval] [23/25] 检索生成: OPS-005 集群扩容的标准操作流程是什么？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.17it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.15it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [01:08<02:16, 68.46s/it]Batches:  67%|██████▋   | 2/3 [01:18<00:34, 34.31s/it]Batches: 100%|██████████| 3/3 [01:23<00:00, 20.54s/it]Batches: 100%|██████████| 3/3 [01:23<00:00, 27.67s/it]
+2026-08-10 17:29:51,864 INFO [Eval] [24/25] 检索生成: 把连接池 max_pool_size 配置成 50 是不是就
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  3.82it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  3.82it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:24<04:48, 144.21s/it]Batches:  67%|██████▋   | 2/3 [02:44<01:11, 71.14s/it] Batches: 100%|██████████| 3/3 [02:46<00:00, 39.84s/it]Batches: 100%|██████████| 3/3 [02:46<00:00, 55.60s/it]
+2026-08-10 17:33:11,206 INFO [Eval] [25/25] 检索生成: 订单服务的限流阈值应该配置成多少 QPS？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 10.73it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:45<05:31, 165.58s/it]Batches:  67%|██████▋   | 2/3 [03:02<01:18, 78.19s/it] Batches: 100%|██████████| 3/3 [03:04<00:00, 43.29s/it]Batches: 100%|██████████| 3/3 [03:04<00:00, 61.45s/it]
+2026-08-10 17:37:00,670 INFO [Eval] 开始 ragas 评估：25 条样本 × 3 项指标 + answer_relevancy(3 问题均值)（评分 LLM: deepseek / deepseek-v4-flash）
+Evaluating:   0%|          | 0/75 [00:00<?, ?it/s]2026-08-10 17:37:22,465 ERROR Exception raised in Job[0]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 17:45:05,828 INFO Retrying request to /chat/completions in 0.428839 seconds
+2026-08-10 17:45:36,601 INFO Retrying request to /chat/completions in 0.856027 seconds
+2026-08-10 17:48:08,419 INFO Retrying request to /chat/completions in 0.468401 seconds
+2026-08-10 17:48:39,278 INFO Retrying request to /chat/completions in 0.813104 seconds
+2026-08-10 17:49:08,376 ERROR Exception raised in Job[12]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 17:51:35,856 INFO Retrying request to /chat/completions in 0.424468 seconds
+2026-08-10 17:52:33,622 INFO Retrying request to /chat/completions in 0.468995 seconds
+2026-08-10 17:52:58,566 ERROR Exception raised in Job[15]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 17:54:57,356 INFO Retrying request to /chat/completions in 0.473834 seconds
+2026-08-10 17:55:42,214 ERROR Exception raised in Job[18]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 17:57:10,418 INFO Retrying request to /chat/completions in 0.398858 seconds
+2026-08-10 17:57:49,471 INFO Retrying request to /chat/completions in 0.441004 seconds
+2026-08-10 17:58:26,872 INFO Retrying request to /chat/completions in 0.465080 seconds
+2026-08-10 18:05:38,415 INFO Retrying request to /chat/completions in 0.377927 seconds
+2026-08-10 18:08:50,722 INFO Retrying request to /chat/completions in 0.381686 seconds
+2026-08-10 18:09:42,583 INFO Retrying request to /chat/completions in 0.473291 seconds
+2026-08-10 18:10:13,395 INFO Retrying request to /chat/completions in 0.811809 seconds
+2026-08-10 18:10:45,556 ERROR API call failed on attempt 1: Request timed out.
+2026-08-10 18:10:45,556 ERROR Max retries exceeded. Total attempts: 1, Last error: Request timed out.
+2026-08-10 18:10:45,556 ERROR Exception raised in Job[33]: InstructorRetryException(Request timed out.)
+2026-08-10 18:13:38,500 INFO Retrying request to /chat/completions in 0.441008 seconds
+2026-08-10 18:14:42,333 INFO Retrying request to /chat/completions in 0.388933 seconds
+2026-08-10 18:15:13,104 INFO Retrying request to /chat/completions in 0.962910 seconds
+2026-08-10 18:15:44,419 ERROR API call failed on attempt 1: Request timed out.
+2026-08-10 18:15:44,419 ERROR Max retries exceeded. Total attempts: 1, Last error: Request timed out.
+2026-08-10 18:15:44,419 ERROR Exception raised in Job[36]: InstructorRetryException(Request timed out.)
+2026-08-10 18:18:02,113 ERROR Exception raised in Job[39]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 18:19:47,449 INFO Retrying request to /chat/completions in 0.496054 seconds
+2026-08-10 18:22:34,616 INFO Retrying request to /chat/completions in 0.474978 seconds
+2026-08-10 18:23:02,950 ERROR Exception raised in Job[45]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 18:25:17,130 INFO Retrying request to /chat/completions in 0.468833 seconds
+2026-08-10 18:30:37,859 INFO Retrying request to /chat/completions in 0.453948 seconds
+2026-08-10 18:43:04,037 INFO Retrying request to /chat/completions in 0.489422 seconds
+Evaluating:   1%|▏         | 1/75 [1:08:04<83:57:01, 4084.08s/it]Evaluating: 100%|██████████| 75/75 [1:08:04<00:00, 54.45s/it]    
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 21.04it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.26it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 43.14it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 28.28it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 42.01it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 32.06it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 44.70it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.99it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 35.82it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 17.72it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 30.04it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 21.87it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 33.64it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.42it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 34.06it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 12.26it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 24.76it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 23.59it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 48.56it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 28.17it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 38.44it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 19.49it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 30.95it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 23.61it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 34.00it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 17.98it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 32.73it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.47it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 39.77it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.30it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 46.48it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 21.74it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.15it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 17.52it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 29.87it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 16.23it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 44.43it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 17.79it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 37.20it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 17.88it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 52.78it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 30.57it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 41.42it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 18.23it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 44.11it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.09it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 34.23it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 19.64it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 44.97it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 18.87it/s]
+
+===== RAGAS 逐条评估明细 =====
+[01] (常规) 服务接口大面积超时，错误日志里出现 Connection is no…
+     命中: knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md
+     回答: 这通常是**数据库连接池耗尽（Connection Pool Exhausted）**问题[1]。典型表现是连接池活跃连…
+     得分: faithfulness=-  context_precision=0.982  context_recall=1.000  answer_relevancy=0.541
+[02] (常规) 数据库连接池被占满，常见根因有哪些？
+     命中: knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/ops/OPS-004-微服务故障诊断方法论.md
+     回答: 根因包括三类：配置变更错误缩小连接池（如 max_pool_size 从 50 调成 10）、慢 SQL 或未释放连接导…
+     得分: faithfulness=0.857  context_precision=0.833  context_recall=1.000  answer_relevancy=0.758
+[03] (常规) 数据库连接池耗尽后应该采取哪些恢复动作？
+     命中: knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/mall/config/application-prod.yml、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/mall/config/application-dev.yml
+     回答: 恢复动作包括：回滚或调大连接池参数（如将 max_pool_size 恢复为 50）、重启受影响实例让连接池重建，以及对…
+     得分: faithfulness=1.000  context_precision=0.756  context_recall=1.000  answer_relevancy=0.574
+[04] (常规) 如何按步骤排查数据库连接池耗尽问题？
+     命中: knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml
+     回答: 排查数据库连接池耗尽问题可按以下 4 步进行 [1]：
+
+1. 查看告警：确认是哪个服务、哪个指标触发了告警 [1]
+2…
+     得分: faithfulness=1.000  context_precision=0.875  context_recall=1.000  answer_relevancy=0.979
+[05] (常规) 连接池使用率接近 100%，除了配置过小，还有哪些可能的根因？
+     命中: knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/mall/config/application-dev.yml、knowledge/mall/config/application-prod.yml、knowledge/ops/OPS-004-微服务故障诊断方法论.md
+     回答: 除了连接池配置偏小外，根因还可能包括：慢 SQL 或连接未释放导致连接被长期占用、突发流量超过连接池容量、以及连接池对象…
+     得分: faithfulness=-  context_precision=0.917  context_recall=1.000  answer_relevancy=0.775
+[06] (常规) 数据库 CPU 持续高位、接口延迟明显上升，日志出现 Slow qu…
+     命中: knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-004-微服务故障诊断方法论.md
+     回答: 排查按以下四步进行：[2]
+
+1. 查看告警：确认延迟类告警，如 latency_p95、cpu_usage。[2]
+2…
+     得分: faithfulness=-  context_precision=0.911  context_recall=1.000  answer_relevancy=0.576
+[07] (常规) 排查慢 SQL 的步骤和恢复动作是什么？
+     命中: knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-004-微服务故障诊断方法论.md
+     回答: 排查慢 SQL 的步骤包括：先查看延迟类告警（latency_p95 / cpu_usage），确认哪个服务哪个指标触发…
+     得分: faithfulness=-  context_precision=1.000  context_recall=1.000  answer_relevancy=0.946
+[08] (常规) 如何判断慢 SQL 的根因是索引失效（全表扫描）还是锁竞争？
+     命中: knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-004-微服务故障诊断方法论.md
+     回答: 判断方法是结合日志关键字与变更记录来区分：日志中出现 `full table scan`（或 slow query）线索…
+     得分: faithfulness=0.625  context_precision=0.917  context_recall=1.000  answer_relevancy=0.806
+[09] (常规) 日志出现 Lock wait timeout exceeded，通常…
+     命中: knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/mall/config/application-prod.yml
+     回答: 这通常是慢 SQL 问题的一个典型症状 [1]。常见根因包括锁竞争（长事务占用行锁）、新发布的查询未走索引（全表扫描）、…
+     得分: faithfulness=0.857  context_precision=0.867  context_recall=1.000  answer_relevancy=0.558
+[10] (常规) 慢 SQL 的恢复动作有哪些？
+     命中: knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/mall/reference/shortcut.md
+     回答: 慢 SQL 的恢复动作包括：为慢 SQL 涉及的字段补充索引，紧急时可回滚问题版本，并对复杂查询做分页与缓存优化 [1]…
+     得分: faithfulness=1.000  context_precision=0.700  context_recall=1.000  answer_relevancy=0.993
+[11] (常规) 内存占用持续爬升直至触发 OOM，常见原因有哪些？
+     命中: knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/mall/business/售后服务政策.md
+     回答: 内存持续爬升触发 OOM 的常见原因有 3 类：缓存/会话数据无 TTL 或容量上限导致无限增长、静态集合持有对象引用未…
+     得分: faithfulness=0.875  context_precision=0.500  context_recall=1.000  answer_relevancy=0.942
+[12] (常规) 服务频繁 OOM 自动重启，应该怎么恢复？
+     命中: knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/linux.md
+     回答: 恢复动作包括：紧急情况下先重启实例临时恢复，再定位泄漏点修复[3]。具体措施按根因分类处理：若为连接池泄漏，回滚或调大连…
+     得分: faithfulness=-  context_precision=0.950  context_recall=1.000  answer_relevancy=0.490
+[13] (常规) 线程池/连接池对象泄漏这类内存泄漏，排查时重点看什么？
+     命中: knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/mall/config/application-prod.yml
+     回答: 排查时重点看告警、指标、日志和变更记录四个方面：
+
+1. **告警**：确认哪个服务哪个指标触发告警，重点关注内存类告警…
+     得分: faithfulness=-  context_precision=0.639  context_recall=1.000  answer_relevancy=0.833
+[14] (常规) 日志出现 GC overhead limit exceeded，应该…
+     命中: knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-004-微服务故障诊断方法论.md
+     回答: 排查步骤包括“先看告警、再看指标、接着查日志、最后核对变更”四步 [2]。
+
+1. 先查看内存类告警，比如内存使用率相关…
+     得分: faithfulness=-  context_precision=1.000  context_recall=1.000  answer_relevancy=0.457
+[15] (常规) 给缓存设置 TTL 与 LRU 容量上限，能解决哪类故障？
+     命中: knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/mall/sql/mall_tables.sql、knowledge/ops/OPS-004-微服务故障诊断方法论.md
+     回答: 能解决因缓存/会话数据无 TTL 或容量上限而无限增长导致的内存泄漏故障 [2]。设置 TTL 和 LRU 容量上限后，…
+     得分: faithfulness=0.333  context_precision=0.854  context_recall=1.000  answer_relevancy=0.676
+[16] (常规) 微服务出现故障时，应该按什么顺序诊断？
+     命中: knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/mall/README/README.md、knowledge/mall/sql/mall_tables.sql
+     回答: 诊断顺序应遵循“先全局后局部”的原则，共 5 步 [1]：
+
+1. **确认告警**：明确是哪个服务、哪个指标触发告警，…
+     得分: faithfulness=-  context_precision=0.927  context_recall=1.000  answer_relevancy=0.698
+[17] (常规) 上游服务报 Remote call failed，应该优先怀疑哪里？
+     命中: knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-002-慢SQL排查手册.md
+     回答: 应该优先检查下游服务。[1] 明确指出：下游服务异常会传导到上游，出现上游报「Remote call failed」时要…
+     得分: faithfulness=0.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.887
+[18] (常规) 诊断时为什么要先看告警，而不是直接翻日志？
+     命中: knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/mall/sql/mall_tables.sql
+     回答: 先看告警是为了快速定位故障范围：告警能直接确认是哪个服务、哪个指标、严重级别，从而明确排查方向 [1]。如果直接翻日志，…
+     得分: faithfulness=1.000  context_precision=0.943  context_recall=0.500  answer_relevancy=0.820
+[19] (常规) 指标形态陡增和缓慢爬升分别提示什么？
+     命中: knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/mall/sql/mall_tables.sql、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/mall/reference/shortcut.md
+     回答: 指标形态陡增多提示突发流量或变更，爬升多提示资源泄漏 [1]。
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.930
+[20] (常规) 故障发生前刚好有一次发布或配置变更，应该优先怀疑什么？
+     命中: knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-002-慢SQL排查手册.md
+     回答: 优先怀疑这次发布或配置变更本身引入了故障。变更先于故障出现时，应优先怀疑变更引入根因[2]；按诊断顺序，故障前最近一次发…
+     得分: faithfulness=1.000  context_precision=0.976  context_recall=0.500  answer_relevancy=0.866
+[21] (常规) 诊断报告应该包含哪些内容？
+     命中: knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/mall/sql/mall_tables.sql、knowledge/ops/OPS-003-内存泄漏排查手册.md
+     回答: 诊断报告应包含：症状 → 证据（指标/日志/变更） → 根因 → 恢复建议，且证据要可回溯 [1]。
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.994
+[22] (对抗) AssistMind 的会话列表支持按客服导出 Excel 吗？
+     命中: knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/reference/dev_flow.md、knowledge/mall/business/会员与积分规则.md
+     回答: 未找到相关文档。关于 AssistMind 会话列表按客服导出 Excel 的功能，资料未提及。
+     得分: faithfulness=0.000  context_precision=0.000  context_recall=0.000  answer_relevancy=0.000
+[23] (对抗) OPS-005 集群扩容的标准操作流程是什么？
+     命中: knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/mall/reference/shortcut.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/docker.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/mall/reference/mysql.md、knowledge/mall/config/application.yml
+     回答: 集群扩容可通过 docker-compose scale 命令实现，例如将 eureka 服务扩容至 3 个实例：doc…
+     得分: faithfulness=1.000  context_precision=0.000  context_recall=0.000  answer_relevancy=0.575
+[24] (对抗) 把连接池 max_pool_size 配置成 50 是不是就能彻底避…
+     命中: knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/mall/config/application-dev.yml、knowledge/mall/config/application-prod.yml、knowledge/ops/OPS-003-内存泄漏排查手册.md
+     回答: 不能彻底避免。连接池耗尽的常见根因除了连接池配置过小，还包括慢 SQL 或未释放连接导致连接长期被占用、突发流量超过连接…
+     得分: faithfulness=1.000  context_precision=0.833  context_recall=0.500  answer_relevancy=0.908
+[25] (对抗) 订单服务的限流阈值应该配置成多少 QPS？
+     命中: knowledge/mall/sql/mall_tables.sql、knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/mall/business/会员与积分规则.md
+     回答: 未找到关于订单服务限流阈值 QPS 配置的相关文档。
+     得分: faithfulness=0.000  context_precision=0.000  context_recall=0.000  answer_relevancy=0.819
+
+===== RAGAS 平均分 =====
+样本数: 25（对抗样本 4 条）
+answer_relevancy 为 3 问题均值（collections 循环采样，非单点采样）
+  faithfulness         = 0.738 ± 0.382（有效 17/25 行）
+  context_precision    = 0.775 ± 0.311（有效 25/25 行）
+  context_recall       = 0.820 ± 0.343（有效 25/25 行）
+  answer_relevancy     = 0.736 ± 0.223（有效 25/25 行）
+
+--- 常规样本（21 条）---
+  faithfulness         = 0.811 ± 0.301（有效 13/21 行）
+  context_precision    = 0.883 ± 0.131（有效 21/21 行）
+  context_recall       = 0.952 ± 0.147（有效 21/21 行）
+  answer_relevancy     = 0.767 ± 0.172（有效 21/21 行）
+
+--- 对抗样本（4 条）---
+  faithfulness         = 0.500 ± 0.500（有效 4/4 行）
+  context_precision    = 0.208 ± 0.361（有效 4/4 行）
+  context_recall       = 0.125 ± 0.217（有效 4/4 行）
+  answer_relevancy     = 0.575 ± 0.354（有效 4/4 行）
+
+评估完成。
+注：对抗样本（跨知识域/无对应文档/易混淆）检索不到对应文档属预期，相关指标会偏低。

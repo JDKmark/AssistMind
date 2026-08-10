@@ -1,0 +1,459 @@
+Building prefix dict from the default dictionary ...
+Loading model from cache C:\Users\sss208\AppData\Local\Temp\jieba.cache
+Loading model cost 0.489 seconds.
+Prefix dict has been built successfully.
+2026-08-10 15:51:39,761 INFO [Eval] 数据集加载完成：40 条有效（含 5 条对抗样本），跳过 0 条
+2026-08-10 15:51:39,761 WARNING [CB:llm_deepseek] 断路器未初始化，自动用内存存储创建
+2026-08-10 15:51:39,762 INFO [CB] 已初始化 10 个断路器（Redis=False）
+2026-08-10 15:51:39,762 INFO langchain-openai detected system proxy configuration and no explicit `http_socket_options` / `http_client` / `http_async_client` / `openai_proxy`; skipping the custom `httpx` transport so httpx's env-proxy auto-detection applies. Pass `http_socket_options=[...]` to opt back into kernel-level TCP keepalive tuning on top of the env proxy.
+2026-08-10 15:51:58,742 INFO [Eval] LLM 连通性探测通过（回复: 正常）
+2026-08-10 15:51:59,727 INFO [Qdrant] 连接成功，collection=assistmind_docs
+2026-08-10 15:51:59,804 INFO [BM25] 索引构建完成，294 文档
+2026-08-10 15:51:59,804 INFO [Eval] Qdrant 连接成功，BM25 索引构建 294 文档
+2026-08-10 15:51:59,804 INFO [Eval] 开始逐条执行 RAG 链路（40 条）
+2026-08-10 15:51:59,804 INFO [Eval] [1/40] 检索生成: mall 项目在 Windows 环境下如何启动 mall-
+2026-08-10 15:52:11,751 INFO Loading SentenceTransformer model from BAAI/bge-base-zh-v1.5.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-08-10 15:52:11,984 WARNING Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 55830.53it/s]
+2026-08-10 15:52:20,727 INFO [Embedding] 模型加载完成: BAAI/bge-base-zh-v1.5
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.08it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.07it/s]
+2026-08-10 15:52:21,048 INFO No device provided, using cpu
+2026-08-10 15:52:21,282 INFO No modules.json found for BAAI/bge-reranker-v2-m3, initializing a new CrossEncoder model.
+Loading weights:   0%|          | 0/393 [00:00<?, ?it/s]Loading weights: 100%|██████████| 393/393 [00:00<00:00, 7058.64it/s]
+2026-08-10 15:52:30,108 INFO [Reranker] 模型加载完成: BAAI/bge-reranker-v2-m3
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [00:43<00:43, 43.73s/it]Batches: 100%|██████████| 2/2 [00:51<00:00, 22.29s/it]Batches: 100%|██████████| 2/2 [00:51<00:00, 25.51s/it]
+2026-08-10 15:53:44,431 INFO [Eval] [2/40] 检索生成: mall 项目只启动 mall-admin 一个模块，需要安
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.63it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.62it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [00:36<00:36, 36.41s/it]Batches: 100%|██████████| 2/2 [00:44<00:00, 19.67s/it]Batches: 100%|██████████| 2/2 [00:44<00:00, 22.18s/it]
+2026-08-10 15:55:03,934 INFO [Eval] [3/40] 检索生成: Windows 下如何安装并启动 Elasticsearch
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 14.37it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:57<01:54, 57.08s/it]Batches:  67%|██████▋   | 2/3 [01:07<00:29, 29.91s/it]Batches: 100%|██████████| 3/3 [01:08<00:00, 16.35s/it]Batches: 100%|██████████| 3/3 [01:08<00:00, 22.73s/it]
+2026-08-10 15:56:35,333 INFO [Eval] [4/40] 检索生成: mall-search 模块首次使用前需要做什么？启动失败怎
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.15it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.14it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:24<04:48, 144.24s/it]Batches:  67%|██████▋   | 2/3 [02:43<01:10, 70.63s/it] Batches: 100%|██████████| 3/3 [02:44<00:00, 38.86s/it]Batches: 100%|██████████| 3/3 [02:44<00:00, 54.80s/it]
+2026-08-10 16:00:17,303 INFO [Eval] [5/40] 检索生成: mall-admin 生产环境（application-pr
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.71it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.69it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:14<04:29, 134.59s/it]Batches:  67%|██████▋   | 2/3 [02:35<01:07, 67.80s/it] Batches: 100%|██████████| 3/3 [02:36<00:00, 37.03s/it]Batches: 100%|██████████| 3/3 [02:36<00:00, 52.02s/it]
+2026-08-10 16:03:03,306 INFO [Eval] [6/40] 检索生成: 如何修改 mall-admin 的 Redis 连接配置？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.00it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [00:33<00:33, 33.74s/it]Batches: 100%|██████████| 2/2 [00:45<00:00, 20.94s/it]Batches: 100%|██████████| 2/2 [00:45<00:00, 22.86s/it]
+2026-08-10 16:04:21,148 INFO [Eval] [7/40] 检索生成: mall-search 中 Elasticsearch 的 
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 12.64it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:32<01:05, 32.59s/it]Batches:  67%|██████▋   | 2/3 [00:52<00:24, 24.90s/it]Batches: 100%|██████████| 3/3 [00:54<00:00, 14.66s/it]Batches: 100%|██████████| 3/3 [00:54<00:00, 18.19s/it]
+2026-08-10 16:05:59,927 INFO [Eval] [8/40] 检索生成: mall 生产环境 MySQL 报 Access denie
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.05it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.05it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [01:53<03:47, 113.61s/it]Batches:  67%|██████▋   | 2/3 [02:13<00:58, 58.48s/it] Batches: 100%|██████████| 3/3 [02:16<00:00, 33.36s/it]Batches: 100%|██████████| 3/3 [02:16<00:00, 45.65s/it]
+2026-08-10 16:08:57,605 INFO Retrying request to /chat/completions in 0.490592 seconds
+2026-08-10 16:09:28,529 INFO Retrying request to /chat/completions in 0.818705 seconds
+2026-08-10 16:09:55,906 INFO [Eval] [9/40] 检索生成: MySQL 全局时区怎么改成北京时间（东八区）？
+2026-08-10 16:10:09,428 INFO Retrying request to /chat/completions in 0.379715 seconds
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.47it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.45it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:52<02:52, 172.50s/it]Batches: 100%|██████████| 2/2 [03:05<00:00, 78.53s/it] Batches: 100%|██████████| 2/2 [03:05<00:00, 92.62s/it]
+2026-08-10 16:14:08,188 INFO [Eval] [10/40] 检索生成: mall 的订单表 oms_order 是做什么的？包含哪些
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.91it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.89it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:48<02:48, 168.94s/it]Batches: 100%|██████████| 2/2 [02:59<00:00, 76.01s/it] Batches: 100%|██████████| 2/2 [02:59<00:00, 89.95s/it]
+2026-08-10 16:17:51,046 INFO [Eval] [11/40] 检索生成: mall 后台用户表 ums_admin 的字段结构是什么样
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 12.94it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:46<05:33, 166.86s/it]Batches:  67%|██████▋   | 2/3 [03:06<01:20, 80.28s/it] Batches: 100%|██████████| 3/3 [03:06<00:00, 43.78s/it]Batches: 100%|██████████| 3/3 [03:06<00:00, 62.29s/it]
+2026-08-10 16:21:20,267 INFO [Eval] [12/40] 检索生成: Docker Compose 环境下 mall 的容器管理常
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.87it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.85it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [00:34<00:34, 34.93s/it]Batches: 100%|██████████| 2/2 [00:37<00:00, 16.15s/it]Batches: 100%|██████████| 2/2 [00:37<00:00, 18.97s/it]
+2026-08-10 16:22:23,136 INFO [Eval] [13/40] 检索生成: 把 application-prod.yml 中 Druid
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.98it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.97it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:15<04:30, 135.43s/it]Batches:  67%|██████▋   | 2/3 [02:29<01:04, 64.27s/it] Batches: 100%|██████████| 3/3 [02:32<00:00, 36.15s/it]Batches: 100%|██████████| 3/3 [02:32<00:00, 50.86s/it]
+2026-08-10 16:25:37,560 INFO [Eval] [14/40] 检索生成: mall 订单服务接入了什么监控告警系统，告警阈值怎么配置？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.14it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.14it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:31<05:02, 151.08s/it]Batches:  67%|██████▋   | 2/3 [02:42<01:09, 69.11s/it] Batches: 100%|██████████| 3/3 [02:44<00:00, 38.12s/it]Batches: 100%|██████████| 3/3 [02:44<00:00, 54.69s/it]
+2026-08-10 16:28:52,223 INFO [Eval] [15/40] 检索生成: 华为 Mate 60 Pro 多少钱？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.42it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.40it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:15<04:30, 135.24s/it]Batches:  67%|██████▋   | 2/3 [02:32<01:05, 65.87s/it] Batches: 100%|██████████| 3/3 [02:33<00:00, 36.06s/it]Batches: 100%|██████████| 3/3 [02:33<00:00, 51.04s/it]
+2026-08-10 16:32:02,839 INFO [Eval] [16/40] 检索生成: 小米电视 65 英寸还有货吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.32it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.32it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [03:05<06:11, 185.95s/it]Batches:  67%|██████▋   | 2/3 [03:20<01:25, 85.25s/it] Batches: 100%|██████████| 3/3 [03:23<00:00, 47.44s/it]Batches: 100%|██████████| 3/3 [03:23<00:00, 67.72s/it]
+2026-08-10 16:36:05,722 INFO [Eval] [17/40] 检索生成: 戴森 V12 吸尘器什么价格，库存多少？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.15it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.15it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:34<05:09, 154.62s/it]Batches:  67%|██████▋   | 2/3 [03:16<01:28, 88.15s/it] Batches: 100%|██████████| 3/3 [03:19<00:00, 49.52s/it]Batches: 100%|██████████| 3/3 [03:19<00:00, 66.60s/it]
+2026-08-10 16:40:09,904 INFO [Eval] [18/40] 检索生成: P003 支持快速退款吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.46it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:34<05:09, 154.82s/it]Batches:  67%|██████▋   | 2/3 [02:57<01:17, 77.31s/it] Batches: 100%|██████████| 3/3 [03:02<00:00, 44.08s/it]Batches: 100%|██████████| 3/3 [03:02<00:00, 60.81s/it]
+2026-08-10 16:43:42,177 INFO [Eval] [19/40] 检索生成: 联想拯救者笔记本 P005 有什么服务承诺？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.30it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.30it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [01:43<03:26, 103.25s/it]Batches:  67%|██████▋   | 2/3 [02:28<01:09, 69.05s/it] Batches: 100%|██████████| 3/3 [02:34<00:00, 40.19s/it]Batches: 100%|██████████| 3/3 [02:34<00:00, 51.40s/it]
+2026-08-10 16:46:28,541 INFO [Eval] [20/40] 检索生成: 订单状态 0 到 5 分别代表什么意思？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.08s/it]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.08s/it]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [03:12<06:25, 193.00s/it]Batches:  67%|██████▋   | 2/3 [03:42<01:36, 96.88s/it] Batches: 100%|██████████| 3/3 [03:42<00:00, 52.78s/it]Batches: 100%|██████████| 3/3 [03:42<00:00, 74.30s/it]
+2026-08-10 16:50:27,287 INFO [Eval] [21/40] 检索生成: 订单 20240801003 现在什么状态？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 12.12it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [03:14<03:14, 194.70s/it]Batches: 100%|██████████| 2/2 [03:59<00:00, 106.32s/it]Batches: 100%|██████████| 2/2 [03:59<00:00, 119.58s/it]
+2026-08-10 16:54:56,946 INFO [Eval] [22/40] 检索生成: 订单 20240801001 包含什么商品，实付多少？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.16it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.16it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [03:17<03:17, 197.95s/it]Batches: 100%|██████████| 2/2 [03:56<00:00, 104.40s/it]Batches: 100%|██████████| 2/2 [03:56<00:00, 118.44s/it]
+2026-08-10 16:59:22,369 INFO [Eval] [23/40] 检索生成: 订单 20240801002 为什么实付 5398 元？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.12it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.12it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:14<02:14, 134.20s/it]Batches: 100%|██████████| 2/2 [02:26<00:00, 62.28s/it] Batches: 100%|██████████| 2/2 [02:26<00:00, 73.06s/it]
+2026-08-10 17:01:56,558 INFO [Eval] [24/40] 检索生成: 7 天无理由退货是怎么规定的？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 17.32it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [01:26<01:26, 86.41s/it]Batches: 100%|██████████| 2/2 [01:40<00:00, 43.58s/it]Batches: 100%|██████████| 2/2 [01:40<00:00, 50.00s/it]
+2026-08-10 17:04:11,288 INFO [Eval] [25/40] 检索生成: 退货申请提交后多久审核？审核通过后多久退款到账？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.62it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.60it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [01:44<01:44, 104.99s/it]Batches: 100%|██████████| 2/2 [01:56<00:00, 50.00s/it] Batches: 100%|██████████| 2/2 [01:56<00:00, 58.25s/it]
+2026-08-10 17:07:16,685 INFO [Eval] [26/40] 检索生成: 退货的运费由谁承担？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.19it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.18it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:42<02:42, 162.17s/it]Batches: 100%|██████████| 2/2 [02:56<00:00, 75.34s/it] Batches: 100%|██████████| 2/2 [02:56<00:00, 88.36s/it]
+2026-08-10 17:11:01,205 INFO [Eval] [27/40] 检索生成: 申请退货需要满足什么前提？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 16.25it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [01:15<01:15, 75.41s/it]Batches: 100%|██████████| 2/2 [01:30<00:00, 40.01s/it]Batches: 100%|██████████| 2/2 [01:30<00:00, 45.32s/it]
+2026-08-10 17:12:39,534 INFO [Eval] [28/40] 检索生成: 退货申请被拒绝了怎么办？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.85it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:33<02:33, 153.39s/it]Batches: 100%|██████████| 2/2 [02:46<00:00, 70.71s/it] Batches: 100%|██████████| 2/2 [02:46<00:00, 83.11s/it]
+2026-08-10 17:15:55,600 INFO [Eval] [29/40] 检索生成: 下单后多久发货？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.80it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:42<02:42, 162.09s/it]Batches: 100%|██████████| 2/2 [02:57<00:00, 75.74s/it] Batches: 100%|██████████| 2/2 [02:57<00:00, 88.70s/it]
+2026-08-10 17:19:19,625 INFO [Eval] [30/40] 检索生成: 怎么查询我的物流？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.68it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:14<04:28, 134.08s/it]Batches:  67%|██████▋   | 2/3 [02:33<01:06, 66.85s/it] Batches: 100%|██████████| 3/3 [02:35<00:00, 37.15s/it]Batches: 100%|██████████| 3/3 [02:35<00:00, 51.89s/it]
+2026-08-10 17:22:43,117 INFO [Eval] [31/40] 检索生成: 订单 20240801001 的物流信息是什么？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.92it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.91it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:32<05:05, 152.67s/it]Batches:  67%|██████▋   | 2/3 [02:52<01:14, 74.36s/it] Batches: 100%|██████████| 3/3 [02:53<00:00, 41.02s/it]Batches: 100%|██████████| 3/3 [02:53<00:00, 57.85s/it]
+2026-08-10 17:26:10,715 INFO [Eval] [32/40] 检索生成: 为什么订单发货后物流一直不更新？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.31it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.29it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:18<04:37, 138.78s/it]Batches:  67%|██████▋   | 2/3 [02:36<01:07, 67.47s/it] Batches: 100%|██████████| 3/3 [02:39<00:00, 38.24s/it]Batches: 100%|██████████| 3/3 [02:39<00:00, 53.26s/it]
+2026-08-10 17:29:25,351 INFO [Eval] [33/40] 检索生成: 优惠券能和满减一起用吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.21it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:44<05:28, 164.43s/it]Batches:  67%|██████▋   | 2/3 [02:59<01:16, 76.69s/it] Batches: 100%|██████████| 3/3 [03:00<00:00, 42.02s/it]Batches: 100%|██████████| 3/3 [03:00<00:00, 60.15s/it]
+2026-08-10 17:32:53,885 INFO [Eval] [34/40] 检索生成: 积分怎么抵现金？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 19.26it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:33<02:33, 153.01s/it]Batches: 100%|██████████| 2/2 [02:50<00:00, 73.11s/it] Batches: 100%|██████████| 2/2 [02:50<00:00, 85.10s/it]
+2026-08-10 17:35:53,671 INFO [Eval] [35/40] 检索生成: 积分会过期吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.68it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.67it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [02:00<04:01, 120.54s/it]Batches:  67%|██████▋   | 2/3 [02:11<00:56, 56.16s/it] Batches: 100%|██████████| 3/3 [02:12<00:00, 30.70s/it]Batches: 100%|██████████| 3/3 [02:12<00:00, 44.01s/it]
+2026-08-10 17:38:30,950 INFO [Eval] [36/40] 检索生成: 怎么升级会员？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.39it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [01:06<01:06, 66.14s/it]Batches: 100%|██████████| 2/2 [01:19<00:00, 34.86s/it]Batches: 100%|██████████| 2/2 [01:19<00:00, 39.55s/it]
+2026-08-10 17:40:39,737 INFO [Eval] [37/40] 检索生成: 会员有什么特权？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.26it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [01:06<01:06, 66.11s/it]Batches: 100%|██████████| 2/2 [01:17<00:00, 33.64s/it]Batches: 100%|██████████| 2/2 [01:17<00:00, 38.51s/it]
+2026-08-10 17:42:34,462 INFO [Eval] [38/40] 检索生成: 商城支持白条或花呗分期付款吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 11.71it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [00:31<01:02, 31.22s/it]Batches:  67%|██████▋   | 2/3 [00:43<00:20, 20.33s/it]Batches: 100%|██████████| 3/3 [00:45<00:00, 11.74s/it]Batches: 100%|██████████| 3/3 [00:45<00:00, 15.15s/it]
+2026-08-10 17:43:42,184 INFO [Eval] [39/40] 检索生成: Apple AirPods Pro 支持快速退款吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 21.79it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [01:32<03:04, 92.07s/it]Batches:  67%|██████▋   | 2/3 [01:44<00:45, 45.18s/it]Batches: 100%|██████████| 3/3 [01:45<00:00, 24.85s/it]Batches: 100%|██████████| 3/3 [01:45<00:00, 35.02s/it]
+2026-08-10 17:45:38,158 INFO [Eval] [40/40] 检索生成: 戴森 V12 是免费包邮的，那退货运费是不是也全免？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 17.04it/s]
+Batches:   0%|          | 0/3 [00:00<?, ?it/s]Batches:  33%|███▎      | 1/3 [01:31<03:03, 91.63s/it]Batches:  67%|██████▋   | 2/3 [01:44<00:45, 45.29s/it]Batches: 100%|██████████| 3/3 [01:46<00:00, 25.64s/it]Batches: 100%|██████████| 3/3 [01:46<00:00, 35.58s/it]
+2026-08-10 17:47:55,547 INFO [Eval] 开始 ragas 评估：40 条样本 × 3 项指标 + answer_relevancy(3 问题均值)（评分 LLM: deepseek / deepseek-v4-flash）
+Evaluating:   0%|          | 0/120 [00:00<?, ?it/s]2026-08-10 17:48:25,929 INFO Retrying request to /chat/completions in 0.455423 seconds
+2026-08-10 17:51:26,355 INFO Retrying request to /chat/completions in 0.412446 seconds
+2026-08-10 17:54:26,121 INFO Retrying request to /chat/completions in 0.436426 seconds
+2026-08-10 17:54:57,952 INFO Retrying request to /chat/completions in 0.916268 seconds
+2026-08-10 17:55:44,114 INFO Retrying request to /chat/completions in 0.392657 seconds
+2026-08-10 17:56:12,014 ERROR Exception raised in Job[6]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 17:58:02,607 INFO Retrying request to /chat/completions in 0.379462 seconds
+2026-08-10 17:59:07,576 INFO Retrying request to /chat/completions in 0.476251 seconds
+2026-08-10 18:01:53,850 INFO Retrying request to /chat/completions in 0.490291 seconds
+2026-08-10 18:05:07,496 INFO Retrying request to /chat/completions in 0.451819 seconds
+2026-08-10 18:05:38,462 INFO Retrying request to /chat/completions in 0.875665 seconds
+2026-08-10 18:06:09,815 ERROR API call failed on attempt 1: Request timed out.
+2026-08-10 18:06:09,815 ERROR Max retries exceeded. Total attempts: 1, Last error: Request timed out.
+2026-08-10 18:06:09,815 ERROR Exception raised in Job[14]: InstructorRetryException(Request timed out.)
+2026-08-10 18:06:38,126 ERROR Exception raised in Job[15]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 18:09:11,288 INFO Retrying request to /chat/completions in 0.429406 seconds
+2026-08-10 18:09:42,078 INFO Retrying request to /chat/completions in 0.870844 seconds
+2026-08-10 18:10:13,317 ERROR API call failed on attempt 1: Request timed out.
+2026-08-10 18:10:13,317 ERROR Max retries exceeded. Total attempts: 1, Last error: Request timed out.
+2026-08-10 18:10:13,317 ERROR Exception raised in Job[18]: InstructorRetryException(Request timed out.)
+2026-08-10 18:11:30,561 INFO Retrying request to /chat/completions in 0.380560 seconds
+2026-08-10 18:17:48,118 INFO Retrying request to /chat/completions in 0.469662 seconds
+2026-08-10 18:18:16,413 ERROR Exception raised in Job[27]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 18:21:59,297 INFO Retrying request to /chat/completions in 0.377799 seconds
+2026-08-10 18:23:55,872 INFO Retrying request to /chat/completions in 0.439784 seconds
+2026-08-10 18:24:24,987 ERROR Exception raised in Job[35]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 18:27:36,533 INFO Retrying request to /chat/completions in 0.440058 seconds
+2026-08-10 18:28:07,624 INFO Retrying request to /chat/completions in 0.823429 seconds
+2026-08-10 18:28:38,930 ERROR Exception raised in Job[38]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 18:29:20,258 INFO Retrying request to /chat/completions in 0.483950 seconds
+2026-08-10 18:41:56,047 INFO Retrying request to /chat/completions in 0.423187 seconds
+2026-08-10 18:50:24,301 ERROR Exception raised in Job[69]: IncompleteOutputException(The output is incomplete due to a max_tokens length limit.)
+2026-08-10 18:55:07,674 INFO Retrying request to /chat/completions in 0.417074 seconds
+2026-08-10 19:01:30,612 INFO Retrying request to /chat/completions in 0.388919 seconds
+2026-08-10 19:02:01,653 INFO Retrying request to /chat/completions in 0.945046 seconds
+2026-08-10 19:07:00,538 INFO Retrying request to /chat/completions in 0.391164 seconds
+2026-08-10 19:14:39,362 INFO Retrying request to /chat/completions in 0.414451 seconds
+2026-08-10 19:17:08,793 INFO Retrying request to /chat/completions in 0.416705 seconds
+2026-08-10 19:17:39,550 INFO Retrying request to /chat/completions in 0.875637 seconds
+2026-08-10 19:18:10,769 ERROR API call failed on attempt 1: Request timed out.
+2026-08-10 19:18:10,769 ERROR Max retries exceeded. Total attempts: 1, Last error: Request timed out.
+2026-08-10 19:18:10,769 ERROR Exception raised in Job[98]: InstructorRetryException(Request timed out.)
+2026-08-10 19:24:49,015 INFO Retrying request to /chat/completions in 0.388853 seconds
+2026-08-10 19:25:19,743 INFO Retrying request to /chat/completions in 0.789054 seconds
+2026-08-10 19:32:36,931 INFO Retrying request to /chat/completions in 0.403441 seconds
+Evaluating:   1%|          | 1/120 [1:47:49<213:52:00, 6469.92s/it]Evaluating: 100%|██████████| 120/120 [1:47:49<00:00, 53.92s/it]    
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 24.78it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 21.50it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 31.35it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 19.70it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 34.94it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 17.67it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 41.18it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 26.39it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.90it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.30it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 34.52it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 26.23it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 38.84it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.96it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 38.12it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 18.54it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 48.10it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 19.69it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 38.06it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 27.16it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 41.28it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.21it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 42.47it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 21.60it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 27.67it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 19.80it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 33.02it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.84it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 47.19it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 29.49it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 44.09it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 26.65it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 45.00it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 31.80it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 47.58it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.79it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 42.06it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 18.91it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 49.75it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 27.92it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 47.68it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 23.24it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 44.31it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.83it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 46.01it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.84it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 45.84it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 21.25it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 38.19it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.11it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 44.71it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 34.78it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 49.20it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.55it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 46.63it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 27.79it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 44.94it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.40it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 52.19it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 34.18it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 44.74it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 23.25it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 45.87it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 19.71it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 44.43it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 27.66it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 51.47it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 35.19it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 51.45it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 36.52it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 50.31it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 29.43it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 45.43it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 29.88it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 42.31it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 21.26it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 42.23it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.93it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 36.96it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 18.26it/s]
+
+===== RAGAS 逐条评估明细 =====
+[01] (常规) mall 项目在 Windows 环境下如何启动 mall-admi…
+     命中: knowledge/mall/reference/deploy-windows.md、knowledge/mall/README/README.md、knowledge/mall/config/application.yml
+     回答: 启动 mall-admin 后端模块，需先安装 MySQL 和 Redis（仅启动 mall-admin 模块时只需这两…
+     得分: faithfulness=1.000  context_precision=0.917  context_recall=0.000  answer_relevancy=0.904
+[02] (常规) mall 项目只启动 mall-admin 一个模块，需要安装哪些中…
+     命中: knowledge/mall/README/README.md、knowledge/mall/reference/deploy-windows.md、knowledge/mall/config/application.yml
+     回答: 只启动 mall-admin 模块时，需要安装的中间件只有 MySQL 和 Redis 两个。资料明确说明“如果只启动 …
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=0.500  answer_relevancy=0.954
+[03] (常规) Windows 下如何安装并启动 Elasticsearch 及中文…
+     命中: knowledge/mall/reference/deploy-windows.md、knowledge/mall/reference/linux.md、knowledge/mall/README/README.md、knowledge/mall/reference/dev_flow.md
+     回答: Windows 下安装启动 Elasticsearch 和中文分词插件的步骤是：先下载并解压 Elasticsearch…
+     得分: faithfulness=-  context_precision=1.000  context_recall=1.000  answer_relevancy=0.966
+[04] (常规) mall-search 模块首次使用前需要做什么？启动失败怎么排查？
+     命中: knowledge/mall/reference/deploy-windows.md、knowledge/mall/reference/dev_flow.md、knowledge/mall/README/README.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md
+     回答: mall-search 首次使用前需要先调用接口导入数据（http://localhost:8081/esProduct…
+     得分: faithfulness=0.800  context_precision=1.000  context_recall=1.000  answer_relevancy=0.846
+[05] (常规) mall-admin 生产环境（application-prod.y…
+     命中: knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/mall/README/README.md、knowledge/mall/config/application.yml、knowledge/mall/reference/deploy-windows.md
+     回答: 生产环境 MySQL 连接配置为：地址 `jdbc:mysql://db:3306/mall`，用户名 `reader`…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=-  answer_relevancy=0.818
+[06] (常规) 如何修改 mall-admin 的 Redis 连接配置？
+     命中: knowledge/mall/reference/deploy-windows.md、knowledge/mall/config/application-dev.yml、knowledge/mall/config/application-prod.yml、knowledge/mall/config/application.yml、knowledge/mall/README/README.md、knowledge/mall/reference/dev_flow.md
+     回答: 修改 mall-admin 的 Redis 连接配置需要编辑对应环境配置文件中的 `spring.data.redis`…
+     得分: faithfulness=-  context_precision=0.583  context_recall=0.500  answer_relevancy=1.000
+[07] (常规) mall-search 中 Elasticsearch 的 clus…
+     命中: knowledge/mall/reference/deploy-windows.md、knowledge/mall/reference/dev_flow.md、knowledge/mall/README/README.md、knowledge/mall/config/application.yml
+     回答: 修改后需要注意的是，必须同步修改 Elasticsearch 的 cluster.name 配置，使其与 mall-se…
+     得分: faithfulness=-  context_precision=1.000  context_recall=1.000  answer_relevancy=0.831
+[08] (常规) mall 生产环境 MySQL 报 Access denied fo…
+     命中: knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/mall/reference/deploy-windows.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/mall/README/README.md、knowledge/mall/config/application.yml、knowledge/mall/reference/dev_flow.md
+     回答: 生产环境 MySQL 连接配置在 application-prod.yml 中：用户名为 `reader`，密码为 `1…
+     得分: faithfulness=0.571  context_precision=1.000  context_recall=0.500  answer_relevancy=0.615
+[09] (常规) MySQL 全局时区怎么改成北京时间（东八区）？
+     命中: knowledge/mall/reference/mysql.md、knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/docker.md、knowledge/mall/reference/linux.md
+     回答: 全局时区改成北京时间（东八区），执行 `set global time_zone = '+8:00';`，然后执行 `f…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.810
+[10] (常规) mall 的订单表 oms_order 是做什么的？包含哪些关键字段…
+     命中: knowledge/mall/business/售后服务政策.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/价格与优惠规则.md、knowledge/mall/business/演示商品与订单数据.md
+     回答: 订单表 oms_order 是电商订单主表，记录每笔订单从提交、支付、发货到完成/关闭的核心信息 [3]。关键字段包括：…
+     得分: faithfulness=-  context_precision=0.333  context_recall=0.500  answer_relevancy=0.898
+[11] (常规) mall 后台用户表 ums_admin 的字段结构是什么样的？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/售后服务政策.md、knowledge/mall/business/价格与优惠规则.md、knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/演示商品与订单数据.md
+     回答: mall 后台用户表 `ums_admin` 的字段结构共 10 个字段：id（主键）、username（用户名）、pa…
+     得分: faithfulness=1.000  context_precision=0.500  context_recall=1.000  answer_relevancy=0.907
+[12] (常规) Docker Compose 环境下 mall 的容器管理常用命令有…
+     命中: knowledge/mall/reference/docker.md、knowledge/mall/README/README.md、knowledge/mall/reference/dev_flow.md
+     回答: Docker Compose 环境下 mall 的容器管理常用命令包括：docker-compose up（构建、创建并…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=-  answer_relevancy=1.000
+[13] (对抗) 把 application-prod.yml 中 Druid 的 m…
+     命中: knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/mall/config/application.yml、knowledge/mall/README/README.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/dev_flow.md
+     回答: 调大 max-active 与能否彻底解决数据库连接问题的关系，资料未提及。检索结果仅显示 application-pr…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=-  answer_relevancy=0.000
+[14] (对抗) mall 订单服务接入了什么监控告警系统，告警阈值怎么配置？
+     命中: knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/mall/reference/function.md、knowledge/mall/reference/deploy-windows.md、knowledge/mall/config/application.yml、knowledge/mall/sql/mall_tables.sql
+     回答: mall 订单服务的监控告警系统接入及告警阈值配置资料未提及。检索结果中仅包含 Druid 数据源监控（访问监控网页需登…
+     得分: faithfulness=0.714  context_precision=0.000  context_recall=0.000  answer_relevancy=0.870
+[15] (常规) 华为 Mate 60 Pro 多少钱？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql
+     回答: 华为 Mate 60 Pro 的售价是 ¥6999（256G 雅丹黑）[1][2]。
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.972
+[16] (常规) 小米电视 65 英寸还有货吗？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/reference/dev_flow.md
+     回答: 小米电视 65 英寸有货，当前库存 100 件。[1]
+     得分: faithfulness=1.000  context_precision=0.700  context_recall=1.000  answer_relevancy=0.929
+[17] (常规) 戴森 V12 吸尘器什么价格，库存多少？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/dev_flow.md
+     回答: 戴森 V12 吸尘器售价 ¥4990，库存 80 台 [1]。
+     得分: faithfulness=1.000  context_precision=0.700  context_recall=1.000  answer_relevancy=0.927
+[18] (常规) P003 支持快速退款吗？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/售后服务政策.md
+     回答: 支持。P003（戴森 V12 吸尘器）配置的服务包括无忧退货、快速退款、免费包邮，其中快速退款对应验收通过后 24 小时…
+     得分: faithfulness=1.000  context_precision=0.967  context_recall=1.000  answer_relevancy=0.488
+[19] (常规) 联想拯救者笔记本 P005 有什么服务承诺？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md
+     回答: 联想拯救者笔记本 P005 没有额外服务承诺，不支持无忧退货、快速退款、免费包邮等权益。[3][4]
+     得分: faithfulness=1.000  context_precision=0.760  context_recall=0.500  answer_relevancy=0.961
+[20] (常规) 订单状态 0 到 5 分别代表什么意思？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/发货与物流规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/售后服务政策.md
+     回答: 订单状态 0 到 5 分别代表：0 待付款（下单未支付）、1 待发货（已支付，等待商家发货）、2 已发货（物流在途）、3…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.980
+[21] (常规) 订单 20240801003 现在什么状态？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/发货与物流规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 订单 20240801003 当前状态为“已完成”（状态值 3），商品为戴森 V12 吸尘器 ×1，实付金额 ¥4990…
+     得分: faithfulness=1.000  context_precision=0.667  context_recall=1.000  answer_relevancy=0.955
+[22] (常规) 订单 20240801001 包含什么商品，实付多少？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/服务承诺与话术.md
+     回答: 订单 20240801001 包含华为 Mate 60 Pro 1 件，实付金额为 ¥6999 [1][2]。该订单当前…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.860
+[23] (常规) 订单 20240801002 为什么实付 5398 元？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/价格与优惠规则.md
+     回答: 订单 20240801002 实付 5398 元的原因是：该订单包含两件商品——小米电视 65 英寸（3499 元）和 …
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.957
+[24] (常规) 7 天无理由退货是怎么规定的？
+     命中: knowledge/mall/business/售后服务政策.md、knowledge/mall/business/服务承诺与话术.md
+     回答: 7 天无理由退货的规定是：商品自签收次日起 7 天内可申请无理由退货，但需满足订单已完成支付且处于可售后状态，且未超过自…
+     得分: faithfulness=-  context_precision=1.000  context_recall=1.000  answer_relevancy=0.835
+[25] (常规) 退货申请提交后多久审核？审核通过后多久退款到账？
+     命中: knowledge/mall/business/售后服务政策.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql
+     回答: 审核时效是申请提交后 24 小时内处理；退款到账为商品验收通过后 3 个工作日内原路退回，若商品带「快速退款」服务则 2…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.789
+[26] (常规) 退货的运费由谁承担？
+     命中: knowledge/mall/business/售后服务政策.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/服务承诺与话术.md
+     回答: 退货运费按责任归属区分：7 天无理由（如不喜欢、拍错）由您承担；质量问题、商品破损、发错货等由商家承担，您先行垫付运费，…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.964
+[27] (常规) 申请退货需要满足什么前提？
+     命中: knowledge/mall/business/售后服务政策.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/服务承诺与话术.md
+     回答: 申请退货需同时满足以下前提：商品自签收次日起 7 天内，订单已完成支付，且订单处于已发货或已完成状态，并未超过自动完成交…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.952
+[28] (常规) 退货申请被拒绝了怎么办？
+     命中: knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/售后服务政策.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/dev_flow.md
+     回答: 退货申请被拒绝后，您可以查看拒绝原因（处理备注），如有疑问可重新提交申请并补充凭证（如图片证据）后再次审核 [1][2]…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.928
+[29] (常规) 下单后多久发货？
+     命中: knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql
+     回答: 现货商品支付成功后 48 小时内发货；预售/定制商品以商品详情页「发货时间」说明为准。发货时间从您完成支付后开始计算。
+     得分: faithfulness=1.000  context_precision=0.887  context_recall=1.000  answer_relevancy=0.749
+[30] (常规) 怎么查询我的物流？
+     命中: knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/reference/dev_flow.md
+     回答: 查询物流有两种方式：您可以在订单详情页点击「查看物流」，凭快递单号跳转快递公司官方渠道查询；也可以联系客服代查，提供订单…
+     得分: faithfulness=0.600  context_precision=0.925  context_recall=1.000  answer_relevancy=0.898
+[31] (常规) 订单 20240801001 的物流信息是什么？
+     命中: knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/发货与物流规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 订单 20240801001 的物流信息：顺丰速运，单号 SF1234567890，当前轨迹为已揽收→运输中，预计明天送…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.934
+[32] (常规) 为什么订单发货后物流一直不更新？
+     命中: knowledge/mall/business/发货与物流规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/mall/business/演示商品与订单数据.md
+     回答: 发货后物流信息多日不更新，建议您先联系快递公司核实包裹最新状态，同时客服会为您登记反馈、跟进处理。[1]
+     得分: faithfulness=0.750  context_precision=1.000  context_recall=1.000  answer_relevancy=0.861
+[33] (常规) 优惠券能和满减一起用吗？
+     命中: knowledge/mall/business/价格与优惠规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/会员与积分规则.md
+     回答: 可以，优惠券能和满减一起用。满减属于商品级优惠，优惠券属于订单级优惠，二者可以叠加 [1]。
+     得分: faithfulness=1.000  context_precision=0.917  context_recall=-  answer_relevancy=0.998
+[34] (常规) 积分怎么抵现金？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/business/价格与优惠规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 积分抵扣现金的规则是：每 100 积分抵 1 元，单笔订单最高可抵应付金额的 50%，且必须按 100 的整数倍使用 […
+     得分: faithfulness=1.000  context_precision=0.897  context_recall=1.000  answer_relevancy=0.810
+[35] (常规) 积分会过期吗？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/dev_flow.md
+     回答: 积分不会过期，本商城演示规则下积分长期有效 [1]。
+     得分: faithfulness=0.500  context_precision=1.000  context_recall=1.000  answer_relevancy=1.000
+[36] (常规) 怎么升级会员？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/dev_flow.md
+     回答: 升级会员的方式是消费获得成长值，累计达到对应等级阈值后自动升级：黄金会员需 1000 成长值、铂金会员需 5000、钻石…
+     得分: faithfulness=1.000  context_precision=0.583  context_recall=0.000  answer_relevancy=0.901
+[37] (常规) 会员有什么特权？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/发货与物流规则.md、knowledge/mall/reference/dev_flow.md
+     回答: 会员特权包括免邮特权、签到特权、评论获奖励特权、专享活动特权、会员价格特权、生日特权六项 [2]。其中，黄金会员起开通免…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.857
+[38] (对抗) 商城支持白条或花呗分期付款吗？
+     命中: knowledge/mall/README/README.md、knowledge/mall/business/会员与积分规则.md、knowledge/mall/reference/dev_flow.md、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/reference/function.md
+     回答: 不支持。商城在线支付支持支付宝、微信、银联、ApplePay，不含白条或花呗分期 [3]。
+     得分: faithfulness=0.667  context_precision=0.000  context_recall=0.000  answer_relevancy=0.815
+[39] (对抗) Apple AirPods Pro 支持快速退款吗？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/售后服务政策.md
+     回答: 不支持。Apple AirPods Pro 未配置「快速退款」服务（也无无忧退货、免费包邮等其他服务标识），因此不享受 …
+     得分: faithfulness=1.000  context_precision=0.759  context_recall=1.000  answer_relevancy=0.966
+[40] (对抗) 戴森 V12 是免费包邮的，那退货运费是不是也全免？
+     命中: knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/售后服务政策.md、knowledge/mall/business/发货与物流规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/会员与积分规则.md
+     回答: 不是，戴森 V12 的「免费包邮」仅免除首程运费，退货运费不会因此全免。
+
+根据运费承担规则，附赠「免费包邮」服务的商品…
+     得分: faithfulness=0.750  context_precision=0.417  context_recall=1.000  answer_relevancy=0.923
+
+===== RAGAS 平均分 =====
+样本数: 40（对抗样本 5 条）
+answer_relevancy 为 3 问题均值（collections 循环采样，非单点采样）
+  faithfulness         = 0.924 ± 0.146（有效 35/40 行）
+  context_precision    = 0.838 ± 0.264（有效 40/40 行）
+  context_recall       = 0.819 ± 0.337（有效 36/40 行）
+  answer_relevancy     = 0.866 ± 0.172（有效 40/40 行）
+
+--- 常规样本（35 条）---
+  faithfulness         = 0.941 ± 0.140（有效 30/35 行）
+  context_precision    = 0.895 ± 0.173（有效 35/35 行）
+  context_recall       = 0.859 ± 0.286（有效 32/35 行）
+  answer_relevancy     = 0.887 ± 0.107（有效 35/35 行）
+
+--- 对抗样本（5 条）---
+  faithfulness         = 0.826 ± 0.144（有效 5/5 行）
+  context_precision    = 0.435 ± 0.401（有效 5/5 行）
+  context_recall       = 0.500 ± 0.500（有效 4/5 行）
+  answer_relevancy     = 0.715 ± 0.361（有效 5/5 行）
+
+评估完成。
+注：对抗样本（跨知识域/无对应文档/易混淆）检索不到对应文档属预期，相关指标会偏低。
