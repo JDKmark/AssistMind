@@ -23,6 +23,7 @@ chunk_size=512, overlap=64（可配置）。
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any
 
@@ -79,7 +80,24 @@ def chunk_text(
     # - 大块尺寸（size*2=1024）：config 文件通常 <1KB（dev/prod 935 字），
     #   整体成块避免 redis 段（host/port）被 512 字硬切埋在 chunk 内导致检索 miss
     title = (metadata or {}).get("title", "")
-    if title.lower().endswith((".yml", ".yaml")) and not _HEADING_RE.search(text):
+    # 归属标识任一命中即视为配置文件：title 可能被调用方去掉扩展名
+    # （如 seed 脚本 title="application-prod"），source/doc_id 保留完整路径后缀
+    is_config = any(
+        str(metadata.get(k, "")).lower().endswith((".yml", ".yaml"))
+        for k in ("title", "source", "doc_id")
+    )
+    if is_config and not _HEADING_RE.search(text):
+        # 前缀文件名优先用带扩展名的完整名（title 无扩展名时从 source/doc_id 取）
+        name = title if title.lower().endswith((".yml", ".yaml")) else ""
+        if not name:
+            for k in ("source", "doc_id"):
+                base = os.path.basename(str(metadata.get(k, "")))
+                if base.lower().endswith((".yml", ".yaml")):
+                    name = base
+                    break
+        return _chunk_markdown(
+            f"【{name}】\n{text}", size=size * 2, ovr=ovr, metadata=metadata
+        )
         return _chunk_markdown(
             f"【{title}】\n{text}", size=size * 2, ovr=ovr, metadata=metadata
         )

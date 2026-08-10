@@ -487,6 +487,30 @@ def test_chunk_yaml_injects_filename_prefix():
     assert "jdbc:mysql://db:3306/mall" in chunks[0]["text"]
 
 
+def test_chunk_yaml_detects_via_source_when_title_bare():
+    """title 被调用方去掉扩展名时（如 seed 脚本 title="application-prod"），
+    通过 source/doc_id 路径后缀仍识别为 YAML（此前 title 无 .yml 后缀导致
+    注入逻辑从未触发，库里一直是裸配置块）。"""
+    yaml_text = (
+        "spring:\n"
+        "  datasource:\n"
+        "    url: jdbc:mysql://db:3306/mall\n"
+    )
+    chunks = chunk_text(
+        yaml_text,
+        metadata={
+            "doc_id": "config/application-prod",
+            "title": "application-prod",
+            "source": "knowledge/mall/config/application-prod.yml",
+            "category": "mall",
+            "security_group": ["user"],
+        },
+    )
+    assert len(chunks) == 1
+    assert chunks[0]["text"].startswith("【application-prod.yml】")
+    assert "jdbc:mysql://db:3306/mall" in chunks[0]["text"]
+
+
 def test_chunk_yaml_no_prefix_when_markdown():
     """带 Markdown 标题的文本不做 YAML 前缀注入（非裸配置）。"""
     md_text = "# 部署说明\n\nspring:\n  datasource:\n    url: x\n"

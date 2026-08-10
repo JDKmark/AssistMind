@@ -9,8 +9,9 @@ RBAC：通过 payload filter 按 security_group 字段过滤，不建独立权�
 
 from __future__ import annotations
 
-import logging
 import uuid
+
+import logging
 from typing import Any
 
 from qdrant_client import AsyncQdrantClient
@@ -81,7 +82,15 @@ class QdrantClient:
         try:
             points = [
                 models.PointStruct(
-                    id=str(uuid.uuid4()),
+                    # 确定性 id（uuid5(doc_id:chunk_index)）：重复 seed 幂等覆盖，
+                    # 避免 uuid4 每次新增导致库内重复点翻倍（历史 580 条重复事件）；
+                    # Qdrant 仅接受 UUID/整数 id，自定义字符串会 400
+                    id=str(
+                        uuid.uuid5(
+                            uuid.NAMESPACE_DNS,
+                            f"{c['doc_id']}:{c.get('chunk_index', idx)}",
+                        )
+                    ),
                     vector=emb,
                     payload={
                         "text": c["text"],
@@ -94,7 +103,7 @@ class QdrantClient:
                         "table_comment": c.get("table_comment", ""),
                     },
                 )
-                for c, emb in zip(chunks, embeddings)
+                for idx, (c, emb) in enumerate(zip(chunks, embeddings))
             ]
             await call_with_breaker(
                 "qdrant",
