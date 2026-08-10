@@ -1,0 +1,576 @@
+Building prefix dict from the default dictionary ...
+Loading model from cache C:\Users\sss208\AppData\Local\Temp\jieba.cache
+Loading model cost 0.486 seconds.
+Prefix dict has been built successfully.
+[信息] LLM 连通性预检中（DeepSeek → Ollama 自动降级）…
+[08/10/26 15:51:40] WARNING  [CB:llm_deepseek]           circuit_breaker.py:155
+                             断路器未初始化，自动用内存                        
+                             存储创建                                          
+                    INFO     [CB] 已初始化 10            circuit_breaker.py:146
+                             个断路器（Redis=False）                           
+                    INFO     langchain-openai detected     _client_utils.py:282
+                             system proxy configuration                        
+                             and no explicit                                   
+                             `http_socket_options` /                           
+                             `http_client` /                                   
+                             `http_async_client` /                             
+                             `openai_proxy`; skipping the                      
+                             custom `httpx` transport so                       
+                             httpx's env-proxy                                 
+                             auto-detection applies. Pass                      
+                             `http_socket_options=[...]`                       
+                             to opt back into kernel-level                     
+                             TCP keepalive tuning on top                       
+                             of the env proxy.                                 
+[信息] LLM 预检通过，响应: OK
+[信息] 启动进程内 MCP Server（随机端口）…
+[08/10/26 15:51:48] INFO     StreamableHTTP      streamable_http_manager.py:151
+                             session manager                                   
+                             started                                           
+[信息] MCP Server 已启动: http://127.0.0.1:2928/（工具走 mall 演示数据源）
+[08/10/26 15:51:49] INFO     [BM25] 索引构建完成，279 文档          bm25.py:110
+[信息] BM25 索引构建完成（knowledge/mall，279 个 chunk，Qdrant 不依赖）
+
+===== 客服 Agent 工具调用成功率评估（9 个任务，实体识别 ON） =====
+                    INFO     Created new         streamable_http_manager.py:303
+                             transport with                                    
+                             session ID:                                       
+                             243b9a716cec432ea5d                               
+                             0c4f788d32460                                     
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+                    INFO     Received session ID:        streamable_http.py:146
+                             243b9a716cec432ea5d0c4f788d                       
+                             32460                                             
+                    INFO     [MCP Client] 连接成功:                client.py:69
+                             http://127.0.0.1:2928/                            
+                    INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             202 Accepted"                                     
+                    INFO     HTTP Request: GET                  _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[08/10/26 15:52:01] WARNING  Warning: You are sending              _http.py:951
+                             unauthenticated requests to the HF                
+                             Hub. Please set a HF_TOKEN to enable              
+                             higher rate limits and faster                     
+                             downloads.                                        
+                    INFO     Loading SentenceTransformer model    model.py:1001
+                             from BAAI/bge-base-zh-v1.5.                       
+[08/10/26 15:52:11] INFO     [Embedding] 模型加载完成:          embedding.py:39
+                             BAAI/bge-base-zh-v1.5                             
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 10.41it/s]
+                    INFO     No device provided, using cpu         model.py:190
+                    INFO     No modules.json found for             model.py:990
+                             BAAI/bge-reranker-v2-m3, initializing             
+                             a new CrossEncoder model.                         
+[08/10/26 15:52:18] INFO     [Reranker] 模型加载完成:            reranker.py:35
+                             BAAI/bge-reranker-v2-m3                           
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:24<02:24, 144.19s/it]Batches: 100%|██████████| 2/2 [02:26<00:00, 60.47s/it] Batches: 100%|██████████| 2/2 [02:26<00:00, 73.02s/it]
+[08/10/26 15:54:57] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+                    INFO     [ToolAgent] 注入实体识别提示:    tool_agent.py:245
+                             （系统实体识别：已从用户问题提取                  
+                             订单号                                            
+                             20240801001，可直接用于工具参数                   
+                             ）                                                
+[08/10/26 15:55:11] INFO     [Mall]                           data_source.py:52
+                             数据源=mock（MALL_DATA_SOURCE=mo                  
+                             ck）                                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 1/9] 查订单（query_order 命中）
+  轮次 1: 查一下订单 20240801001
+    工具链 : search_knowledge({"query": "查一下订单 20240801001"}) → {'result': [{'doc_id': 'business/服务承诺与话术', 'title': '服务承诺与话术
+        query_order({"order_sn": "20240801001"}) → {'order_sn': '20240801001', 'status': '已发货', 'items': [{'pro
+    回答   : 您的订单 20240801001 状态为已发货。商品：华为 Mate 60 Pro（256G 雅丹黑）×1，实付金额 ¥6999。物流单号：SF12345678…
+    判定   : 通过（query_order 调用成功且返回已发货）
+  耗时: 205.3s  结果: 通过
+[08/10/26 15:55:14] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.25it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.23it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:36<02:36, 156.44s/it]Batches: 100%|██████████| 2/2 [02:39<00:00, 65.94s/it] Batches: 100%|██████████| 2/2 [02:39<00:00, 79.52s/it]
+[08/10/26 15:57:58] INFO     [ToolAgent] 注入实体识别提示:    tool_agent.py:245
+                             （系统实体识别：已从用户问题提取                  
+                             订单号                                            
+                             20240801001，可直接用于工具参数                   
+                             ）                                                
+[08/10/26 15:58:01] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 2/9] 查物流（query_logistics 命中）
+  轮次 1: 帮我查物流 20240801001
+    工具链 : search_knowledge({"query": "帮我查物流 20240801001"}) → {'result': [{'doc_id': 'business/服务承诺与话术', 'title': '服务承诺与话术
+        query_logistics({"order_sn": "20240801001"}) → {'result': [{'ts': '2024-08-01 16:00:00', 'content': '已揽收'},
+    回答   : 您的订单 20240801001 最新物流轨迹：08-01 16:00 已揽收 → 08-01 18:30 运输中（预计明天送达）。
+    判定   : 通过（query_logistics 命中订单 20240801001 且回答含「运输中」）
+  耗时: 173.6s  结果: 通过
+[08/10/26 15:58:07] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.44it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.42it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:23<02:23, 143.57s/it]Batches: 100%|██████████| 2/2 [02:26<00:00, 60.80s/it] Batches: 100%|██████████| 2/2 [02:26<00:00, 73.21s/it]
+[08/10/26 16:00:38] INFO     [ToolAgent] 注入实体识别提示:    tool_agent.py:245
+                             （系统实体识别：已从用户问题提取                  
+                             订单号                                            
+                             20240801001，可直接用于工具参数                   
+                             ）                                                
+[08/10/26 16:00:58] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+[08/10/26 16:01:00] INFO     [MallEntity]                entity_extractor.py:65
+                             从历史消息提取实体:                               
+                             {'order_sn': '20240801001'}                       
+                    INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 15.18it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:36<02:36, 156.44s/it]Batches: 100%|██████████| 2/2 [02:38<00:00, 65.64s/it] Batches: 100%|██████████| 2/2 [02:38<00:00, 79.26s/it]
+[08/10/26 16:03:43] INFO     [MallEntity]                entity_extractor.py:65
+                             从历史消息提取实体:                               
+                             {'order_sn': '20240801001'}                       
+                    INFO     [ToolAgent] 注入实体识别提示:    tool_agent.py:245
+                             （系统实体识别：已从用户问题提取                  
+                             订单号                                            
+                             20240801001，可直接用于工具参数                   
+                             ）                                                
+[08/10/26 16:03:45] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 3/9] 多轮物流（第二轮不带订单号，依赖实体回溯）
+  轮次 1: 查一下订单 20240801001
+    工具链 : search_knowledge({"query": "查一下订单 20240801001"}) → {'result': [{'doc_id': 'business/服务承诺与话术', 'title': '服务承诺与话术
+        query_order({"order_sn": "20240801001"}) → {'order_sn': '20240801001', 'status': '已发货', 'items': [{'pro
+    回答   : 您的订单 20240801001 已发货，商品为华为 Mate 60 Pro（256G 雅丹黑）1 件，实付金额 ¥6999，物流单号 SF1234567890…
+    判定   : 通过（query_order 调用成功且返回已发货）
+  轮次 2: 物流到哪了？
+    工具链 : search_knowledge({"query": "物流到哪了？"}) → {'result': [{'doc_id': 'business/发货与物流规则', 'title': '发货与物流规则
+        query_logistics({"order_sn": "20240801001"}) → {'result': [{'ts': '2024-08-01 16:00:00', 'content': '已揽收'},
+    回答   : 您的订单 20240801001 当前物流轨迹：已揽收 → 运输中，预计明天送达。
+    判定   : 通过（query_logistics 命中订单 20240801001 且回答含「运输中」）
+  耗时: 341.2s  结果: 通过
+[08/10/26 16:03:49] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 12.51it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [00:29<00:29, 29.25s/it]Batches: 100%|██████████| 2/2 [00:30<00:00, 12.59s/it]Batches: 100%|██████████| 2/2 [00:30<00:00, 15.09s/it]
+
+[任务 4/9] 商品咨询（价格命中）
+  轮次 1: 华为 Mate 60 Pro 多少钱？
+    工具链 : search_knowledge({"query": "华为 Mate 60 Pro 多少钱？"}) → {'result': [{'doc_id': 'business/演示商品与订单数据', 'title': '演示商品与
+    回答   : 华为 Mate 60 Pro（256G 雅丹黑）目前售价为 ¥6999，且支持无忧退货、免费包邮。
+    判定   : 通过（回答含价格 6999（query_product / 知识库路径均可））
+  耗时: 58.5s  结果: 通过
+[信息] 任务「退货流程（多轮：澄清→查单→退款）」前已重置 mall 数据源（售后单记录清空）
+[08/10/26 16:04:47] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.87it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [01:26<01:26, 86.64s/it]Batches: 100%|██████████| 2/2 [01:28<00:00, 37.05s/it]Batches: 100%|██████████| 2/2 [01:28<00:00, 44.48s/it]
+[08/10/26 16:06:56] INFO     [ToolAgent] 参数缺失，触发澄清:  tool_agent.py:173
+                             好的，请问您的订单号是多少？我需                  
+                             要先查询订单信息。                                
+                    INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.28it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [00:29<00:29, 29.00s/it]Batches: 100%|██████████| 2/2 [00:30<00:00, 12.90s/it]Batches: 100%|██████████| 2/2 [00:30<00:00, 15.32s/it]
+[08/10/26 16:07:35] INFO     [ToolAgent] 注入实体识别提示:    tool_agent.py:245
+                             （系统实体识别：已从用户问题提取                  
+                             订单号                                            
+                             20240801001，可直接用于工具参数                   
+                             ）                                                
+[08/10/26 16:07:40] INFO     [Mall]                           data_source.py:52
+                             数据源=mock（MALL_DATA_SOURCE=mo                  
+                             ck）                                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+[08/10/26 16:07:56] INFO     [ToolAgent] 参数缺失，触发澄清:  tool_agent.py:173
+                             好的，已确认您的订单                              
+                             20240801001（华为 Mate 60                         
+                             Pro，已发货）可以申请退货。请问                   
+                             您退货的原因是什么？以便为您提交                  
+                             退款申请。                                        
+                    INFO     [MallEntity]                entity_extractor.py:65
+                             从历史消息提取实体:                               
+                             {'order_sn': '20240801001'}                       
+                    INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 10.95it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [01:13<01:13, 73.69s/it]Batches: 100%|██████████| 2/2 [01:15<00:00, 31.27s/it]Batches: 100%|██████████| 2/2 [01:15<00:00, 37.63s/it]
+[08/10/26 16:09:26] INFO     [MallEntity]                entity_extractor.py:65
+                             从历史消息提取实体:                               
+                             {'order_sn': '20240801001'}                       
+                    INFO     [ToolAgent] 注入实体识别提示:    tool_agent.py:245
+                             （系统实体识别：已从用户问题提取                  
+                             订单号                                            
+                             20240801001，可直接用于工具参数                   
+                             ）                                                
+[08/10/26 16:09:51] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 5/9] 退货流程（多轮：澄清→查单→退款）
+  轮次 1: 我要退货
+    工具链 : search_knowledge({"query": "我要退货"}) → {'result': [{'doc_id': 'sql/mall_tables', 'title': 'mall_tab
+    回答   : 好的，请问您的订单号是多少？我需要先查询订单信息。
+    判定   : 通过（未直接退款，已澄清索要订单号）
+  轮次 2: 订单号是 20240801001
+    工具链 : search_knowledge({"query": "订单号是 20240801001"}) → {'result': [{'doc_id': 'business/演示商品与订单数据', 'title': '演示商品与
+        query_order({"order_sn": "20240801001"}) → {'order_sn': '20240801001', 'status': '已发货', 'items': [{'pro
+    回答   : 好的，已确认您的订单 20240801001（华为 Mate 60 Pro，已发货）可以申请退货。请问您退货的原因是什么？以便为您提交退款申请。
+    判定   : 通过（已调用 query_order 确认订单 20240801001）
+  轮次 3: 帮我申请退货，原因选不想要了
+    工具链 : search_knowledge({"query": "帮我申请退货，原因选不想要了"}) → {'result': [{'doc_id': 'business/售后服务政策', 'title': '售后服务政策',
+        apply_refund({"order_sn": "20240801001", "reason": "不想要了"}) → {'refund_id': 'AF20240801001', 'status': '处理中', 'message': '
+    回答   : 您的退货申请已提交成功，售后单号 AF20240801001，当前状态为“处理中”。我们会在审核通过后尽快为您处理退款，感谢您的耐心等待。
+    判定   : 通过（apply_refund 成功（AF20240801001）且回答含售后单号）
+  耗时: 317.7s  结果: 通过
+[信息] 任务「待付款退款被拒」前已重置 mall 数据源（售后单记录清空）
+[08/10/26 16:10:05] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 14.84it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:51<02:51, 171.55s/it]Batches: 100%|██████████| 2/2 [02:54<00:00, 72.47s/it] Batches: 100%|██████████| 2/2 [02:54<00:00, 87.33s/it]
+[08/10/26 16:13:35] INFO     [ToolAgent] 注入实体识别提示:    tool_agent.py:245
+                             （系统实体识别：已从用户问题提取                  
+                             订单号                                            
+                             20240801004，可直接用于工具参数                   
+                             ）                                                
+[08/10/26 16:13:55] INFO     [Mall]                           data_source.py:52
+                             数据源=mock（MALL_DATA_SOURCE=mo                  
+                             ck）                                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 6/9] 待付款退款被拒
+  轮次 1: 退掉 20240801004，原因不想要了
+    工具链 : search_knowledge({"query": "退掉 20240801004，原因不想要了"}) → {'result': [{'doc_id': 'business/售后服务政策', 'title': '售后服务政策',
+        query_order({"order_sn": "20240801004"}) → {'order_sn': '20240801004', 'status': '待付款', 'items': [{'pro
+    回答   : 您的订单 20240801004 当前状态为「待付款」，尚未完成支付，不符合退货/退款条件（仅已发货或已完成且未超售后期限的订单可申请）。建议您先完成支付，或如…
+    判定   : 通过（查单确认待付款后直接告知不可退（高效路径））
+  耗时: 233.1s  结果: 通过
+[08/10/26 16:13:58] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 31.69it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:47<02:47, 167.07s/it]Batches: 100%|██████████| 2/2 [02:49<00:00, 70.32s/it] Batches: 100%|██████████| 2/2 [02:49<00:00, 84.84s/it]
+[08/10/26 16:17:35] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 7/9] 未找到订单（如实告知 + 转人工）
+  轮次 1: 订单 999999 查一下
+    工具链 : search_knowledge({"query": "订单 999999 查一下"}) → {'result': [{'doc_id': 'business/演示商品与订单数据', 'title': '演示商品与
+        query_order({"order_sn": "999999"}) → {'error': '订单不存在'}
+    回答   : 未查询到订单 999999 的相关信息，建议您转人工客服进一步核实。
+    判定   : 通过（如实告知订单不存在并建议转人工）
+  耗时: 219.5s  结果: 通过
+[08/10/26 16:17:37] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.94it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:16<02:16, 136.37s/it]Batches: 100%|██████████| 2/2 [02:19<00:00, 58.18s/it] Batches: 100%|██████████| 2/2 [02:19<00:00, 69.91s/it]
+[08/10/26 16:20:02] INFO     [ToolAgent] 注入实体识别提示:    tool_agent.py:245
+                             （系统实体识别：已从用户问题提取                  
+                             商品 ID                                           
+                             P003，可直接用于工具参数，还缺or                  
+                             der_sn、reason）                                  
+
+[任务 8/9] 商品服务承诺咨询（P003 快速退款）
+  轮次 1: P003 支持快速退款吗？
+    工具链 : search_knowledge({"query": "P003 支持快速退款吗？"}) → {'result': [{'doc_id': 'business/演示商品与订单数据', 'title': '演示商品与
+    回答   : 支持。P003（戴森 V12 吸尘器）带有“快速退款”服务标识，验收通过后可极速退款，演示承诺 24 小时内原路退回（常规为 3 个工作日）。该商品同时支持无忧…
+    判定   : 通过（回答命中 P003 快速退款承诺）
+  耗时: 148.7s  结果: 通过
+[08/10/26 16:20:06] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.98it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.97it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [01:30<01:30, 90.62s/it]Batches: 100%|██████████| 2/2 [01:33<00:00, 38.77s/it]Batches: 100%|██████████| 2/2 [01:33<00:00, 46.54s/it]
+
+[任务 9/9] 退款时限咨询（知识库路径）
+  轮次 1: 退货审核通过后，退款多久到账？
+    工具链 : search_knowledge({"query": "退货审核通过后，退款多久到账？"}) → {'result': [{'doc_id': 'business/售后服务政策', 'title': '售后服务政策',
+    回答   : 退货审核通过后，退款一般在商品验收通过后 **3 个工作日内** 原路退回（支付宝/微信），具体到账时间以支付渠道为准；如果商品带有「快速退款」服务，验收通过后…
+    判定   : 通过（回答命中退款时限承诺（3 个工作日 / 快速退款 24 小时））
+  耗时: 115.7s  结果: 通过
+
+===== 评估结果（实体识别 ON） =====
+总体成功率: 9/9（100.0%）
+
+===== 客服 Agent 工具调用成功率评估（9 个任务，实体识别 OFF） =====
+[08/10/26 16:22:02] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 22.25it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:28<02:28, 148.42s/it]Batches: 100%|██████████| 2/2 [02:31<00:00, 62.76s/it] Batches: 100%|██████████| 2/2 [02:31<00:00, 75.61s/it]
+[08/10/26 16:24:56] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 1/9] 查订单（query_order 命中）
+  轮次 1: 查一下订单 20240801001
+    工具链 : search_knowledge({"query": "查一下订单 20240801001"}) → {'result': [{'doc_id': 'business/服务承诺与话术', 'title': '服务承诺与话术
+        query_order({"order_sn": "20240801001"}) → {'order_sn': '20240801001', 'status': '已发货', 'items': [{'pro
+    回答   : 您查询的订单 20240801001 状态为「已发货」，商品：华为 Mate 60 Pro（256G 雅丹黑）×1，实付金额 ¥6999，物流单号 SF1234…
+    判定   : 通过（query_order 调用成功且返回已发货）
+  耗时: 179.7s  结果: 通过
+[08/10/26 16:25:01] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.95it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:32<02:32, 152.42s/it]Batches: 100%|██████████| 2/2 [02:34<00:00, 64.17s/it] Batches: 100%|██████████| 2/2 [02:34<00:00, 77.41s/it]
+[08/10/26 16:27:57] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 2/9] 查物流（query_logistics 命中）
+  轮次 1: 帮我查物流 20240801001
+    工具链 : search_knowledge({"query": "帮我查物流 20240801001"}) → {'result': [{'doc_id': 'business/服务承诺与话术', 'title': '服务承诺与话术
+        query_logistics({"order_sn": "20240801001"}) → {'result': [{'ts': '2024-08-01 16:00:00', 'content': '已揽收'},
+    回答   : 您的订单 20240801001 当前物流轨迹：已揽收 → 运输中，预计明天送达。
+    判定   : 通过（query_logistics 命中订单 20240801001 且回答含「运输中」）
+  耗时: 192.2s  结果: 通过
+[08/10/26 16:28:14] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 11.17it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:31<02:31, 151.81s/it]Batches: 100%|██████████| 2/2 [02:34<00:00, 64.12s/it] Batches: 100%|██████████| 2/2 [02:34<00:00, 77.28s/it]
+[08/10/26 16:31:14] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+[08/10/26 16:31:32] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.42it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [03:25<03:25, 205.97s/it]Batches: 100%|██████████| 2/2 [03:31<00:00, 87.81s/it] Batches: 100%|██████████| 2/2 [03:31<00:00, 105.53s/it]
+[08/10/26 16:35:37] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 3/9] 多轮物流（第二轮不带订单号，依赖实体回溯）
+  轮次 1: 查一下订单 20240801001
+    工具链 : search_knowledge({"query": "查一下订单 20240801001"}) → {'result': [{'doc_id': 'business/服务承诺与话术', 'title': '服务承诺与话术
+        query_order({"order_sn": "20240801001"}) → {'order_sn': '20240801001', 'status': '已发货', 'items': [{'pro
+    回答   : 您的订单 20240801001 当前状态为「已发货」，商品为华为 Mate 60 Pro（256G 雅丹黑）×1，实付金额 ¥6999，物流单号 SF1234…
+    判定   : 通过（query_order 调用成功且返回已发货）
+  轮次 2: 物流到哪了？
+    工具链 : search_knowledge({"query": "物流到哪了？"}) → {'result': [{'doc_id': 'business/发货与物流规则', 'title': '发货与物流规则
+        query_logistics({"order_sn": "20240801001"}) → {'result': [{'ts': '2024-08-01 16:00:00', 'content': '已揽收'},
+    回答   : 您的订单 20240801001 当前物流轨迹为：已揽收（2024-08-01 16:00）→ 运输中（2024-08-01 18:30），预计明天送达。
+    判定   : 通过（query_logistics 命中订单 20240801001 且回答含「运输中」）
+  耗时: 472.0s  结果: 通过
+[08/10/26 16:36:06] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.78it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [00:50<00:50, 50.68s/it]Batches: 100%|██████████| 2/2 [00:54<00:00, 22.97s/it]Batches: 100%|██████████| 2/2 [00:54<00:00, 27.13s/it]
+
+[任务 4/9] 商品咨询（价格命中）
+  轮次 1: 华为 Mate 60 Pro 多少钱？
+    工具链 : search_knowledge({"query": "华为 Mate 60 Pro 多少钱？"}) → {'result': [{'doc_id': 'business/演示商品与订单数据', 'title': '演示商品与
+    回答   : 华为 Mate 60 Pro（256G 雅丹黑）的售价为 ¥6999，目前有库存，并支持无忧退货、免费包邮。请问还有什么可以帮您？
+    判定   : 通过（回答含价格 6999（query_product / 知识库路径均可））
+  耗时: 87.9s  结果: 通过
+[信息] 任务「退货流程（多轮：澄清→查单→退款）」前已重置 mall 数据源（售后单记录清空）
+[08/10/26 16:37:33] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 21.24it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:06<02:06, 126.11s/it]Batches: 100%|██████████| 2/2 [02:08<00:00, 53.45s/it] Batches: 100%|██████████| 2/2 [02:08<00:00, 64.35s/it]
+[08/10/26 16:40:13] INFO     [ToolAgent] 参数缺失，触发澄清:  tool_agent.py:173
+                             好的，请问您的订单号是多少？我需                  
+                             要先查询订单信息。如需提交退货申                  
+                             请，也请告知退货原因。                            
+                    INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.00s/it]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.01s/it]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [00:53<00:53, 53.62s/it]Batches: 100%|██████████| 2/2 [00:57<00:00, 24.23s/it]Batches: 100%|██████████| 2/2 [00:57<00:00, 28.64s/it]
+[08/10/26 16:42:04] INFO     [Mall]                           data_source.py:52
+                             数据源=mock（MALL_DATA_SOURCE=mo                  
+                             ck）                                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+[08/10/26 16:42:24] INFO     [ToolAgent] 参数缺失，触发澄清:  tool_agent.py:173
+                             好的，已为您查询到订单                            
+                             20240801001（华为 Mate 60                         
+                             Pro，¥6999），当前状态为已发货。                  
+                             请问您退货的原因是什么？我需要退                  
+                             款原因才能为您提交退货申请。                      
+                    INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.44it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.44it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [01:50<01:50, 110.07s/it]Batches: 100%|██████████| 2/2 [01:52<00:00, 46.90s/it] Batches: 100%|██████████| 2/2 [01:52<00:00, 56.38s/it]
+[08/10/26 16:44:56] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 5/9] 退货流程（多轮：澄清→查单→退款）
+  轮次 1: 我要退货
+    工具链 : search_knowledge({"query": "我要退货"}) → {'result': [{'doc_id': 'sql/mall_tables', 'title': 'mall_tab
+    回答   : 好的，请问您的订单号是多少？我需要先查询订单信息。如需提交退货申请，也请告知退货原因。
+    判定   : 通过（未直接退款，已澄清索要订单号）
+  轮次 2: 订单号是 20240801001
+    工具链 : search_knowledge({"query": "订单号是 20240801001"}) → {'result': [{'doc_id': 'business/演示商品与订单数据', 'title': '演示商品与
+        query_order({"order_sn": "20240801001"}) → {'order_sn': '20240801001', 'status': '已发货', 'items': [{'pro
+    回答   : 好的，已为您查询到订单 20240801001（华为 Mate 60 Pro，¥6999），当前状态为已发货。请问您退货的原因是什么？我需要退款原因才能为您提交…
+    判定   : 通过（已调用 query_order 确认订单 20240801001）
+  轮次 3: 帮我申请退货，原因选不想要了
+    工具链 : search_knowledge({"query": "帮我申请退货，原因选不想要了"}) → {'result': [{'doc_id': 'business/售后服务政策', 'title': '售后服务政策',
+        apply_refund({"order_sn": "20240801001", "reason": "不想要了"}) → {'refund_id': 'AF20240801001', 'status': '处理中', 'message': '
+    回答   : 您的退货申请已提交，售后单号 AF20240801001，当前状态为处理中。您选择的原因是“不想要了”，属于用户责任，退货运费需由您承担。请留意后续审核通知。
+    判定   : 通过（apply_refund 成功（AF20240801001）且回答含售后单号）
+  耗时: 447.7s  结果: 通过
+[信息] 任务「待付款退款被拒」前已重置 mall 数据源（售后单记录清空）
+[08/10/26 16:45:01] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.31it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.31it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [03:13<03:13, 193.49s/it]Batches: 100%|██████████| 2/2 [03:20<00:00, 83.55s/it] Batches: 100%|██████████| 2/2 [03:20<00:00, 100.04s/it]
+[08/10/26 16:49:11] INFO     [Mall]                           data_source.py:52
+                             数据源=mock（MALL_DATA_SOURCE=mo                  
+                             ck）                                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 6/9] 待付款退款被拒
+  轮次 1: 退掉 20240801004，原因不想要了
+    工具链 : search_knowledge({"query": "退掉 20240801004，原因不想要了"}) → {'result': [{'doc_id': 'business/售后服务政策', 'title': '售后服务政策',
+        query_order({"order_sn": "20240801004"}) → {'order_sn': '20240801004', 'status': '待付款', 'items': [{'pro
+    回答   : 您的订单 20240801004 当前状态为「待付款」，尚未支付，无法申请退货退款。请完成支付后再发起售后申请；如您不需要该订单，也可以直接取消订单。如有其他问…
+    判定   : 通过（查单确认待付款后直接告知不可退（高效路径））
+  耗时: 253.0s  结果: 通过
+[08/10/26 16:49:14] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.64it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  1.64it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:54<02:54, 174.40s/it]Batches: 100%|██████████| 2/2 [03:00<00:00, 75.19s/it] Batches: 100%|██████████| 2/2 [03:00<00:00, 90.07s/it]
+[08/10/26 16:52:27] INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+
+[任务 7/9] 未找到订单（如实告知 + 转人工）
+  轮次 1: 订单 999999 查一下
+    工具链 : search_knowledge({"query": "订单 999999 查一下"}) → {'result': [{'doc_id': 'business/演示商品与订单数据', 'title': '演示商品与
+        query_order({"order_sn": "999999"}) → {'error': '订单不存在'}
+    回答   : 未查询到订单 999999，建议您转人工客服进一步核实。
+    判定   : 通过（如实告知订单不存在并建议转人工）
+  耗时: 214.8s  结果: 通过
+[08/10/26 16:52:49] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.88it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.87it/s]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:55<02:55, 175.10s/it]Batches: 100%|██████████| 2/2 [03:01<00:00, 75.61s/it] Batches: 100%|██████████| 2/2 [03:01<00:00, 90.53s/it]
+
+[任务 8/9] 商品服务承诺咨询（P003 快速退款）
+  轮次 1: P003 支持快速退款吗？
+    工具链 : search_knowledge({"query": "P003 支持快速退款吗？"}) → {'result': [{'doc_id': 'business/演示商品与订单数据', 'title': '演示商品与
+    回答   : P003（戴森 V12 吸尘器）支持快速退款。该商品配置了无忧退货（标识1）、快速退款（标识2）、免费包邮（标识3）三项服务承诺，其中快速退款指验收通过后极速退…
+    判定   : 通过（回答命中 P003 快速退款承诺）
+  耗时: 228.9s  结果: 通过
+[08/10/26 16:56:38] INFO     [ToolAgent] Retrieval Before     tool_agent.py:221
+                             Agency: 先检索知识库                              
+                    INFO     HTTP Request: POST                 _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.57s/it]Batches: 100%|██████████| 1/1 [00:01<00:00,  1.57s/it]
+Batches:   0%|          | 0/2 [00:00<?, ?it/s]Batches:  50%|█████     | 1/2 [02:30<02:30, 150.84s/it]Batches: 100%|██████████| 2/2 [02:36<00:00, 65.56s/it] Batches: 100%|██████████| 2/2 [02:36<00:00, 78.35s/it]
+
+[任务 9/9] 退款时限咨询（知识库路径）
+  轮次 1: 退货审核通过后，退款多久到账？
+    工具链 : search_knowledge({"query": "退货审核通过后，退款多久到账？"}) → {'result': [{'doc_id': 'business/售后服务政策', 'title': '售后服务政策',
+    回答   : 退货审核通过后，您需要按提示寄回商品，商家收货验收通过后，常规商品退款会在 **3 个工作日内**原路退回（具体到账时间以支付渠道为准）；若商品带有「快速退款」…
+    判定   : 通过（回答命中退款时限承诺（3 个工作日 / 快速退款 24 小时））
+  耗时: 184.0s  结果: 通过
+
+===== 评估结果（实体识别 OFF） =====
+总体成功率: 9/9（100.0%）
+
+===== 实体识别开关对比（before/after） =====
+任务                           实体识别 ON    实体识别 OFF  
+--------------------------------------------------
+查订单（query_order 命中）          ✅ 通过       ✅ 通过      
+查物流（query_logistics 命中）      ✅ 通过       ✅ 通过      
+多轮物流（第二轮不带订单号，依赖实体回溯）        ✅ 通过       ✅ 通过      
+商品咨询（价格命中）                   ✅ 通过       ✅ 通过      
+退货流程（多轮：澄清→查单→退款）            ✅ 通过       ✅ 通过      
+待付款退款被拒                      ✅ 通过       ✅ 通过      
+未找到订单（如实告知 + 转人工）            ✅ 通过       ✅ 通过      
+商品服务承诺咨询（P003 快速退款）          ✅ 通过       ✅ 通过      
+退款时限咨询（知识库路径）                ✅ 通过       ✅ 通过      
+--------------------------------------------------
+成功率                          9/9        9/9       
+[08/10/26 16:59:42] INFO     Terminating session:        streamable_http.py:814
+                             243b9a716cec432ea5d0c4f788d                       
+                             32460                                             
+                    INFO     HTTP Request: DELETE               _client.py:1927
+                             http://127.0.0.1:2928/ "HTTP/1.1                  
+                             200 OK"                                           
+                    INFO     StreamableHTTP      streamable_http_manager.py:155
+                             session manager                                   
+                             shutting down                                     

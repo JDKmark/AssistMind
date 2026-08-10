@@ -67,3 +67,6 @@ models_cache/
 # Temp
 *.tmp
 *.bak
+
+# ZCode plans
+.zcode/

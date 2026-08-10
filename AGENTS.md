@@ -124,8 +124,9 @@ docker-compose up -d
 ### RAGAS 评估（run_eval.py）
 
 - **answer_relevancy 必须用 collections 新版**（`ragas.metrics.collections.AnswerRelevancy`，内部循环 strictness 次生成反向问题）：旧版 `ragas.metrics.answer_relevancy` 在 Instructor LLM（llm_factory 产物）下只调用一次、退化为单点采样（Ollama 等不支持 n>1 的端点），分数是单次余弦相似度、方差大——不要换回旧版
+- **反向问题必须强制与回答同语言**（run_eval.py 的 `ZhAnswerRelevancePrompt`）：默认英文指令在 DeepSeek 下随机生成英文反向问题，中文答案 + 英文问题 = 跨语言 embedding 对比无意义，ar 被随机拉低（样本级 ±0.2-0.7 波动、0.000 极端值，全量 ar 从 0.68 的假象下隐藏真实 ~0.89）；不要改回默认 prompt，不要删中文示例
 - **collections 版 embedding 接口是 `aembed_text/aembed_texts`**（不是旧版的 embed_query/embed_documents）；`ProjectEmbeddings` 已同时实现两套，新增 embedding 包装时注意
-- **运维场景语义特性**：「诊断意图 → 枚举知识」问答下 answer_relevancy 天然偏低（0.4-0.6 区间）：反向生成的问题聚焦回答的高密度实体（参数/日志关键字）而非原问题意图。该指标不作为质量闸门；事实性看 faithfulness、检索看 context_precision/context_recall、诊断链路看 run_eval_ops.py 根因命中率
+- **运维场景语义特性**：「诊断意图 → 枚举知识」问答下 answer_relevancy 曾有 0.4-0.6 偏低的记录，但语言漂移修复后实测 **0.78+（常规样本 0.81）**——原结论大部分是英文反向问题造成的假象，该指标已可正常参考；事实性仍看 faithfulness、检索看 context_precision/context_recall、诊断链路看 run_eval_ops.py 根因命中率
 
 ## 新增文件放置规则
 
@@ -137,6 +138,7 @@ docker-compose up -d
 | 运维数据源接口 | `backend/app/core/ops/base.py` | OpsDataSource ABC（async） |
 | 运维数据源实现 | `backend/app/core/ops/mock_source.py` / `real_source.py` | Mock / Prometheus+ELK |
 | 运维数据源门面 | `backend/app/core/ops/data_source.py` | 配置切换 + 降级（消费方 import 此处） |
+| 运维诊断流水线 | `backend/app/core/ops/pipeline.py` | 计划/采集/分析（Agent 编排与 SSE 流式共用，agents/ops_supervisor 只留 LangGraph 壳） |
 | 电商数据源实现 | `backend/app/core/mall/mock_source.py` / `real_source.py` | Mock / PostgreSQL |
 | 电商数据源门面 | `backend/app/core/mall/data_source.py` | 配置切换（消费方 import 此处） |
 | 实体识别 | `backend/app/core/mall/entity_extractor.py` | 规则抽取 + 工具参数补填映射 |
@@ -149,7 +151,7 @@ docker-compose up -d
 | 前端 Store | `frontend/src/stores/` | 功能名.js |
 | 前端 API | `frontend/src/api/` | 功能名.js |
 | 知识库文档 | `knowledge/` | 按来源分子目录（ops/ 运维手册、mall/ 商城文档） |
-| 知识库灌库 | `backend/scripts/` | seed_ops_kb.py / seed_mall_kb.py（结构感知切分，--reset 幂等） |
+| 知识库灌库 | `backend/app/core/rag/seeder.py`（公共逻辑）+ `backend/scripts/`（seed_ops_kb.py / seed_mall_kb.py，仅保留文档加载与 metadata） | 结构感知切分，--reset 幂等；upsert 用确定性 uuid5 id（doc_id:chunk_index），重复 seed 不翻倍 |
 | 意图路由配置 | `backend/app/data/` | intent_routes.json |
 | 评估脚本 | `backend/scripts/` | run_eval.py（RAGAS 评估）/ run_eval_ops.py（OPS 根因命中率） |
 | 评估数据集 | `backend/app/data/` | eval_qa.json（OPS）/ eval_mall_qa.json（mall），question / ground_truth / adversarial 字段 |

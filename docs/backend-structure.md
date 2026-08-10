@@ -32,7 +32,8 @@ response_generator）逐项对账后发现一个明确缺口：
 |---|---|---|---|
 | `api/chat` | SSE 聊天入口：意图分流 + 事件流编排 | `POST /api/v1/chat/ask` → SSE | agents、core/router、core/rag、core/dialog |
 | `agents/tool_agent` | ReAct 循环 + MCP 工具调用 + 实体补填 | `run(query, history) -> {answer, tool_calls, ...}` | core/mcp、core/mall/entity_extractor、core/dialog |
-| `agents/ops_supervisor` | 运维诊断三节点编排 | `run(query) -> {report, ...}` | core/ops、core/rag |
+| `agents/ops_supervisor` | 运维诊断三节点编排（LangGraph 壳，流程见 core/ops/pipeline） | `run(query) -> {report, ...}` | core/ops/pipeline、core/rag |
+| `core/ops/pipeline` | 诊断流水线：计划 → 采集 → 分析（Agent 与 SSE 流式共用） | `_plan(query)` / `collect(plan, query)` / `analyze(query, evidence)` | core/ops/data_source、core/ticket_service、core/rag |
 | `core/router/intent` | 三级意图路由（规则→语义→LLM） | `route(query) -> {intent, confidence, source}` | core/data（intent_routes.json） |
 | `core/mall/entity_extractor` | 订单号/商品 ID 规则抽取 + 工具参数补填 | `extract(query, history) -> {order_sn, product_id}` | 无 |
 | `core/rag/engine` | RAG 检索 + 生成编排 | `retrieve(query) -> {contexts, crag}` / `generate(...)` | core/rag/*、core/dialog |
