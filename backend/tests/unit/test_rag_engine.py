@@ -173,3 +173,23 @@ async def test_answer_generate_success():
     assert result["answer"] == "生成的答案"
     assert len(result["sources"]) == 1
     assert result["degraded"] == []
+
+
+def test_dedup_keeps_similar_chunks_from_different_docs():
+    """跨文档高相似 chunk 不去重：dev/prod 配置文本几乎相同但都是独立事实源。
+
+    回归背景：[05] 生产 MySQL 配置查询中 application-prod.yml 被 Jaccard
+    去重误删（与 dev 配置相似度 >0.8），检索只剩 dev → LLM 答"资料未提及"。
+    """
+    dev = {"doc_id": "config/application-dev", "text": "【application-dev.yml】spring: datasource: url: jdbc:mysql://localhost:3306/mall username: reader password: 123456"}
+    prod = {"doc_id": "config/application-prod", "text": "【application-prod.yml】spring: datasource: url: jdbc:mysql://db:3306/mall username: reader password: 123456"}
+    result = engine._dedup([dev, prod], threshold=0.8)
+    assert len(result) == 2  # 跨文档不判重
+
+
+def test_dedup_removes_duplicate_chunks_within_same_doc():
+    """同一 doc_id 内高相似 chunk 仍去重（同文档相邻块重复无信息量）。"""
+    doc = {"doc_id": "doc/a", "text": "同一配置段落重复内容甲乙丙丁戊"}
+    dup = {"doc_id": "doc/a", "text": "同一配置段落重复内容甲乙丙丁戊"}
+    result = engine._dedup([doc, dup], threshold=0.8)
+    assert len(result) == 1

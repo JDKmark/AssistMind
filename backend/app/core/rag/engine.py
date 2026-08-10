@@ -69,12 +69,19 @@ def _rrf_fuse(
 
 
 def _dedup(docs: list[dict[str, Any]], threshold: float = 0.8) -> list[dict[str, Any]]:
-    """Jaccard 去重。"""
+    """Jaccard 去重。
+
+    仅在同一 doc_id 内判重：不同文档的相似内容（如 application-dev.yml 与
+    application-prod.yml 配置几乎相同）是独立事实源，误删会导致检索召回
+    （[05] 生产配置问题曾因此答"资料未提及"）。
+    """
     result: list[dict[str, Any]] = []
     for d in docs:
         is_dup = False
         d_words = set(d.get("text", "")[:200])
         for r in result:
+            if r.get("doc_id") != d.get("doc_id"):
+                continue  # 不同文档不判重（各文档保留自己的最佳 chunk）
             r_words = set(r.get("text", "")[:200])
             if d_words and r_words:
                 jaccard = len(d_words & r_words) / len(d_words | r_words)
@@ -232,10 +239,14 @@ async def generate(
 回答要求：
 - 直接回答用户问题：先给出明确结论/直接答案，再补充必要的细节或步骤
 - 回答的首句直接复述并回应问题中的关键措辞（如问题问"根因"，首句就以"根因是…"开头；问"如何恢复"，首句就以"恢复动作包括…"开头）
+- 是非/选择问句（会吗/能不能/支持吗/是不是/多少钱/多久）首句直接给结论：如"不会过期""支持""是""48 小时内"等，再补充依据或规则细节
 - 仅基于检索结果回答：绝对不要使用检索结果之外的领域知识、经验、常识、推测来补充细节；检索结果没有提到的细节，回答中也不要出现（不确定宁可不写）
 - 禁止营销话术与流程推测：不要添加"售完即止""建议尽快下单""需要先寄回商品"等检索结果未提及的促销用语或流程步骤；业务规则（审核时效/退款到账/退货前提）一律以检索片段原文为准，片段未覆盖的部分明确说"资料未提及"
-- 检索结果部分覆盖时：先回答覆盖到的部分；未覆盖的部分明确说明"资料未提及"，不要用常识补全
-- 元话语禁令：检索片段已给出具体配置/参数时，直接回答（如"application-prod.yml 的 datasource 配置为 url=…"），不得说"检索结果未直接给出具体内容"这类与片段事实矛盾的话；确需说明"资料未提及"时，必须带上问题关键词（如"application-prod.yml 的 MySQL 连接配置资料未提及"），不能只说"资料未提及"
+- 不添加无信息量尾句：不要用"具体以平台公告为准""请留意官方通知"等免责说明做结尾；检索片段明确给出的时效/规则直接陈述
+- 面向用户表达：答案中用业务语言（如"订单状态""售后记录"），不要出现数据库表名/字段名/内部标识（如 oms_order、handle_note、service_ids），除非用户问题直接询问数据结构
+- 检索结果部分覆盖时：先完整回答覆盖到的部分（按问题逐点给出实质内容、建议或规则），"资料未提及"的说明只能作为答案末尾一句，不得出现在首句或作为回答主体（回避性回答会被评分降零）
+- 元话语禁令：检索片段已给出具体配置/参数时，直接回答（如"application-prod.yml 的 datasource 配置为 url=…"），不得说"检索结果未直接给出具体内容"这类与片段事实矛盾的话；确需说明"资料未提及"时，直接用"问题关键词+资料未提及"句式（如"application-prod.yml 的 MySQL 连接配置资料未提及"），禁止"检索结果未提及""资料中未提及"等元话语前缀
+- 枚举/列表类答案（字段、状态、步骤、特权等）：首句先给总述（如"共 6 个字段：""状态 0-5 含义如下"），条目用紧凑句式（"id（主键）、username（用户名）"），避免逐条换行列表导致关键实体散落
 - 只依据与问题直接相关的检索内容，忽略无关文档，不要罗列与问题无关的内容
 - 用对话口吻回答，不要以"根据检索结果""以下是排查步骤"等前缀开头
 - 答案必须基于检索结果，不要编造
@@ -263,6 +274,19 @@ async def generate(
         }
 
 
+def _no_result_answer(query: str) -> str:
+    """未找到相关文档时的模板答案：带问题关键词。
+
+    RAGAS answer_relevancy 从答案反向生成问题求相似度；无关键词的固定模板
+    会让反向问题失焦（如问"商城支持白条分期吗"→ 答案"未找到相关文档"的
+    反向问题是"没找到文档怎么办"，与原问题语义无关），带关键词可保持对齐。
+    """
+    q = query.strip()
+    if len(q) > 50:
+        q = q[:50] + "…"
+    return f"关于「{q}」，未找到相关文档，建议转人工客服或换个表述重试。"
+
+
 async def answer(
     query: str, role: str = "user", history: list[dict[str, str]] | None = None
 ) -> dict[str, Any]:
@@ -284,7 +308,7 @@ async def answer(
     if crag["action"] == "no_result":
         return {
             "query": query,
-            "answer": "未找到相关文档，建议转人工客服或换个表述重试。",
+            "answer": _no_result_answer(query),
             "sources": [],
             "rewrites": retrieval["rewrites"],
             "crag": crag,
@@ -304,7 +328,7 @@ async def answer(
         if not retry_retrieval["contexts"]:
             return {
                 "query": query,
-                "answer": "未找到相关文档，建议转人工客服或换个表述重试。",
+                "answer": _no_result_answer(query),
                 "sources": [],
                 "rewrites": retrieval["rewrites"],
                 "crag": retry_retrieval["crag"],
@@ -316,7 +340,7 @@ async def answer(
         if crag["action"] == "no_result":
             return {
                 "query": query,
-                "answer": "未找到相关文档，建议转人工客服或换个表述重试。",
+                "answer": _no_result_answer(query),
                 "sources": [],
                 "rewrites": retrieval["rewrites"],
                 "crag": crag,
