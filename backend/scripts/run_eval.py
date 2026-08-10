@@ -80,6 +80,11 @@ from ragas.metrics import (  # noqa: E402
     faithfulness,
 )
 from ragas.metrics.collections import AnswerRelevancy as CollectionsAnswerRelevancy  # noqa: E402
+from ragas.metrics.collections.answer_relevancy.util import (  # noqa: E402
+    AnswerRelevanceInput,
+    AnswerRelevanceOutput,
+    AnswerRelevancePrompt,
+)
 
 from app.config import get_settings  # noqa: E402
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm  # noqa: E402
@@ -318,6 +323,42 @@ def build_ragas_llm(async_client: bool = False):
     )
 
 
+class ZhAnswerRelevancePrompt(AnswerRelevancePrompt):
+    """反向问题生成 prompt：强制与回答同语言（中文）。
+
+    默认英文指令在 DeepSeek 下会随机生成英文反向问题，跨语言 embedding
+    相似度极低 → answer_relevancy 被随机拉低（0-3 个英文问题，样本级
+    ±0.2-0.7 波动，甚至 noncommittal 判定后的 0.000 极端值）。中文答案
+    必须生成中文问题，跨语言对比无意义。
+    """
+
+    instruction = """Generate a question for the given answer and identify if the answer is noncommittal.
+The question MUST be written in the SAME LANGUAGE as the answer (if the answer is Chinese, write the question in Chinese).
+Give noncommittal as 1 if the answer is noncommittal (evasive, vague, or ambiguous) and 0 if the answer is substantive.
+Examples of noncommittal answers: "I don't know", "I'm not sure", "It depends"."""
+
+    examples = [
+        (
+            AnswerRelevanceInput(response="华为 Mate 60 Pro 售价 6999 元。"),
+            AnswerRelevanceOutput(question="华为 Mate 60 Pro 多少钱？", noncommittal=0),
+        ),
+        (
+            AnswerRelevanceInput(
+                response="我无法回答这个问题，因为我没有相关信息。"
+            ),
+            AnswerRelevanceOutput(question="这个问题有答案吗？", noncommittal=1),
+        ),
+    ]
+
+
+class ZhAnswerRelevancy(CollectionsAnswerRelevancy):
+    """collections AnswerRelevancy + 中文反向问题约束（见 ZhAnswerRelevancePrompt）。"""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.prompt = ZhAnswerRelevancePrompt()
+
+
 async def run_evaluation(rows: list[dict]):
     """构造 ragas 数据集并执行评估。
 
@@ -352,6 +393,7 @@ async def run_evaluation(rows: list[dict]):
         settings.LLM_PROVIDER,
         settings.DEEPSEEK_MODEL if settings.LLM_PROVIDER != "ollama" else settings.OLLAMA_MODEL,
     )
+
     result = await aevaluate(
         dataset=dataset,
         metrics=EVAL_METRICS,
@@ -363,7 +405,7 @@ async def run_evaluation(rows: list[dict]):
 
     # answer_relevancy：collections 版逐条循环采样（strictness=3）；
     # 需要 AsyncOpenAI client（ascore 内部调 llm.agenerate）
-    ar_metric = CollectionsAnswerRelevancy(
+    ar_metric = ZhAnswerRelevancy(
         llm=build_ragas_llm(async_client=True), embeddings=embeddings, strictness=3
     )
     for row, score_row in zip(rows, result.scores):
