@@ -277,3 +277,98 @@ async def test_list_tickets_with_filter(mock_redis, mock_session_cls):
     assert result["tickets"][1]["id"] == "TK-b"
     # 两次 execute（列表 + 计数）
     assert session.execute.await_count == 2
+
+
+# ---------- 9. 用户确认关闭自己的工单（resolved → closed） ----------
+
+
+@patch("app.core.ticket_service.async_session")
+@patch("app.core.ticket_service.get_redis")
+async def test_update_status_user_closes_own_resolved_ticket(mock_redis, mock_session_cls):
+    """user 关闭本人 resolved 工单：成功（resolved→closed 允许 user 角色）。"""
+    session = _make_session()
+    ticket = Ticket(
+        id="TK-own",
+        title="t",
+        description="d",
+        priority="normal",
+        status="resolved",
+        user_id="user1",
+    )
+    query_result = MagicMock()
+    query_result.scalar_one_or_none = MagicMock(return_value=ticket)
+    session.execute = AsyncMock(return_value=query_result)
+    _bind_session(mock_session_cls, session)
+    mock_redis.return_value = _make_redis(connected=False)
+
+    result = await update_status("TK-own", "closed", user_role="user", user_id="user1")
+
+    assert result == {"ticket_id": "TK-own", "status": "closed"}
+    assert ticket.status == "closed"
+    session.commit.assert_awaited_once()
+
+
+@patch("app.core.ticket_service.async_session")
+@patch("app.core.ticket_service.get_redis")
+async def test_update_status_user_cannot_close_others_ticket(mock_redis, mock_session_cls):
+    """user 关闭他人工单：抛 PermissionError（归属校验），不提交。"""
+    session = _make_session()
+    ticket = Ticket(
+        id="TK-other",
+        title="t",
+        description="d",
+        priority="normal",
+        status="resolved",
+        user_id="user2",
+    )
+    query_result = MagicMock()
+    query_result.scalar_one_or_none = MagicMock(return_value=ticket)
+    session.execute = AsyncMock(return_value=query_result)
+    _bind_session(mock_session_cls, session)
+    mock_redis.return_value = _make_redis(connected=False)
+
+    with pytest.raises(PermissionError):
+        await update_status("TK-other", "closed", user_role="user", user_id="user1")
+
+    session.commit.assert_not_awaited()
+    assert ticket.status == "resolved"
+
+
+@patch("app.core.ticket_service.async_session")
+@patch("app.core.ticket_service.get_redis")
+async def test_update_status_admin_closes_others_resolved_ticket(mock_redis, mock_session_cls):
+    """admin 关闭他人 resolved 工单仍成功（归属校验仅约束 user 角色）。"""
+    session = _make_session()
+    ticket = Ticket(
+        id="TK-admin",
+        title="t",
+        description="d",
+        priority="normal",
+        status="resolved",
+        user_id="user2",
+    )
+    query_result = MagicMock()
+    query_result.scalar_one_or_none = MagicMock(return_value=ticket)
+    session.execute = AsyncMock(return_value=query_result)
+    _bind_session(mock_session_cls, session)
+    mock_redis.return_value = _make_redis(connected=False)
+
+    result = await update_status("TK-admin", "closed", user_role="admin", user_id="admin")
+
+    assert result == {"ticket_id": "TK-admin", "status": "closed"}
+    session.commit.assert_awaited_once()
+
+@patch("app.core.ticket_service.async_session")
+async def test_list_tickets_filters_priority(mock_session_cls):
+    session = _make_session()
+    list_result = MagicMock()
+    list_result.scalars.return_value.all.return_value = []
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 0
+    session.execute = AsyncMock(side_effect=[list_result, count_result])
+    _bind_session(mock_session_cls, session)
+
+    result = await list_tickets(priority="urgent", limit=10, offset=0)
+
+    assert result == {"tickets": [], "total": 0}
+    assert "tickets.priority" in str(session.execute.await_args_list[0].args[0])
