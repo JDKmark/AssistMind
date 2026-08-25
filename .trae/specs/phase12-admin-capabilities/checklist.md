@@ -1,0 +1,36 @@
+# phase12-admin-capabilities Checklist
+
+- [ ] Scenario: 管理员查看业务概览 → admin 获得六组统计和 degraded 列表。
+- [ ] Scenario: 非管理员访问业务概览 → agent/user 返回 403。
+- [ ] Scenario: 外部统计源降级 → 不可用域零值且 degraded 标记，其他域正常。
+- [ ] Scenario: 管理员筛选普通用户 → 分页、角色和关键词过滤正确，不返回密码摘要。
+- [ ] Scenario: 普通用户调整为客服 → 角色更新成功，新登录 JWT 为 agent，审计可查。
+- [ ] Scenario: 停用普通账号 → 后续登录返回 403，不签发 token，审计可查。
+- [ ] Scenario: 拒绝授予管理员角色 → 返回 422，角色不变，无成功审计。
+- [ ] Scenario: 拒绝修改管理员账号 → 返回 403，角色与启用状态不变。
+- [ ] Scenario: 按用户筛选退款 → 仅返回该用户订单关联退款和正确 total。
+- [ ] Scenario: 非管理员查询退款 → agent/user 返回 403。
+- [ ] Scenario: 管理员通过退款 → 状态变为已通过，审计可查。
+- [ ] Scenario: 拒绝退款终态重复流转 → 返回 400，状态不变，无成功审计。
+- [ ] Scenario: Mock 与 Real 退款契约一致 → 字段、状态机和非法流转语义一致。
+- [ ] Scenario: 查询角色变更审计 → 返回操作者、目标、旧值、新值和时间。
+- [ ] Scenario: 审计写入失败旁路 → 业务结果成功且记录 warning。
+- [ ] Scenario: 管理员处理退款 → 页面刷新退款列表和概览并显示结果。
+- [ ] Scenario: 管理员调整用户角色 → 页面刷新用户、概览和审计。
+- [ ] Scenario: 管理员全局处理工单 → 状态/优先级/客户筛选和合法流转可用。
+- [ ] Scenario: 页面部分数据失败 → 单视图错误不阻塞其他视图。
+- [ ] Scenario: 停用账号登录 → 403“账号已停用”。
+- [ ] Scenario: 前后端权限一致 → 非 admin 无菜单，直接 API 访问 403。
+- [ ] Scenario: 既有反馈追溯 → 问题、回答、来源、CRAG、降级、Langfuse 链接保持可用。
+- [ ] Scenario: 既有知识库管理 → 删除和重建继续复用原接口。
+- [ ] 现有 `/api/v1/chat/ask` SSE 契约无变化。
+- [ ] 现有 `/api/v1/mall/orders` 与 `/api/v1/mall/my-orders` 响应形状无变化。
+- [ ] 现有订单、物流、退款申请 owner 授权不放宽。
+- [ ] 现有工单 user/agent/admin 权限和状态机不放宽。
+- [ ] OPS 路由、运维数据源和诊断逻辑无修改。
+- [ ] 后端非 integration 测试通过；已知 Langfuse 环境污染失败如仍存在则明确记录。
+- [ ] PostgreSQL 管理/商城相关 integration 测试通过，或明确记录 Docker 不可用。
+- [ ] Ruff 通过。
+- [ ] 前端单元测试全绿。
+- [ ] 未添加 TypeScript 文件、未引入新 UI 框架、HTTP 请求均在 `frontend/src/api/`。
+- [ ] 所有数据库和外部调用保持 async/await；异常不静默 pass。

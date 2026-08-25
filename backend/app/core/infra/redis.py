@@ -80,6 +80,15 @@ class RedisClient:
             logger.warning("[Redis] INCR %s 失败: %s", key, e)
             return 0
 
+    async def expire(self, key: str, ttl: int) -> bool:
+        if not self._client:
+            return False
+        try:
+            return bool(await self._client.expire(key, ttl))
+        except Exception as e:
+            logger.warning("[Redis] EXPIRE %s 失败: %s", key, e)
+            return False
+
     async def zadd(self, key: str, mapping: dict[str, float]) -> bool:
         if not self._client:
             return False

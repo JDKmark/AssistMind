@@ -209,9 +209,10 @@ async def generate(
     Returns:
         {
             "answer": str,
-            "sources": [{doc_id, title, source, snippet}],
+            "sources": [{doc_id, title, source, snippet, text, score}],
             "degraded": bool
         }
+        text 为检索片段全文（追溯展开用）；snippet 为前 100 字列表标题。
     """
     ctx_text = "\n\n".join(
         [f"[{i+1}] {c.get('text', '')}" for i, c in enumerate(contexts)]
@@ -222,6 +223,7 @@ async def generate(
             "title": c.get("title", ""),
             "source": c.get("source", ""),
             "snippet": c.get("text", "")[:100],
+            "text": c.get("text", ""),
             "score": c.get("rerank_score", c.get("rrf_score", 0)),
         }
         for c in contexts
@@ -287,6 +289,68 @@ def _no_result_answer(query: str) -> str:
     return f"关于「{q}」，未找到相关文档，建议转人工客服或换个表述重试。"
 
 
+# 公开别名：供 chat SSE 链路复用（聊天路径不再绕过 no_result 门禁）
+no_result_answer = _no_result_answer
+
+
+def should_rewrite_retry(retrieval: dict[str, Any]) -> bool:
+    """CRAG 是否触发被动改写二次检索（answer 与 chat SSE 共用，防决策漂移）。
+
+    条件：评估 action == "rewrite_retry" 且查询改写未降级（改写失败时无可用变体）。
+    """
+    return (
+        retrieval["crag"]["action"] == "rewrite_retry"
+        and not retrieval["rewrites"]["degraded"]
+    )
+
+
+def retry_query_for(retrieval: dict[str, Any], query: str) -> str:
+    """二次检索使用的查询（改写变体优先，无变体回退原问题）。"""
+    variants = retrieval["rewrites"].get("variants") or []
+    return variants[0] if variants else query
+
+
+async def resolve_retrieval(
+    query: str,
+    role: str,
+    retrieval: dict[str, Any],
+    on_retry=None,
+) -> tuple[list[dict[str, Any]], dict[str, Any], list[str]]:
+    """在一次 retrieve 结果之上做 CRAG 后续决策。
+
+    answer() 与 chat SSE 链路共用，避免聊天路径绕过 no_result / rewrite_retry 门禁：
+
+    - action == "no_result" → 短路，返回空 contexts（调用方应走 no_result_answer，不再生成）
+    - should_rewrite_retry → 用改写变体二次检索；重检索后仍空 / 仍 no_result → 返回空 contexts
+    - 否则 → 原样返回
+
+    on_retry: 可选的 async 回调，在真正发起二次检索前调用（SSE 链路用来插 rewriting 事件）。
+
+    Returns:
+        (contexts, crag, degraded)
+        contexts 为空列表表示应走"未找到"兜底。
+    """
+    crag = retrieval["crag"]
+    contexts = retrieval["contexts"]
+    degraded = list(retrieval["degraded"])
+
+    if crag["action"] == "no_result":
+        return [], crag, degraded
+
+    if should_rewrite_retry(retrieval):
+        retry_query = retry_query_for(retrieval, query)
+        if on_retry:
+            await on_retry()
+        retry_retrieval = await retrieve(retry_query, role=role)
+        degraded = degraded + retry_retrieval["degraded"]
+        # P1 修复：重检索后必须重新检查 no_result / 空 contexts，避免错误生成
+        if not retry_retrieval["contexts"] or retry_retrieval["crag"]["action"] == "no_result":
+            return [], retry_retrieval["crag"], degraded
+        return retry_retrieval["contexts"], retry_retrieval["crag"], degraded
+
+    return contexts, crag, degraded
+
+
 async def answer(
     query: str, role: str = "user", history: list[dict[str, str]] | None = None
 ) -> dict[str, Any]:
@@ -301,51 +365,17 @@ async def answer(
     # 1. 检索
     retrieval = await retrieve(query, role=role)
 
-    # 2. CRAG 决策
-    crag = retrieval["crag"]
-    contexts = retrieval["contexts"]
-
-    if crag["action"] == "no_result":
+    # 2. CRAG 决策（no_result 短路 / rewrite_retry 二次检索，与 chat SSE 链路共用 resolve_retrieval）
+    contexts, crag, degraded = await resolve_retrieval(query, role, retrieval)
+    if not contexts:
         return {
             "query": query,
             "answer": _no_result_answer(query),
             "sources": [],
             "rewrites": retrieval["rewrites"],
             "crag": crag,
-            "degraded": retrieval["degraded"],
+            "degraded": degraded,
         }
-
-    # P1 修复：rewrite_retry 重检索后必须重新检查 no_result
-    if crag["action"] == "rewrite_retry" and not retrieval["rewrites"]["degraded"]:
-        # 被动改写重检索一次
-        retry_query = (
-            retrieval["rewrites"]["variants"][0]
-            if retrieval["rewrites"]["variants"]
-            else query
-        )
-        retry_retrieval = await retrieve(retry_query, role=role)
-        # 修复：重检索后 contexts 为空，直接返回"未找到"，避免错误生成
-        if not retry_retrieval["contexts"]:
-            return {
-                "query": query,
-                "answer": _no_result_answer(query),
-                "sources": [],
-                "rewrites": retrieval["rewrites"],
-                "crag": retry_retrieval["crag"],
-                "degraded": retrieval["degraded"] + retry_retrieval["degraded"],
-            }
-        contexts = retry_retrieval["contexts"]
-        crag = retry_retrieval["crag"]
-        # 修复：重检索后必须重新检查 no_result
-        if crag["action"] == "no_result":
-            return {
-                "query": query,
-                "answer": _no_result_answer(query),
-                "sources": [],
-                "rewrites": retrieval["rewrites"],
-                "crag": crag,
-                "degraded": retrieval["degraded"] + retry_retrieval["degraded"],
-            }
 
     # 3. 生成
     gen = await generate(query, contexts, history)
@@ -356,5 +386,5 @@ async def answer(
         "sources": gen["sources"],
         "rewrites": retrieval["rewrites"],
         "crag": crag,
-        "degraded": retrieval["degraded"] + (["llm"] if gen["degraded"] else []),
+        "degraded": degraded + (["llm"] if gen["degraded"] else []),
     }

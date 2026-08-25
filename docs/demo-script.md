@@ -8,7 +8,13 @@
 
 ## 一、演示准备（提前 10 分钟）
 
-### 1. 环境启动（PowerShell，仓库根目录）
+### 1. 环境启动（推荐：一键脚本 + 手动两条通道）
+
+**一键启动（Windows PowerShell，仓库根）**：`.\start-demo.ps1`
+
+会预检 Docker 与 `DEEPSEEK_API_KEY`、启动基础设施并等健康、自动建库 + 首启灌库（集合非空则秒起跳过）、拉起前后端，最后打印演示数据速查表。
+
+**手动启动（备用，PowerShell，仓库根）**
 
 ```powershell
 # 依赖服务（PostgreSQL/Qdrant/Redis 等，约 40s）
@@ -25,6 +31,9 @@ venv\Scripts\python.exe scripts/seed_ops_kb.py --reset    # 运维知识库
 venv\Scripts\python.exe -m uvicorn app.main:app --port 8001
 cd ..\frontend; npm run dev
 ```
+
+> **线上演示**（面试官在外网远程看）：部署到云服务器后打开 `http://<服务器IP>/`，见 `deploy/README.md`；
+> 临时应急可本机起 `start-demo.ps1` 后 `cloudflared tunnel --url http://localhost:5173` 拿公网 https 链接。
 
 ### 2. 演示数据清单（背熟，现场直接念）
 

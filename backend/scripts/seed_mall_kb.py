@@ -1,10 +1,12 @@
 """灌入 mall 商城知识库到 Qdrant。
 
-用法：python scripts/seed_mall_kb.py [--reset]
-- 读取 knowledge/mall/ 下全部文档（.md/.sql/.yml，按来源子目录），
+用法：python scripts/seed_mall_kb.py [--reset] [--file <pdf/docx 路径>]
+- 读取 knowledge/mall/ 下全部文档（.md/.sql/.yml/.pdf/.docx，按来源子目录），
   用结构感知 chunk_text 分块（SQL DDL 自动按 CREATE TABLE 切块）+ embedding + 写入 Qdrant
 - payload：doc_id/title/source/category="mall"/security_group，
   section_title / table_comment 由结构感知分块自动流入（见 qdrant.upsert）
+- --file <路径>：只灌指定单个文件（企业 PDF 常为单文件，便于增量入库），
+  PDF/DOCX 由 parsers.py 解析并注入 `# 文件名` 标题（保留文档归属语义）
 - --reset：先按 doc_id 清空再写入（幂等重建）
 - 进程内同时构建 BM25 索引（供当前进程检索使用）
 - Qdrant 不可用时仍输出切分统计，并明确报错退出（exit 1）
@@ -19,6 +21,7 @@ import os
 import sys
 
 from app.core.rag.chunking import chunk_text
+from app.core.rag.parsers import extract_text
 from app.core.rag.seeder import seed_docs
 
 logger = logging.getLogger(__name__)
@@ -26,7 +29,22 @@ logger = logging.getLogger(__name__)
 # knowledge/mall/ 位于仓库根，脚本从 backend/ 运行时需回退两级
 _KB_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "knowledge", "mall")
 
-_SUPPORTED_EXTS = (".md", ".sql", ".yml")
+_SUPPORTED_EXTS = (".md", ".sql", ".yml", ".pdf", ".docx")
+
+
+def _read_doc_text(path: str, title: str, rel: str) -> str | None:
+    """读取文档文本；单个二进制文档解析失败时记 warning 并跳过（不阻塞灌库）。"""
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        text = extract_text(path)
+    except Exception as e:
+        logger.warning("[SeedMallKB] 跳过无法解析的文档 %s: %s", rel, e)
+        return None
+    # PDF/DOCX 无 Markdown 结构：把文件名作为首位标题，结构感知切块把标题并入
+    # 首个 chunk，LLM 可据此确认文档归属（避免「资料未提及」元话语）
+    if ext in (".pdf", ".docx"):
+        text = f"# {title}\n\n{text}"
+    return text
 
 
 def _load_docs() -> list[dict]:
@@ -45,12 +63,29 @@ def _load_docs() -> list[dict]:
         rel = os.path.relpath(path, _KB_DIR).replace("\\", "/")
         doc_id = os.path.splitext(rel)[0]
         title = os.path.splitext(os.path.basename(path))[0]
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
+        text = _read_doc_text(path, title, rel)
+        if text is None:
+            continue
         docs.append(
             {"doc_id": doc_id, "title": title, "rel_path": rel, "text": text}
         )
     return docs
+
+
+def _apply_file_override(docs: list[dict], arg_path: str) -> list[dict]:
+    """--file 单文件入库：只灌指定文件（doc_id 用文件名）。"""
+    if not arg_path:
+        return docs
+    path = os.path.abspath(arg_path)
+    if not os.path.exists(path):
+        logger.error("[SeedMallKB] --file 指定的文件不存在: %s", path)
+        raise SystemExit(1)
+    base = os.path.basename(path)
+    title = os.path.splitext(base)[0]
+    text = _read_doc_text(path, title, base)
+    if text is None:
+        raise SystemExit(1)
+    return [{"doc_id": title, "title": title, "rel_path": base, "text": text}]
 
 
 def _chunk_metadata(doc: dict) -> dict:
@@ -73,10 +108,17 @@ async def seed(reset: bool = False) -> dict:
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    reset = "--reset" in sys.argv
+    args = sys.argv[1:]
+    reset = "--reset" in args
+    file_path = ""
+    if "--file" in args:
+        i = args.index("--file")
+        if i + 1 < len(args):
+            file_path = args[i + 1]
 
-    # 无论 Qdrant 是否可用，先输出切分统计（脚本必须能走到切分）
     docs = _load_docs()
+    docs = _apply_file_override(docs, file_path)
+    total_docs = len(docs)
     per_doc: list[tuple[str, int, int]] = []
     for doc in docs:
         chunks = chunk_text(doc["text"], metadata=_chunk_metadata(doc))

@@ -47,7 +47,7 @@ docker-compose up -d
 - **Qdrant RBAC**：权限控制通过 payload filter 按 `security_group` 字段过滤，不建独立权限表
 - **意图路由配置外置**：关键词 / 语义样本在 `backend/app/data/intent_routes.json`，热加载，不硬编码进 `router/intent.py`
 - **语义缓存失效**：`INCR scqa:kb:version` 版本号 O(1) 失效 + 惰性清理，不要改回 SCAN 全清
-- **SSE 流式**：`/api/v1/chat/stream` 返回 SSE（6 种事件类型），不要改成 WebSocket 或普通 JSON
+- **SSE 流式**：`/api/v1/chat/ask` 返回 SSE（8 种事件：start/retrieving/rewriting/generating/tool_call/tool_result/done/error），不要改成 WebSocket 或普通 JSON
 - **工单 ID 格式**：`TK-{时间戳}{7位随机数}`，后缀必须 >=7 位，否则高并发下 UNIQUE 约束碰撞
 - **MCP 双向架构**：ToolAgent 不直接调本地工具函数，通过 MCP Client → MCP Server 调用；工具实现与 Agent 解耦
 - **Retrieval Before Agency**：Agent 在已排序检索结果之上工作，不取代检索（论文 arXiv:2607.26497 启发）
@@ -61,6 +61,7 @@ docker-compose up -d
 - **查询改写前置**：Multi-Query 默认启用（3 变体），CRAG 低分时被动改写是补充而非替代
 - **Langfuse 埋点旁路**：LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY 任一未配置即视为未启用（`is_langfuse_enabled()` 返回 False），埋点必须全程 no-op：不构造客户端、不阻塞、不抛异常、不改变返回值与异常语义
 - **LLM 单点埋点**：所有 LLM 调用统一由 `llm_factory.call_llm` 埋点（每次调用一个 span，name=llm.call），调用方不要重复埋 LLM；调用方只负责编排级 trace/span（如 ops_diagnose）
+- **限流配置生效**：`RATE_LIMIT_PER_MINUTE` 由 `RateLimitMiddleware`（`core/infra/rate_limit.py`）消费——Redis 固定窗口按客户端 IP 计数，超限 429 + Retry-After，跳过 health/mcp；**不要删配置、不要绕过中间件**（防 LLM token 刷爆）
 
 ### 前端
 
@@ -83,6 +84,7 @@ docker-compose up -d
 | Reranker 失败 | 跳过重排，用 RRF 结果 |
 | Redis 缓存失败 | 跳过缓存直查 |
 | Redis 记忆失败 | 用请求内上下文 |
+| 限流中间件 Redis 失败 | 放行（不误杀）+ RedisClient 记 warning；429 只对 Redis 可用时生效 |
 | PostgreSQL 失败 | 工单类返回 503，聊天类不受影响；mall 数据源各方法降级（query_order/product → None、logistics → []、apply_refund → 失败 dict），auto 模式整体降级 mock |
 | Prometheus 失败 | 指标返回空 + degraded；auto 模式下整体不可用降级 mock |
 | Elasticsearch 失败 | 日志/变更返回空 + degraded |
@@ -93,7 +95,7 @@ docker-compose up -d
 
 ### 路径问题
 
-- `knowledge.py` 的 `/ingest` 调用 scripts 时路径是 `os.path.join(os.path.dirname(__file__), "..", "..", "scripts")`（两层 `..`）
+- `knowledge.py` 的 list/delete/rebuild 调用 Qdrant 的路径是 `os.path.join(os.path.dirname(__file__), "..", "..", "scripts")` 风格（两层 `..`）；灌库走 `scripts/seed_*_kb.py`（seeder 公共逻辑），没有 `/ingest` 端点
 - 不要硬编码绝对路径，用 `os.path.dirname(__file__)` 相对计算
 
 ### 异步测试陷阱

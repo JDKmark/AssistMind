@@ -259,8 +259,8 @@ async def call_llm(
     Args:
         prompt: 用户提示
         system: 系统提示（可选）
-        generation: 是否为生成场景（True 时所有 provider 失败抛 LLMUnavailableError，
-            由调用方模板兜底；False 时同样抛出，由调用方场景化降级）
+        generation: 生成场景标记（兼容保留：当前两分支行为一致，均抛
+            LLMUnavailableError 由调用方场景化降级；仅用于 Langfuse 埋点区分）
 
     降级链路：DeepSeek（重试+断路器）→ Ollama（重试+断路器）→ LLMUnavailableError
 

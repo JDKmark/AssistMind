@@ -15,6 +15,10 @@
 - **智能运维诊断**（扩展能力）：Supervisor Agent 多源证据编排 + SSE 实时诊断流 + 自动建故障工单
 - **可观测性**：Langfuse 全链路 trace（LLM 单点埋点 + 诊断链路编排）
 - **评估体系**：RAGAS 4 指标（65 条双数据集含 9 条对抗样本）+ 诊断根因命中率 3/3
+- **Bad Case 闭环**（数据驱动迭代）：聊天反馈（有帮助/没帮助 + 评论）→ 会话级 Langfuse trace
+  （chat_faq 根 trace，问题/检索来源/回答完整证据链）→ **可视化追溯**（Admin 页会话时间线：
+  意图 → 检索来源分数 → CRAG 决策 → 降级项 → Langfuse 证据链跳转；Chat 页"查看溯因"展开片段全文）→
+  低分样本回流评估集回归（Bad Case 五步法，详见 `docs/rag-iteration.md`）
 - **CI/CD**：GitHub Actions（ruff + pytest + vitest）+ husky pre-commit
 
 ## 二、核心场景（面试主叙事）
@@ -113,7 +117,8 @@ FastMCP（Python 官方 SDK）实现 **Server（AssistOps，13 个工具）+ Cli
 
 ### 3.5 可观测性
 
-- Langfuse 全链路 trace：**LLM 单点埋点**（所有 LLM 调用统一走 `llm_factory.call_llm`，每次调用一个 `llm.call` span），调用方只负责编排级 span（如 `ops_diagnose` 诊断链路），避免重复埋点；
+- Langfuse 全链路 trace：**LLM 单点埋点**（所有 LLM 调用统一走 `llm_factory.call_llm`，每次调用一个 `llm.call` span），调用方只负责编排级 span（如 `ops_diagnose` 诊断链路、`chat_faq` FAQ 问答链路），避免重复埋点；
+- **FAQ 会话级 trace**：每条 FAQ 问答创建 `chat_faq` 根 trace，`query → 检索来源 → 回答` 形成可按会话归因的证据链，`trace_id` 随 SSE done 事件回传并写入反馈表（bad case 归因入口）；
 - 未配置 Langfuse Key 时埋点全程 no-op：不构造客户端、不阻塞、不改变返回值与异常语义。
 
 ### 3.6 评估体系
@@ -124,6 +129,7 @@ FastMCP（Python 官方 SDK）实现 **Server（AssistOps，13 个工具）+ Cli
 | Agent 工具调用 | 单测覆盖（`tests/unit/test_tool_agent.py` 等）：task 意图触发工具、Retrieval Before Agency、参数缺失澄清、MCP 不可用降级、循环熔断 | 工具调用路径行为由测试保障 |
 | Agent 端到端成功率 | `scripts/run_eval_agent.py --entity-fill both`：9 个多轮客服任务（查单/查物流/多轮物流/商品/退货流程/退款被拒/未找到订单/服务承诺/退款时限），进程内 MCP + BM25 兜底，逐任务断言工具链与回答 | 实测 **9/9（100%）**，含实体识别 on/off 对比 |
 | 诊断根因命中率 | `scripts/run_eval_ops.py`：3 个预置故障场景（连接池耗尽 / 慢 SQL / 内存泄漏）强制 mock 数据源，报告 root_cause 与预期关键词比对 | 目标 3/3 命中 |
+| Bad Case 回归 | `scripts/export_feedback_badcases.py`（低分反馈 score<=2 → `app/data/eval_feedback.json`）+ `scripts/run_eval.py app/data/eval_feedback.json`（无 ground_truth 模式自动跳过 context_recall） | 线上差评回流为对抗回归样本，改造前后 A/B diff 归因防回退，见 `docs/rag-iteration.md` |
 
 评估已知限制（面试可讲透）：`answer_relevancy` 对「诊断意图 → 枚举知识」型问答天然偏低（约 0.4-0.6），因反向生成的问题聚焦回答中的高密度实体而非原问题意图——属指标语义特性，不作为质量闸门；事实性看 faithfulness、检索质量看 context_precision / context_recall、诊断链路看根因命中率。
 
@@ -227,6 +233,11 @@ npm run dev
 - Prometheus：http://localhost:9090
 - 测试账号：admin/admin123（管理员）· agent/agent123（客服）· user/user123（普通用户）
 
+### 6. 演示方式（面试 / 线上）
+
+- **本地面试演示**（推荐）：仓库根直接 `.\start-demo.ps1` 一键启动——预检环境、等依赖健康、自动建库 + 首启灌库（向量集合非空则秒起跳过）、拉起前后端，并打印演示数据速查表；完整五段演示剧本见 `docs/demo-script.md`（含四类面试问题话术与防翻车清单）。
+- **线上演示**（面试官外网远程访问）：部署到云服务器，见 `deploy/README.md`——含部署方案推荐（2C4G 轻量云主机 + Docker Compose 全量部署脚本 `bash deploy/deploy.sh`）与零成本应急方案（本机起服务 + `cloudflared tunnel` 拿公网 https 链接）。
+
 ## 六、知识来源与演示口径（诚实透明）
 
 > 本节是项目的"诚信声明"，面试与演示前请先读。
@@ -245,7 +256,7 @@ AssistMind/
 │   │   ├── api/            # FastAPI 路由（chat/auth/knowledge/ticket/feedback/ops/health）
 │   │   ├── agents/         # ToolAgent（LangGraph ReAct）+ OpsSupervisorAgent（三节点编排）
 │   │   ├── core/
-│   │   │   ├── rag/        # RAG 引擎（召回+RRF 融合+重排+CRAG）
+│   │   │   ├── rag/        # RAG 引擎（召回+RRF 融合+重排+CRAG）+ 文档解析（parsers：pdf/docx ETL）
 │   │   │   ├── router/     # 意图路由（规则→语义→LLM，5 类意图）
 │   │   │   ├── cache/      # L2 语义缓存（Redis 版本号失效）
 │   │   │   ├── infra/      # Qdrant/Redis/PostgreSQL/LLM/Prometheus/ES/Alertmanager/Langfuse/断路器
@@ -255,16 +266,16 @@ AssistMind/
 │   │   │   └── security/   # JWT + RBAC
 │   │   ├── models/         # SQLAlchemy 模型（user/ticket/feedback/mall 业务表）
 │   │   ├── schemas/        # Pydantic 模型
-│   │   └── data/           # intent_routes.json / eval_qa.json / eval_mall_qa.json / ops_metric_exprs.json
-│   ├── scripts/            # init_db / seed_mall_db / seed_mall_kb / seed_ops_kb / run_eval / run_eval_ops / ops_exporter
+│   │   └── data/           # intent_routes.json / eval_qa.json / eval_mall_qa.json / eval_feedback.json / ops_metric_exprs.json
+│   ├── scripts/            # init_db / seed_mall_db / seed_mall_kb / seed_ops_kb / run_eval / run_eval_ops / export_feedback_badcases / check_kb_quality / ops_exporter
 │   └── tests/              # 单元 + 集成测试
 ├── frontend/
 │   └── src/
-│       ├── views/          # 6 页面：Login/Chat/Ops/Tickets 可用，Knowledge/Admin 规划中
+│       ├── views/          # 6 页面：Login/Chat/Knowledge/Tickets/Admin/Ops（均已落地）
 │       ├── stores/         # Pinia（auth/chat/knowledge/ticket/ops）
 │       └── api/            # axios 封装（chat 为原生 fetch 解析 SSE）
 ├── knowledge/              # 知识库源文档（mall/ 官方取材 + 自建业务规则；ops/ 排查手册）
-├── docs/                   # （空，文档规划中）
+├── docs/                   # demo-script.md（面试演示剧本）等文档
 ├── docker-compose.yml      # 7 服务
 └── AGENTS.md               # AI 编码规则
 ```
@@ -277,6 +288,10 @@ cd backend
 # RAGAS 评估（默认 eval_qa.json，也可传自定义数据集路径）
 venv\Scripts\python.exe scripts/run_eval.py
 venv\Scripts\python.exe scripts/run_eval.py app/data/eval_mall_qa.json
+
+# Bad Case 回归：低分反馈（score<=2）回流评估集，跑无 ground_truth 模式（自动跳过 context_recall）
+venv\Scripts\python.exe scripts/export_feedback_badcases.py [--limit 50]
+venv\Scripts\python.exe scripts/run_eval.py app/data/eval_feedback.json
 
 # 诊断根因命中率评估（3 个预置故障场景，强制 mock 数据源）
 venv\Scripts\python.exe scripts/run_eval_ops.py
