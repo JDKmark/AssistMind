@@ -4,7 +4,8 @@ Langfuse SDK 4.14 客户端构造结论（依据 venv site-packages/langfuse/_cl
 - 构造签名 `Langfuse(*, public_key=None, secret_key=None, base_url=None, host=None, ...)`，
   全部为关键字参数；`host` 已弃用（Deprecated. Use base_url instead），本项目传 `base_url`
 - 未传 public_key / secret_key 时**不抛异常**：打 warning 日志
-  （"Authentication error: Langfuse client initialized without public_key. Client will be disabled."）
+  （"Authentication error: Langfuse client initialized without public_key. "
+  "Client will be disabled."）
   并将 tracer 置为 NoOpTracer，客户端进入禁用状态（不发送任何数据）
 - 客户端创建不发起网络请求（事件在后台线程批量 flush），构造本身无 I/O
 - SDK 默认读环境变量 LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_BASE_URL / LANGFUSE_HOST，

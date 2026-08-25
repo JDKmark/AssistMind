@@ -25,12 +25,17 @@ def reset_langfuse_singleton():
 
 
 def _patch_settings(monkeypatch, **kwargs) -> None:
-    """用指定字段替换 langfuse 模块级 settings。"""
-    monkeypatch.setattr(
-        langfuse_module,
-        "settings",
-        Settings(**kwargs),
-    )
+    """用指定字段替换 langfuse 模块级 settings。
+
+    Langfuse key 未显式传入时强制为 None，避免 `Settings(**kwargs)` 从本机
+    `.env` 读入已配置的 key，保证「未配置」用例不受环境变量污染。
+    """
+    values = {
+        "LANGFUSE_PUBLIC_KEY": None,
+        "LANGFUSE_SECRET_KEY": None,
+    }
+    values.update(kwargs)
+    monkeypatch.setattr(langfuse_module, "settings", Settings(**values))
 
 
 def test_is_langfuse_enabled_false_without_keys(monkeypatch):
@@ -100,8 +105,16 @@ def test_get_langfuse_returns_none_after_reset(monkeypatch):
         assert mock_langfuse.call_count == 2
 
 
-def test_health_langfuse_disabled_when_not_configured():
-    """未配置 LANGFUSE key 时 health 返回 langfuse=disabled，应用可正常导入启动。"""
+def test_health_langfuse_disabled_when_not_configured(monkeypatch):
+    """未配置 LANGFUSE key 时 health 返回 langfuse=disabled，应用可正常导入启动。
+
+    显式将 langfuse settings 的 key 置空，避免读到本机 `.env` 中已配置的 key。
+    """
+    monkeypatch.setattr(
+        langfuse_module,
+        "settings",
+        Settings(LANGFUSE_PUBLIC_KEY=None, LANGFUSE_SECRET_KEY=None),
+    )
     from app.main import app
 
     with TestClient(app) as client:
