@@ -22,7 +22,7 @@ _ROUTES_PATH = os.path.join(
     os.path.dirname(__file__), "..", "..", "data", "intent_routes.json"
 )
 
-_VALID_INTENTS = ("faq", "task", "chat", "unclear", "diagnose")
+_VALID_INTENTS = ("faq", "task", "chat", "unclear")
 
 # 模块级缓存：按 json mtime 热加载
 _routes_cache: dict = {"mtime": None, "data": None}

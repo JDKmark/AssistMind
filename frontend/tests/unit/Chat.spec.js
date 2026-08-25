@@ -10,6 +10,12 @@ const chatApi = vi.hoisted(() => ({
 
 vi.mock('@/api/chat', () => chatApi)
 
+const feedbackApi = vi.hoisted(() => ({
+  submitFeedback: vi.fn(),
+}))
+
+vi.mock('@/api/feedback', () => feedbackApi)
+
 vi.mock('element-plus', () => ({ ElMessage: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }))
 
 import Chat from '@/views/Chat/index.vue'
@@ -29,6 +35,7 @@ const stubs = {
   },
   'el-button': {
     props: ['disabled', 'loading'],
+    emits: ['click'],
     template:
       '<button class="el-button-stub" :disabled="disabled || loading" @click="$emit(\'click\')"><slot /></button>',
   },
@@ -173,37 +180,9 @@ describe('Chat 组件', () => {
 
     expect(wrapper.text()).toContain('调用 创建工单')
     expect(wrapper.text()).toContain('TK-20260805001')
-    expect(wrapper.text()).toContain('已创建售后工单')
+    expect(wrapper.text()).toContain('已创建工单')
     expect(wrapper.text()).toContain('工单列表')
     expect(wrapper.find('.router-link-stub').exists()).toBe(true)
-  })
-
-  it('SSE 事件驱动渲染：diagnose 意图展示诊断报告提示与故障工单', async () => {
-    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
-      onEvent('start', { query: q, intent: 'diagnose' })
-      onEvent('planning', { plan: {} })
-      onEvent('collecting', {})
-      onEvent('evidence', { kb: [{ title: '订单超时排查手册' }] })
-      onEvent('analyzing', {})
-      onEvent('done', {
-        report: {
-          summary: '数据库连接池耗尽',
-          root_cause: '连接数过小',
-          ticket_id: 'TK-20260805002',
-        },
-      })
-      onDone({ report: { summary: '数据库连接池耗尽' } })
-      return Promise.resolve()
-    })
-
-    const wrapper = mountChat()
-    await typeAndSend(wrapper, '系统登录超时')
-
-    expect(wrapper.text()).toContain('数据库连接池耗尽')
-    expect(wrapper.text()).toContain('已生成诊断报告')
-    expect(wrapper.text()).toContain('运维诊断页')
-    expect(wrapper.text()).toContain('TK-20260805002')
-    expect(wrapper.text()).toContain('已创建故障工单')
   })
 
   it('SSE 工具结果卡片：query_order 渲染订单卡片', async () => {
@@ -336,5 +315,113 @@ describe('Chat 组件', () => {
 
     resolveStream()
     await flushPromises()
+  })
+
+  it('完成后可提交反馈：打分 + 评论随 conversation_id/trace_id 上传', async () => {
+    feedbackApi.submitFeedback.mockResolvedValue({ feedback_id: 'fb-1', created: true })
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'faq', conversation_id: 'conv-1' })
+      onEvent('retrieving', {})
+      onEvent('generating', {})
+      onEvent('done', {
+        answer: '退货到账约 48 小时。',
+        sources: [{ doc_id: 'mall/business.md', title: '退货规则' }],
+        trace_id: 'trace-1',
+        conversation_id: 'conv-1',
+      })
+      onDone({ answer: '退货到账约 48 小时。' })
+      return Promise.resolve()
+    })
+
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '退货多久到账？')
+
+    // 完成后渲染反馈条（有帮助 / 没帮助 / 评论 / 提交）
+    const helpful = wrapper.findAll('.el-button-stub').find((b) => b.text() === '有帮助')
+    expect(helpful).toBeTruthy()
+
+    await helpful.trigger('click') // 有帮助 → score 5
+    await wrapper.find('.feedback-comment').setValue('很好')
+    const submitBtn = wrapper.findAll('.el-button-stub').find((b) => b.text() === '提交')
+    await submitBtn.trigger('click')
+    await flushPromises()
+
+    expect(feedbackApi.submitFeedback).toHaveBeenCalledWith({
+      score: 5,
+      comment: '很好',
+      conversation_id: 'conv-1',
+      trace_id: 'trace-1',
+      query: '退货多久到账？',
+      answer: '退货到账约 48 小时。',
+      sources: [{ doc_id: 'mall/business.md', title: '退货规则' }],
+      intent: 'faq',
+      crag_action: '',
+      degraded: [],
+    })
+    await nextTick()
+    expect(wrapper.text()).toContain('已提交反馈')
+  })
+
+  it('未打分时不提交反馈', async () => {
+    feedbackApi.submitFeedback.mockResolvedValue({ feedback_id: 'fb-1', created: true })
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'faq', conversation_id: 'conv-2' })
+      onEvent('done', { answer: '这没有问题', conversation_id: 'conv-2' })
+      onDone({ answer: '这没有问题' })
+      return Promise.resolve()
+    })
+
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '你好')
+
+    const submitBtn = wrapper.findAll('.el-button-stub').find((b) => b.text() === '提交')
+    // 未打分时提交按钮禁用
+    expect(submitBtn.attributes('disabled')).toBeDefined()
+    await submitBtn.trigger('click')
+    expect(feedbackApi.submitFeedback).not.toHaveBeenCalled()
+  })
+
+  it('来源列表展示命中分数，并可展开溯因片段全文', async () => {
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'faq', conversation_id: 'conv-3' })
+      onEvent('retrieving', {})
+      onEvent('generating', {})
+      onEvent('done', {
+        answer: '48 小时内。',
+        sources: [
+          {
+            title: '退货规则',
+            score: 0.92,
+            text: '退货款项在申请通过后 48 小时内原路退回。',
+            snippet: '退货款项在申请通过后…',
+          },
+        ],
+        crag_action: 'generate',
+        degraded: [],
+        conversation_id: 'conv-3',
+      })
+      onDone({ answer: '48 小时内。' })
+      return Promise.resolve()
+    })
+
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '退货多久到账？')
+    await nextTick()
+
+    // 分数展示
+    expect(wrapper.text()).toContain('0.92')
+
+    // 展开溯因：片段全文出现
+    const toggle = wrapper.findAll('.el-button-stub').find((b) => b.text() === '查看溯因')
+    expect(toggle).toBeTruthy()
+    await toggle.trigger('click')
+    await nextTick()
+    expect(wrapper.text()).toContain('退货款项在申请通过后 48 小时内原路退回。')
+
+    // 收起：片段全文隐藏
+    const collapse = wrapper.findAll('.el-button-stub').find((b) => b.text() === '收起')
+    await collapse.trigger('click')
+    await nextTick()
+    expect(wrapper.text()).not.toContain('退货款项在申请通过后 48 小时内原路退回。')
   })
 })

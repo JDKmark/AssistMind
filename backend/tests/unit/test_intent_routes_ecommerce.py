@@ -1,8 +1,9 @@
 """电商语境意图路由单元测试（phase7 Task 4：客服链路配置）。
 
 覆盖：
-- 新增电商关键词经 intent.route 规则层命中对应意图（task / faq / diagnose / chat）
-- intent_routes.json 结构不变（5 类意图、keywords/samples 数组）且电商样本就位
+- 新增电商关键词经 intent.route 规则层命中对应意图（task / faq / chat）
+- intent_routes.json 结构不变（4 类意图、keywords/samples 数组）且电商样本就位
+- 运维入口下架后"下单失败"类 query 不再路由到 diagnose
 
 断言方式：直接调用实际解析函数 intent.route()，mock 掉语义/LLM 依赖；
 规则层命中时语义与 LLM 均不应被调用（短路验证）。
@@ -36,9 +37,11 @@ def _reset_router_caches():
 
 async def _route_rule_only(query: str) -> dict:
     """仅走规则层调用实际路由：语义与 LLM 均 mock 为不应被调用。"""
-    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)):
-        with patch("app.core.router.intent.call_llm", new=_LLM_SHOULD_NOT_BE_CALLED):
-            return await intent.route(query)
+    with (
+        patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)),
+        patch("app.core.router.intent.call_llm", new=_LLM_SHOULD_NOT_BE_CALLED),
+    ):
+        return await intent.route(query)
 
 
 async def test_ecommerce_rule_route_return_task():
@@ -60,13 +63,23 @@ async def test_ecommerce_rule_route_shipping_faq():
     assert result["confidence"] == 1.0
 
 
-async def test_ecommerce_rule_route_order_fail_diagnose():
-    """电商场景下单失败命中 diagnose："我下单失败了"→diagnose。"""
-    result = await _route_rule_only("我下单失败了")
+async def test_ecommerce_order_fail_not_routed_to_diagnose():
+    """运维入口下架后"我下单失败了"不再路由到 diagnose。
 
-    assert result["intent"] == "diagnose"
-    assert result["source"] == "rule"
-    assert result["confidence"] == 1.0
+    diagnose 关键词已从 intent_routes.json 移除，规则层不再命中；
+    语义层不可用时由 LLM 兜底，落入 task / unclear 均可接受，
+    只需保证不再进入已下架的 diagnose 意图。
+    """
+    with (
+        patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)),
+        patch(
+            "app.core.router.intent.call_llm",
+            new=AsyncMock(return_value='{"intent": "task", "confidence": 0.9}'),
+        ),
+    ):
+        result = await intent.route("我下单失败了")
+
+    assert result["intent"] != "diagnose"
 
 
 async def test_ecommerce_rule_route_greeting_chat():
@@ -82,8 +95,8 @@ def test_intent_routes_structure_and_ecommerce_samples():
     """intent_routes.json 结构不变，电商关键词与语义样本就位。"""
     routes = intent._load_routes()
 
-    # 结构：5 类意图，每类均为 keywords / samples 数组
-    assert set(routes.keys()) == {"faq", "task", "chat", "unclear", "diagnose"}
+    # 结构：4 类意图，每类均为 keywords / samples 数组
+    assert set(routes.keys()) == {"faq", "task", "chat", "unclear"}
     for cfg in routes.values():
         assert isinstance(cfg["keywords"], list)
         assert isinstance(cfg["samples"], list)

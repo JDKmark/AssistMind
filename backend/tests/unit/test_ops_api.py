@@ -5,13 +5,16 @@
 - 服务与指标查询
 - 诊断 SSE 流程（mock 各环节 + 自动创建工单）
 - 未认证访问拒绝
-mock 策略：覆盖 get_current_user 依赖，mock 诊断各环节，不连真实外部服务。
+mock 策略：覆盖 get_current_user 依赖（autouse fixture，测试后清理，
+避免模块级 override 污染同进程其他测试文件的鉴权接口），
+mock 诊断各环节，不连真实外部服务。
 """
 
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
@@ -24,7 +27,16 @@ async def fake_user():
     return {"username": "testuser", "role": "admin"}
 
 
-app.dependency_overrides[get_current_user] = fake_user
+@pytest.fixture(autouse=True)
+def _override_auth():
+    """每个测试临时用 admin 用户覆盖鉴权依赖，结束后恢复原值（不跨文件污染）。"""
+    original = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = fake_user
+    yield
+    if original is None:
+        app.dependency_overrides.pop(get_current_user, None)
+    else:
+        app.dependency_overrides[get_current_user] = original
 
 
 def test_ops_scenario_set_and_list():

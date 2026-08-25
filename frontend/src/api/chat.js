@@ -6,7 +6,6 @@ import { useAuthStore } from '@/stores/auth'
 //   start {query, intent} / retrieving {} / rewriting {variants} /
 //   generating {} / tool_call {tool_name, arguments} /
 //   tool_result {tool_name, result} / done {answer, sources?} / error {message}
-//   （diagnose 意图额外出现 planning / collecting / evidence / analyzing）
 // 所有事件都会回调 onEvent(eventName, dataObj)；done 后回调 onDone(dataObj)；
 // 出错时回调 onError(message)，且仅回调一次。
 export async function chatStream(query, { history = [], signal, onEvent, onDone, onError } = {}) {
