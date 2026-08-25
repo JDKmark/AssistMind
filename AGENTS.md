@@ -194,3 +194,27 @@ cd frontend; npm run test:unit
 - 不要把聊天接口从 SSE 改成 WebSocket
 - 不要让 ToolAgent 直接调本地工具函数（必须走 MCP Client → Server）
 - 不要关闭 BM25（一等公民，失败降级兜底）
+
+## 代码探索与 CodeGraph
+
+- 项目根 `.codegraph/` 是 Trae IDE 的代码图谱本地索引（数据库 / daemon / socket 等，`*` 已 gitignore，仅保留 `.gitignore`）；新会话可用 IDE 的 CodeGraph 面板浏览模块依赖与调用关系，无需重新扫描
+- AI 侧探索代码：语义定位用 SearchCodebase，按文件/符号用 Grep/Glob，大范围架构梳理用 understand 技能生成知识图谱
+- 检索代码离线可用，不依赖本机网络/服务
+
+<!-- BEGIN: spec-项目特有规则 -->
+## spec 复盘沉淀（项目特有规则）
+
+### 测试环境污染（Settings 读 .env）
+- `Settings` 配置了 `env_file=".env"`：`Settings()` 无参构造会读入本机 `.env` 的 key（如 LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY），导致「未配置」用例误判为已启用（曾致 5 个 Langfuse 测试失败）
+- 测试模拟「未配置」必须显式传 None：`Settings(LANGFUSE_PUBLIC_KEY=None, LANGFUSE_SECRET_KEY=None)`；health 用例先 patch `app.core.infra.langfuse.settings` 为无 key 状态
+
+### 测试契约唯一性
+- 同一模块只保留一份权威测试（Langfuse 契约以 test_langfuse_infra.py 为准），禁止并存断言相反行为的草稿测试文件，否则 pytest 全绿但契约漂移
+
+### Langfuse 构造契约
+- `get_langfuse()` 只传 `(public_key, secret_key, base_url)`，不加 `additional_headers`（与已提交测试契约一致）
+
+### 管理员安全边界
+- admin 仅可在 user/agent 间调整角色，`role=admin` 一律 422（禁权限提升）；admin 账号不可修改/停用（403）
+- 所有管理员写操作（角色变更 / 启停 / 退款流转）写审计；审计失败仅 logger.warning，不回滚业务变更
+<!-- END: spec-项目特有规则 -->
