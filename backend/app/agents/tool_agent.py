@@ -19,7 +19,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agents.base import AgentState, BaseReActAgent
 from app.core.dialog import extract_query
 from app.core.dialog.state import extract_slots, missing_slots
-from app.core.mall.entity_extractor import extract, fill_tool_args
+from app.core.mall.entity_extractor import extract_with_llm, fill_tool_args
 from app.core.mcp.client import MCPClient, get_mcp_client
 
 logger = logging.getLogger(__name__)
@@ -315,8 +315,11 @@ class ToolAgent(BaseReActAgent):
         MCP 不可用时直接返回降级话术，不进入 ReAct 循环。
         """
         # 实体识别：当前问题 + 多轮历史 → 订单号/商品 ID（execute_tool 补填用）
+        # 规则层确定性优先；ENTITY_LLM_FALLBACK 开启时规则未命中才走 LLM 兜底
         # entity_fill=False 时关闭（评估脚本 before/after 对比用）
-        self._entities = extract(query, history) if (query and self.entity_fill) else {}
+        self._entities = (
+            await extract_with_llm(query, history) if (query and self.entity_fill) else {}
+        )
 
         if not self.mcp_client.is_connected:
             connected = await self.mcp_client.connect()

@@ -51,6 +51,7 @@ async def seed_mall_data() -> bool:
             session.add(
                 MallOrder(
                     order_sn=order["order_sn"],
+                    owner_username=order["owner_username"],
                     status=order["status"],
                     pay_amount=order["pay_amount"],
                     logistics_no=order["logistics_no"],
@@ -80,8 +81,12 @@ async def seed_mall_data() -> bool:
                 )
 
         await session.commit()
-        logger.info("mall 演示数据 seed 完成：%s 商品 / %s 订单 / %s 物流轨迹",
-                    len(PRODUCTS), len(ORDERS), sum(len(v) for v in LOGISTICS.values()))
+        logger.info(
+            "mall 演示数据 seed 完成：%s 商品 / %s 订单 / %s 物流轨迹",
+            len(PRODUCTS),
+            len(ORDERS),
+            sum(len(v) for v in LOGISTICS.values()),
+        )
         return True
 
 

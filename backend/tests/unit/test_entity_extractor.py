@@ -4,11 +4,20 @@
 - 规则层抽取：订单号 / 商品 ID / 无实体 / 手机号不误匹配
 - 多轮历史提取：当前问题未命中时从历史回溯订单号
 - 实体 → 工具参数补填（fill_tool_args）
+- LLM 兜底（extract_with_llm）：命中 / 失败降级 / 开关关闭零调用 / 非法字段校验
 """
 
 from __future__ import annotations
 
-from app.core.mall.entity_extractor import ENTITY_TO_TOOLS, extract, fill_tool_args
+import asyncio
+
+from app.core.infra.llm_factory import LLMUnavailableError
+from app.core.mall.entity_extractor import (
+    ENTITY_TO_TOOLS,
+    extract,
+    extract_with_llm,
+    fill_tool_args,
+)
 
 # ---------- 规则层抽取 ----------
 
@@ -155,3 +164,88 @@ def test_fill_tool_args_no_entity_no_change():
     )
     assert args == {}
     assert filled is False
+
+
+# ---------- LLM 兜底（extract_with_llm）----------
+
+async def _patch_llm(monkeypatch, responder):
+    """开启 ENTITY_LLM_FALLBACK 开关并替换 call_llm，返回调用记录。"""
+    monkeypatch.setattr(
+        "app.core.mall.entity_extractor.settings.ENTITY_LLM_FALLBACK", True
+    )
+    calls: list[str] = []
+
+    async def fake_call_llm(prompt, system=None, *, generation=False):
+        calls.append(prompt)
+        result = responder(prompt)
+        if asyncio.iscoroutine(result):
+            result = await result
+        return result
+
+    monkeypatch.setattr("app.core.mall.entity_extractor.call_llm", fake_call_llm)
+    return calls
+
+
+async def test_extract_with_llm_hit_when_rule_misses(monkeypatch):
+    """规则未命中 + 兜底开启：LLM 返回合法 JSON → 提取实体。"""
+    calls = await _patch_llm(
+        monkeypatch, lambda prompt: '{"order_sn": "20240801001", "product_id": null}'
+    )
+    result = await extract_with_llm("帮我看下我买的那个东西到哪了")
+    assert result["order_sn"] == "20240801001"
+    assert len(calls) == 1
+
+
+async def test_extract_with_llm_rule_hit_skips_llm(monkeypatch):
+    """兜底开启但规则已命中：不调 LLM（规则层确定性优先）。"""
+    calls = await _patch_llm(
+        monkeypatch, lambda prompt: '{"order_sn": "99999999999", "product_id": "P099"}'
+    )
+    result = await extract_with_llm("查一下订单 20240801001 的物流")
+    assert result["order_sn"] == "20240801001"
+    assert calls == []
+
+
+async def test_extract_with_llm_llm_unavailable_returns_empty(monkeypatch):
+    """LLM provider 不可用：返回空实体 + 不抛异常（degraded 语义）。"""
+
+    async def broken(prompt):
+        raise LLMUnavailableError("all providers down")
+
+    await _patch_llm(monkeypatch, broken)
+    result = await extract_with_llm("你们运费怎么算")
+    assert result == {"order_sn": None, "product_id": None}
+
+
+async def test_extract_with_llm_malformed_json_returns_empty(monkeypatch):
+    """LLM 返回非 JSON：解析失败 → 空实体 + 不抛异常。"""
+    await _patch_llm(monkeypatch, lambda prompt: "抱歉，我没法提取订单信息")
+    result = await extract_with_llm("帮我查下售后进度")
+    assert result == {"order_sn": None, "product_id": None}
+
+
+async def test_extract_with_llm_rejects_phone_number_from_llm(monkeypatch):
+    """LLM 把手机号当订单号返回：规则正则校验拦截，按未提取处理（防幻觉）。"""
+    await _patch_llm(
+        monkeypatch, lambda prompt: '{"order_sn": "13812345678", "product_id": "P001"}'
+    )
+    result = await extract_with_llm("我手机号 13812345678，东西什么时候到")
+    assert result["order_sn"] is None  # 手机号被拦截
+    assert result["product_id"] == "P001"  # 合法字段仍保留
+
+
+async def test_extract_with_llm_disabled_never_calls_llm(monkeypatch):
+    """开关关闭：任何输入都不调 LLM（保持同步 extract 语义）。"""
+    monkeypatch.setattr(
+        "app.core.mall.entity_extractor.settings.ENTITY_LLM_FALLBACK", False
+    )
+    calls: list[str] = []
+
+    async def spy(prompt):
+        calls.append(prompt)
+        return '{"order_sn": "20240801001", "product_id": null}'
+
+    monkeypatch.setattr("app.core.mall.entity_extractor.call_llm", spy)
+    result = await extract_with_llm("帮我看下我买的那个东西到哪了")
+    assert result == {"order_sn": None, "product_id": None}
+    assert calls == []

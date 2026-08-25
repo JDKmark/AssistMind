@@ -1,6 +1,9 @@
-"""认证工具：密码哈希、JWT 生成与校验。
+"""认证工具：密码哈希（bcrypt）、JWT 生成与校验。
 
-TODO: Phase 1 后续完善，当前为骨架。
+- hash_password / verify_password：用户密码存储与校验（User.hashed_password）
+- create_access_token / decode_access_token：登录签发 JWT（payload 含 sub=username、
+  role），消费方为 app.api.deps.get_current_user（OAuth2PasswordBearer + 401 语义）
+- JWT_SECRET 有 validate_security() 守卫：生产模式默认值会拒绝启动
 """
 
 from __future__ import annotations

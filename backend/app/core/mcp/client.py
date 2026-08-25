@@ -13,6 +13,7 @@ import json
 import logging
 from typing import Any
 
+import httpx
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
@@ -29,8 +30,9 @@ class MCPClient:
     async context manager，使 session 在 connect() 与 close() 之间持久存在。
     """
 
-    def __init__(self, server_url: str | None = None) -> None:
+    def __init__(self, server_url: str | None = None, access_token: str | None = None) -> None:
         self.server_url = server_url or settings.MCP_SERVER_URL
+        self.access_token = access_token
         self._session: ClientSession | None = None
         self._stack: contextlib.AsyncExitStack | None = None
         self._connected = False
@@ -54,15 +56,14 @@ class MCPClient:
             self._stack = contextlib.AsyncExitStack()
             await self._stack.__aenter__()
 
-            # 进入 streamable_http_client，获取读写流
+            headers = {"Authorization": f"Bearer {self.access_token}"} if self.access_token else {}
+            http_client = await self._stack.enter_async_context(httpx.AsyncClient(headers=headers))
             read, write = await self._stack.enter_async_context(
-                streamable_http_client(self.server_url)
+                streamable_http_client(self.server_url, http_client=http_client)
             )
 
             # 进入 ClientSession 并初始化
-            self._session = await self._stack.enter_async_context(
-                ClientSession(read, write)
-            )
+            self._session = await self._stack.enter_async_context(ClientSession(read, write))
             await self._session.initialize()
 
             self._connected = True
@@ -93,10 +94,8 @@ class MCPClient:
 
         失败降级：连接未建立/调用超时/工具异常 返回 {"error": "..."}，不抛异常。
         """
-        if not self._connected:
-            # 尝试重连
-            if not await self.connect():
-                return {"error": "MCP Server 不可用"}
+        if not self._connected and not (await self.connect()):
+            return {"error": "MCP Server 不可用"}
 
         try:
             result = await self._session.call_tool(name, arguments)
@@ -140,15 +139,11 @@ class MCPClient:
 
     async def list_tools(self) -> list[dict]:
         """列出可用工具。失败返回空列表。"""
-        if not self._connected:
-            if not await self.connect():
-                return []
+        if not self._connected and not (await self.connect()):
+            return []
         try:
             result = await self._session.list_tools()
-            return [
-                {"name": t.name, "description": t.description}
-                for t in result.tools
-            ]
+            return [{"name": t.name, "description": t.description} for t in result.tools]
         except Exception as e:
             logger.warning("[MCP Client] 列出工具失败: %s", e)
             return []

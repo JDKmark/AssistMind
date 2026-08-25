@@ -25,7 +25,9 @@ class MallDataSource(ABC):
         """数据源模式标识：mock / real（供门面切换与前端展示）。"""
 
     @abstractmethod
-    async def query_order(self, order_sn: str) -> dict | None:
+    async def query_order(
+        self, order_sn: str, *, requester_username: str, requester_role: str
+    ) -> dict | None:
         """查询订单信息。未知 order_sn 返回 None。
 
         返回字段：
@@ -38,7 +40,45 @@ class MallDataSource(ABC):
         """
 
     @abstractmethod
-    async def query_logistics(self, order_sn: str) -> list[dict]:
+    async def list_orders(
+        self,
+        *,
+        owner_username: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """查询订单列表（管理端）。返回 {"orders": [...], "total": int}。
+
+        - 列表项字段：order_sn / owner_username / status / pay_amount / logistics_no / created_at
+        - total 为过滤后（分页前）总数；orders 按 created_at 倒序、limit/offset 分页
+        - 失败降级语义：real 实现 PostgreSQL 失败时返回
+          {"orders": [], "total": 0, "degraded": ["postgres"]} 并 logger.warning，不抛异常
+        """
+
+    @abstractmethod
+    async def my_orders(
+        self,
+        *,
+        requester_username: str,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """查询当前用户的订单列表（用户端）。返回 {"orders": [...], "total": int}。
+
+        - 归属由服务端强制：仅返回 owner_username == requester_username 的订单
+        - 列表项字段：order_sn / status / pay_amount / logistics_no / created_at /
+          items（[{product_id, name, spec, price, quantity}]，完整商品明细）
+        - total 为过滤后（分页前）总数；orders 按 created_at 倒序、limit/offset 分页
+        - 失败降级语义：real 实现 PostgreSQL 失败时返回
+          {"orders": [], "total": 0, "degraded": ["postgres"]} 并 logger.warning，不抛异常
+        """
+
+    @abstractmethod
+    async def query_logistics(
+        self, order_sn: str, *, requester_username: str, requester_role: str
+    ) -> list[dict]:
         """查询物流轨迹 [{ts, content}]，按时间正序。未发货/未知订单返回空列表。"""
 
     @abstractmethod
@@ -55,7 +95,9 @@ class MallDataSource(ABC):
         """
 
     @abstractmethod
-    async def apply_refund(self, order_sn: str, reason: str) -> dict:
+    async def apply_refund(
+        self, order_sn: str, reason: str, *, requester_username: str, requester_role: str
+    ) -> dict:
         """创建售后（退款）单。
 
         状态机：
@@ -64,3 +106,18 @@ class MallDataSource(ABC):
         - 未知订单 → 拒绝，返回 {refund_id: None, status: "failed", message: 提示原因}
         - 同一订单重复申请 → 返回已存在的售后单（幂等，不重复创建）
         """
+
+    @abstractmethod
+    async def list_refunds(
+        self,
+        *,
+        status: str | None = None,
+        owner_username: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """查询退款列表（管理端）。"""
+
+    @abstractmethod
+    async def update_refund_status(self, refund_id: str, new_status: str) -> dict:
+        """执行处理中到已通过或已拒绝的退款状态流转。"""

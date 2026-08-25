@@ -79,14 +79,54 @@ async def get_source_mode() -> str:
     return _source_mode or "mock"
 
 
-async def query_order(order_sn: str) -> dict | None:
-    """查询订单信息。未知 order_sn 返回 None。"""
-    return await (await _resolve_source()).query_order(order_sn)
+async def query_order(
+    order_sn: str, *, requester_username: str, requester_role: str
+) -> dict | None:
+    """查询订单信息。未知或无权访问时返回 None。"""
+    return await (await _resolve_source()).query_order(
+        order_sn, requester_username=requester_username, requester_role=requester_role
+    )
 
 
-async def query_logistics(order_sn: str) -> list[dict]:
-    """查询物流轨迹 [{ts, content}]。未发货/未知订单返回空列表。"""
-    return await (await _resolve_source()).query_logistics(order_sn)
+async def list_orders(
+    *,
+    owner_username: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """查询订单列表（管理端）。返回 {"orders": [...], "total": int}。
+
+    real 实现 PostgreSQL 失败时返回 {"orders": [], "total": 0, "degraded": ["postgres"]}。
+    """
+    return await (await _resolve_source()).list_orders(
+        owner_username=owner_username, status=status, limit=limit, offset=offset
+    )
+
+
+async def my_orders(
+    *,
+    requester_username: str,
+    status: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """查询当前用户的订单列表（含 items 商品明细）。返回 {"orders": [...], "total": int}。
+
+    real 实现 PostgreSQL 失败时返回 {"orders": [], "total": 0, "degraded": ["postgres"]}。
+    """
+    return await (await _resolve_source()).my_orders(
+        requester_username=requester_username, status=status, limit=limit, offset=offset
+    )
+
+
+async def query_logistics(
+    order_sn: str, *, requester_username: str, requester_role: str
+) -> list[dict]:
+    """查询物流轨迹。未发货、未知或无权访问时返回空列表。"""
+    return await (await _resolve_source()).query_logistics(
+        order_sn, requester_username=requester_username, requester_role=requester_role
+    )
 
 
 async def query_product(product_id: str) -> dict | None:
@@ -94,9 +134,29 @@ async def query_product(product_id: str) -> dict | None:
     return await (await _resolve_source()).query_product(product_id)
 
 
-async def apply_refund(order_sn: str, reason: str) -> dict:
+async def apply_refund(
+    order_sn: str, reason: str, *, requester_username: str, requester_role: str
+) -> dict:
     """创建售后（退款）单，返回 {refund_id, status, message}。
 
     待付款 / 未知订单拒绝（refund_id=None, status=failed）；重复申请幂等返回已存在售后单。
     """
-    return await (await _resolve_source()).apply_refund(order_sn, reason)
+    return await (await _resolve_source()).apply_refund(
+        order_sn, reason, requester_username=requester_username, requester_role=requester_role
+    )
+
+
+async def list_refunds(
+    *,
+    status: str | None = None,
+    owner_username: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    return await (await _resolve_source()).list_refunds(
+        status=status, owner_username=owner_username, limit=limit, offset=offset
+    )
+
+
+async def update_refund_status(refund_id: str, new_status: str) -> dict:
+    return await (await _resolve_source()).update_refund_status(refund_id, new_status)

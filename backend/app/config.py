@@ -134,6 +134,11 @@ class Settings(BaseSettings):
     # auto: 配置了 DATABASE_URL 且 PostgreSQL 健康探测通过 → real；否则降级 mock
     MALL_DATA_SOURCE: str = "mock"
 
+    # ===== 电商实体识别 =====
+    # 规则层确定性优先（零 LLM 成本）；开启后仅当规则未命中时才走 LLM 兜底
+    # （一次结构化抽取；失败/超时/解析失败 → 空实体 + logger.warning，不阻塞主链路）
+    ENTITY_LLM_FALLBACK: bool = False
+
     # ===== 运维数据源（Prometheus / ELK）=====
     # auto: 配置了 PROMETHEUS_URL 用真实数据源，未配置或整体不可用降级 mock
     # mock: 恒用预置故障场景模拟数据
