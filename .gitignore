@@ -65,9 +65,19 @@ pg-data/
 # Model cache
 models_cache/
 
+# 面试备料（本地私有，不入库）
+interview-notes/
+
 # Temp
 *.tmp
 *.bak
 
 # ZCode plans
 .zcode/
+
+# 本地验证脚本与产物（临时，不入库）
+backend/_e2e_*.py
+backend/_tts_sample.mp3
+
+# Trae 截图（specs/documents 正常入库，shots 不入库）
+.trae/shots/
