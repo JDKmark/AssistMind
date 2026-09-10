@@ -31,6 +31,7 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+.env.prod
 
 # IDE
 .vscode/
@@ -64,9 +65,19 @@ pg-data/
 # Model cache
 models_cache/
 
+# 本地私有资料（不入库）
+private-notes/
+
 # Temp
 *.tmp
 *.bak
 
 # ZCode plans
 .zcode/
+
+# 本地验证脚本与产物（临时，不入库）
+backend/_e2e_*.py
+backend/_tts_sample.mp3
+
+# Trae 截图（specs/documents 正常入库，shots 不入库）
+.trae/shots/
