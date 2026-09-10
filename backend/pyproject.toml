@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "assistmind-backend"
 version = "0.1.0"
@@ -29,6 +33,8 @@ dependencies = [
     "ragas>=0.1.0",
     "beautifulsoup4>=4.12.0",
     "structlog>=24.1.0",
+    # 文档 ETL：二进制文档（PDF 等）解析入库
+    "pypdf>=4.0.0",
     # 失败降级（断路器 + 重试）
     "aiobreaker>=1.2.0",
     "tenacity>=8.2.0",
@@ -43,6 +49,9 @@ dev = [
     "locust>=2.20.0",
     "fakeredis>=2.20.0",
 ]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.ruff]
 line-length = 100
