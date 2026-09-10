@@ -21,17 +21,30 @@ from __future__ import annotations
 
 import logging
 
-from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver import Context, MCPServer
 
 from app.core.mall import data_source as mall_ds
 from app.core.ops import data_source as ops_ds
 from app.core.rag.engine import retrieve as _retrieve
+from app.core.security.auth import decode_access_token
 from app.core.ticket_service import create_ticket as _create_ticket
 from app.core.ticket_service import get_ticket as _get_ticket
 
 logger = logging.getLogger(__name__)
 
 mcp = MCPServer("AssistOps")
+
+
+def _requester(ctx: Context) -> tuple[str, str]:
+    headers = ctx.headers or {}
+    authorization = headers.get("authorization") or headers.get("Authorization") or ""
+    if not authorization.startswith("Bearer "):
+        return "", ""
+    try:
+        payload = decode_access_token(authorization.removeprefix("Bearer ").strip())
+    except Exception:
+        return "", ""
+    return str(payload.get("sub") or ""), str(payload.get("role") or "user")
 
 
 @mcp.tool()
@@ -150,7 +163,7 @@ async def get_alerts(service: str | None = None) -> list[dict]:
 
 @mcp.tool()
 async def create_incident(
-    title: str, description: str, severity: str = "medium"
+    title: str, description: str, severity: str = "medium", ctx: Context = None
 ) -> dict:
     """创建故障工单（incident）。
 
@@ -164,13 +177,17 @@ async def create_incident(
     """
     priority_map = {"low": "low", "medium": "normal", "high": "high", "critical": "urgent"}
     priority = priority_map.get(severity, "normal")
+    username, _ = _requester(ctx) if ctx is not None else ("", "")
     return await _create_ticket(
-        title, description, priority=priority, category="incident"
+        title, description, priority=priority, category="incident",
+        user_id=username or "system",
     )
 
 
 @mcp.tool()
-async def create_ticket(title: str, description: str, priority: str = "normal") -> dict:
+async def create_ticket(
+    title: str, description: str, priority: str = "normal", ctx: Context = None
+) -> dict:
     """创建客服工单。
 
     Args:
@@ -181,11 +198,14 @@ async def create_ticket(title: str, description: str, priority: str = "normal") 
     Returns:
         {ticket_id, created, ticket}
     """
-    return await _create_ticket(title, description, priority=priority)
+    username, _ = _requester(ctx) if ctx is not None else ("", "")
+    return await _create_ticket(
+        title, description, priority=priority, user_id=username or "system"
+    )
 
 
 @mcp.tool()
-async def transfer_human(reason: str) -> dict:
+async def transfer_human(reason: str, ctx: Context = None) -> dict:
     """转人工客服。创建一个标记为转人工的工单并返回提示话术。
 
     Args:
@@ -194,11 +214,13 @@ async def transfer_human(reason: str) -> dict:
     Returns:
         {message, ticket_id}
     """
+    username, _ = _requester(ctx) if ctx is not None else ("", "")
     result = await _create_ticket(
         title=f"转人工：{reason[:50]}",
         description=reason,
         priority="high",
         category="transfer_human",
+        user_id=username or "system",
     )
     return {
         "message": "已为您转接人工客服，客服人员将尽快与您联系。工单号：" + result["ticket_id"],
@@ -207,23 +229,27 @@ async def transfer_human(reason: str) -> dict:
 
 
 @mcp.tool()
-async def get_ticket_status(ticket_id: str) -> dict:
+async def get_ticket_status(ticket_id: str, ctx: Context = None) -> dict:
     """查询工单状态。
 
     Args:
         ticket_id: 工单 ID（TK- 开头）
 
     Returns:
-        工单详情；工单不存在返回 {"error": "工单不存在"}
+        工单详情；工单不存在或无权访问返回 {"error": "工单不存在"}
     """
+    username, role = _requester(ctx) if ctx is not None else ("", "")
     ticket = await _get_ticket(ticket_id)
     if ticket is None:
+        return {"error": "工单不存在"}
+    # user 角色归属隔离：他人工单与不存在统一形状（防枚举）
+    if role == "user" and ticket.get("user_id") != username:
         return {"error": "工单不存在"}
     return ticket
 
 
 @mcp.tool()
-async def query_order(order_sn: str) -> dict:
+async def query_order(order_sn: str, ctx: Context) -> dict:
     """查询电商订单信息（状态/商品明细/实付金额/物流单号/下单时间）。
 
     Args:
@@ -233,14 +259,15 @@ async def query_order(order_sn: str) -> dict:
         订单详情 {order_sn, status, items: [{product_id, name, spec, price, quantity}],
         pay_amount, logistics_no, created_at}；订单不存在返回 {"error": "订单不存在"}
     """
-    order = await mall_ds.query_order(order_sn)
+    username, role = _requester(ctx)
+    order = await mall_ds.query_order(order_sn, requester_username=username, requester_role=role)
     if order is None:
         return {"error": "订单不存在"}
     return order
 
 
 @mcp.tool()
-async def query_logistics(order_sn: str) -> list[dict]:
+async def query_logistics(order_sn: str, ctx: Context) -> list[dict]:
     """查询订单物流轨迹（按时间正序）。
 
     Args:
@@ -249,7 +276,8 @@ async def query_logistics(order_sn: str) -> list[dict]:
     Returns:
         物流轨迹列表 [{ts, content}]；未发货或订单不存在返回空列表 []
     """
-    return await mall_ds.query_logistics(order_sn)
+    username, role = _requester(ctx)
+    return await mall_ds.query_logistics(order_sn, requester_username=username, requester_role=role)
 
 
 @mcp.tool()
@@ -270,7 +298,7 @@ async def query_product(product_id: str) -> dict:
 
 
 @mcp.tool()
-async def apply_refund(order_sn: str, reason: str) -> dict:
+async def apply_refund(order_sn: str, reason: str, ctx: Context) -> dict:
     """申请订单退款（创建售后单）。校验逻辑由数据源处理。
 
     Args:
@@ -283,7 +311,10 @@ async def apply_refund(order_sn: str, reason: str) -> dict:
         - 待付款/未知订单拒绝：refund_id=None，status=failed（message 含原因）
         - 重复申请幂等：返回已存在的售后单
     """
-    return await mall_ds.apply_refund(order_sn, reason)
+    username, role = _requester(ctx)
+    return await mall_ds.apply_refund(
+        order_sn, reason, requester_username=username, requester_role=role
+    )
 
 
 # 模块级缓存：streamable_http_app() 只能调用一次（内部创建 session_manager）

@@ -5,8 +5,11 @@
 - 物流轨迹（已发货有轨迹，未发货/未知为空）
 - 商品信息（固定清单数据完全一致）
 - 退款状态机（待付款拒绝、其他状态成功、重复申请幂等、未知订单拒绝）
+- list_orders 订单列表（全量/owner 过滤/status 过滤/分页/字段形状）
 - 门面转发与 reset_source 隔离
 - MALL_DATA_SOURCE 配置切换（mock/real/auto 与健康探测降级）
+
+演示账号归属：20240801001/002 → user1；20240801003/004 → user2。
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from app.core.mall import data_source as ds
 
 async def test_query_order_shipped():
     """已发货订单：固定清单数据完全一致。"""
-    order = await ds.query_order("20240801001")
+    order = await ds.query_order("20240801001", requester_username="user1", requester_role="user")
     assert order == {
         "order_sn": "20240801001",
         "status": "已发货",
@@ -40,7 +43,7 @@ async def test_query_order_shipped():
 
 async def test_query_order_pending_delivery():
     """待发货订单：P002×1 + P004×1 实付 5398，无物流单号。"""
-    order = await ds.query_order("20240801002")
+    order = await ds.query_order("20240801002", requester_username="user1", requester_role="user")
     assert order["status"] == "待发货"
     assert order["pay_amount"] == 5398
     assert [(i["product_id"], i["quantity"]) for i in order["items"]] == [
@@ -52,18 +55,27 @@ async def test_query_order_pending_delivery():
 
 async def test_query_order_completed_and_unpaid():
     """已完成/待付款订单状态正确。"""
-    assert (await ds.query_order("20240801003"))["status"] == "已完成"
-    assert (await ds.query_order("20240801004"))["status"] == "待付款"
+    assert (await ds.query_order("20240801003", requester_username="user2", requester_role="user"))[
+        "status"
+    ] == "已完成"
+    assert (await ds.query_order("20240801004", requester_username="user2", requester_role="user"))[
+        "status"
+    ] == "待付款"
 
 
 async def test_query_order_unknown_returns_none():
     """未知订单号返回 None 不抛异常。"""
-    assert await ds.query_order("99999999999") is None
+    assert (
+        await ds.query_order("99999999999", requester_username="user", requester_role="user")
+        is None
+    )
 
 
 async def test_query_logistics_shipped_order():
     """已发货订单返回固定轨迹：已揽收 → 运输中（预计明天送达）。"""
-    tracks = await ds.query_logistics("20240801001")
+    tracks = await ds.query_logistics(
+        "20240801001", requester_username="user1", requester_role="user"
+    )
     assert tracks == [
         {"ts": "2024-08-01 16:00:00", "content": "已揽收"},
         {"ts": "2024-08-01 18:30:00", "content": "运输中（预计明天送达）"},
@@ -72,9 +84,18 @@ async def test_query_logistics_shipped_order():
 
 async def test_query_logistics_not_shipped_or_unknown():
     """未发货订单与未知订单返回空列表。"""
-    assert await ds.query_logistics("20240801002") == []
-    assert await ds.query_logistics("20240801004") == []
-    assert await ds.query_logistics("99999999999") == []
+    assert (
+        await ds.query_logistics("20240801002", requester_username="user1", requester_role="user")
+        == []
+    )
+    assert (
+        await ds.query_logistics("20240801004", requester_username="user2", requester_role="user")
+        == []
+    )
+    assert (
+        await ds.query_logistics("99999999999", requester_username="user", requester_role="user")
+        == []
+    )
 
 
 async def test_query_product_p001():
@@ -111,7 +132,9 @@ async def test_query_product_unknown_returns_none():
 
 async def test_apply_refund_rejects_unpaid():
     """待付款订单拒绝退款并提示原因。"""
-    result = await ds.apply_refund("20240801004", "不想要了")
+    result = await ds.apply_refund(
+        "20240801004", "不想要了", requester_username="user2", requester_role="user"
+    )
     assert result["refund_id"] is None
     assert result["status"] == "failed"
     assert "待付款" in result["message"]
@@ -120,7 +143,9 @@ async def test_apply_refund_rejects_unpaid():
 async def test_apply_refund_pending_delivery():
     """待发货订单可申请退款。"""
     ds.reset_source()
-    result = await ds.apply_refund("20240801002", "七天无理由退货")
+    result = await ds.apply_refund(
+        "20240801002", "七天无理由退货", requester_username="user1", requester_role="user"
+    )
     assert result["refund_id"] == "AF20240801002"
     assert result["status"] == "处理中"
     assert "已提交" in result["message"]
@@ -129,7 +154,9 @@ async def test_apply_refund_pending_delivery():
 async def test_apply_refund_shipped():
     """已发货订单可申请退款。"""
     ds.reset_source()
-    result = await ds.apply_refund("20240801001", "商品质量问题")
+    result = await ds.apply_refund(
+        "20240801001", "商品质量问题", requester_username="user1", requester_role="user"
+    )
     assert result["refund_id"] == "AF20240801001"
     assert result["status"] == "处理中"
 
@@ -137,7 +164,9 @@ async def test_apply_refund_shipped():
 async def test_apply_refund_completed():
     """已完成订单可申请退款。"""
     ds.reset_source()
-    result = await ds.apply_refund("20240801003", "重复购买")
+    result = await ds.apply_refund(
+        "20240801003", "重复购买", requester_username="user2", requester_role="user"
+    )
     assert result["refund_id"] == "AF20240801003"
     assert result["status"] == "处理中"
 
@@ -145,39 +174,155 @@ async def test_apply_refund_completed():
 async def test_apply_refund_duplicate_is_idempotent():
     """同一订单重复申请返回已存在的售后单，不重复创建。"""
     ds.reset_source()
-    first = await ds.apply_refund("20240801001", "商品质量问题")
-    second = await ds.apply_refund("20240801001", "商品质量问题")
+    first = await ds.apply_refund(
+        "20240801001", "商品质量问题", requester_username="user1", requester_role="user"
+    )
+    second = await ds.apply_refund(
+        "20240801001", "商品质量问题", requester_username="user1", requester_role="user"
+    )
     assert second["refund_id"] == first["refund_id"] == "AF20240801001"
     assert "已申请过售后" in second["message"]
 
 
 async def test_apply_refund_unknown_order():
     """未知订单拒绝退款并提示订单不存在。"""
-    result = await ds.apply_refund("99999999999", "测试")
+    result = await ds.apply_refund(
+        "99999999999", "测试", requester_username="user", requester_role="user"
+    )
     assert result["refund_id"] is None
     assert result["status"] == "failed"
     assert "不存在" in result["message"]
 
 
+# ---- list_orders 订单列表 ----
+
+
+async def test_list_orders_all():
+    """全量列表：total=4，按 created_at 倒序。"""
+    result = await ds.list_orders()
+    assert result["total"] == 4
+    assert [o["order_sn"] for o in result["orders"]] == [
+        "20240801004",
+        "20240801003",
+        "20240801002",
+        "20240801001",
+    ]
+
+
+async def test_list_orders_filter_by_owner():
+    """owner 过滤：user1 → 001/002 两笔。"""
+    result = await ds.list_orders(owner_username="user1")
+    assert result["total"] == 2
+    assert {o["order_sn"] for o in result["orders"]} == {"20240801001", "20240801002"}
+
+
+async def test_list_orders_filter_by_status():
+    """status 过滤：已发货 → 仅 001。"""
+    result = await ds.list_orders(status="已发货")
+    assert result["total"] == 1
+    assert result["orders"][0]["order_sn"] == "20240801001"
+
+
+async def test_list_orders_pagination():
+    """分页：total 为过滤后总数（与分页无关），orders 按倒序切片。"""
+    page1 = await ds.list_orders(limit=2, offset=0)
+    assert page1["total"] == 4
+    assert [o["order_sn"] for o in page1["orders"]] == ["20240801004", "20240801003"]
+
+    page2 = await ds.list_orders(limit=2, offset=2)
+    assert page2["total"] == 4
+    assert [o["order_sn"] for o in page2["orders"]] == ["20240801002", "20240801001"]
+
+
+async def test_list_orders_item_shape():
+    """列表项字段形状：含 owner_username（与 query_order 单查不返回 owner 的契约互补）。"""
+    result = await ds.list_orders(owner_username="user1", status="已发货")
+    assert result["total"] == 1
+    assert result["orders"][0] == {
+        "order_sn": "20240801001",
+        "owner_username": "user1",
+        "status": "已发货",
+        "pay_amount": 6999,
+        "logistics_no": "SF1234567890",
+        "created_at": "2024-08-01 09:30:00",
+    }
+
+
+# ---- my_orders 用户订单列表 ----
+
+
+async def test_my_orders_user1_two_orders_with_items():
+    """user1：2 单（001/002），首单 items 含 product_id/name/spec/price/quantity。"""
+    result = await ds.my_orders(requester_username="user1")
+    assert result["total"] == 2
+    assert [o["order_sn"] for o in result["orders"]] == ["20240801002", "20240801001"]
+    first = result["orders"][0]
+    assert first["status"] == "待发货"
+    item = first["items"][0]
+    assert item == {
+        "product_id": "P002",
+        "name": "小米电视 65 英寸",
+        "spec": "65英寸",
+        "price": 3499,
+        "quantity": 1,
+    }
+
+
+async def test_my_orders_user2_two_orders():
+    """user2：2 单（003/004），created_at 倒序。"""
+    result = await ds.my_orders(requester_username="user2")
+    assert result["total"] == 2
+    assert [o["order_sn"] for o in result["orders"]] == ["20240801004", "20240801003"]
+
+
+async def test_my_orders_filter_by_status():
+    """status 过滤：user1 + 已发货 → 仅 001。"""
+    result = await ds.my_orders(requester_username="user1", status="已发货")
+    assert result["total"] == 1
+    assert result["orders"][0]["order_sn"] == "20240801001"
+
+
+async def test_my_orders_pagination():
+    """分页：total 为过滤后总数（与分页无关），orders 按倒序切片。"""
+    page = await ds.my_orders(requester_username="user1", limit=1, offset=1)
+    assert page["total"] == 2
+    assert [o["order_sn"] for o in page["orders"]] == ["20240801001"]
+
+
+async def test_my_orders_unknown_requester_empty():
+    """无订单用户（agent）返回空列表不抛异常。"""
+    result = await ds.my_orders(requester_username="agent")
+    assert result == {"orders": [], "total": 0}
+
+
 async def test_facade_forwards_to_mock():
     """门面转发：查询/退款均经 mock 实现返回。"""
     assert (await ds.query_product("P005"))["name"] == "联想拯救者笔记本"
-    assert (await ds.query_order("20240801004"))["status"] == "待付款"
-    assert (await ds.query_logistics("20240801001"))[0]["content"] == "已揽收"
+    assert (await ds.query_order("20240801004", requester_username="user2", requester_role="user"))[
+        "status"
+    ] == "待付款"
+    assert (
+        await ds.query_logistics("20240801001", requester_username="user1", requester_role="user")
+    )[0]["content"] == "已揽收"
 
 
 async def test_reset_source_clears_refund_records():
     """reset_source 后售后记录清空，重复申请按首次创建处理。"""
     ds.reset_source()
-    first = await ds.apply_refund("20240801001", "重置测试")
+    first = await ds.apply_refund(
+        "20240801001", "重置测试", requester_username="user1", requester_role="user"
+    )
     assert first["refund_id"] == "AF20240801001"
     ds.reset_source()
-    again = await ds.apply_refund("20240801001", "重置测试")
+    again = await ds.apply_refund(
+        "20240801001", "重置测试", requester_username="user1", requester_role="user"
+    )
     assert again["refund_id"] == "AF20240801001"
     assert "已提交" in again["message"]
 
 
 # ---- MALL_DATA_SOURCE 配置切换 ----
+
 
 async def test_mode_mock_uses_mock_impl(monkeypatch):
     """MALL_DATA_SOURCE=mock：恒用 MockMallDataSource，source_mode=mock。"""
@@ -242,5 +387,51 @@ async def test_facade_forwards_through_mode_switch(monkeypatch):
         return_value={"refund_id": "AF20240801001", "status": "处理中", "message": "ok"}
     )
     monkeypatch.setattr(ds, "_resolve_source", AsyncMock(return_value=fake_source))
-    assert (await ds.query_order("20240801001"))["order_sn"] == "20240801001"
-    assert (await ds.apply_refund("20240801001", "测试"))["status"] == "处理中"
+    assert (await ds.query_order("20240801001", requester_username="user", requester_role="user"))[
+        "order_sn"
+    ] == "20240801001"
+    assert (
+        await ds.apply_refund(
+            "20240801001",
+            "测试",
+            requester_username="user",
+            requester_role="user",
+        )
+    )["status"] == "处理中"
+
+
+async def test_query_order_rejects_non_owner():
+    result = await ds.query_order("20240801001", requester_username="other", requester_role="user")
+    assert result is None
+
+
+async def test_query_logistics_rejects_non_owner():
+    result = await ds.query_logistics(
+        "20240801001", requester_username="other", requester_role="user"
+    )
+    assert result == []
+
+
+async def test_apply_refund_rejects_non_owner_without_creating_refund():
+    ds.reset_source()
+    denied = await ds.apply_refund(
+        "20240801001",
+        "非本人订单",
+        requester_username="other",
+        requester_role="user",
+    )
+    allowed = await ds.apply_refund(
+        "20240801001",
+        "本人申请",
+        requester_username="user1",
+        requester_role="user",
+    )
+    assert denied["status"] == "failed"
+    assert denied["refund_id"] is None
+    assert allowed["status"] == "处理中"
+    assert "已提交" in allowed["message"]
+
+
+async def test_agent_can_access_customer_order():
+    result = await ds.query_order("20240801001", requester_username="agent", requester_role="agent")
+    assert result is not None

@@ -15,13 +15,24 @@ from __future__ import annotations
 
 from app.core.mall import data_source as ds
 from app.core.mcp.server import apply_refund, query_logistics, query_order, query_product
+from app.core.security.auth import create_access_token
+
+
+def _ctx(username="user1", role="user"):
+    from unittest.mock import MagicMock
+
+    token = create_access_token({"sub": username, "role": role})
+    ctx = MagicMock()
+    ctx.headers = {"authorization": f"Bearer {token}"}
+    return ctx
+
 
 # ---------- 1. query_order ----------
 
 
 async def test_query_order_known():
     """已知订单返回完整订单信息（状态/明细/实付/物流单号）。"""
-    order = await query_order("20240801001")
+    order = await query_order("20240801001", _ctx())
     assert order["order_sn"] == "20240801001"
     assert order["status"] == "已发货"
     assert order["pay_amount"] == 6999
@@ -32,7 +43,7 @@ async def test_query_order_known():
 
 async def test_query_order_pending_delivery():
     """待发货订单：两件商品，实付 5398，无物流单号。"""
-    order = await query_order("20240801002")
+    order = await query_order("20240801002", _ctx())
     assert order["status"] == "待发货"
     assert order["pay_amount"] == 5398
     assert [(i["product_id"], i["quantity"]) for i in order["items"]] == [
@@ -44,7 +55,21 @@ async def test_query_order_pending_delivery():
 
 async def test_query_order_unknown():
     """未知订单号返回 {error: "订单不存在"}。"""
-    result = await query_order("99999999999")
+    result = await query_order("99999999999", _ctx())
+    assert result == {"error": "订单不存在"}
+
+
+async def test_query_order_rejects_non_owner():
+    result = await query_order("20240801001", _ctx(username="other"))
+    assert result == {"error": "订单不存在"}
+
+
+async def test_query_order_rejects_missing_credentials():
+    from unittest.mock import MagicMock
+
+    ctx = MagicMock()
+    ctx.headers = {}
+    result = await query_order("20240801001", ctx)
     assert result == {"error": "订单不存在"}
 
 
@@ -53,7 +78,7 @@ async def test_query_order_unknown():
 
 async def test_query_logistics_shipped_order():
     """已发货订单返回固定轨迹（已揽收 → 运输中）。"""
-    tracks = await query_logistics("20240801001")
+    tracks = await query_logistics("20240801001", _ctx())
     assert tracks == [
         {"ts": "2024-08-01 16:00:00", "content": "已揽收"},
         {"ts": "2024-08-01 18:30:00", "content": "运输中（预计明天送达）"},
@@ -61,10 +86,10 @@ async def test_query_logistics_shipped_order():
 
 
 async def test_query_logistics_not_shipped_or_unknown():
-    """未发货订单与未知订单返回空列表，不抛异常。"""
-    assert await query_logistics("20240801002") == []
-    assert await query_logistics("20240801004") == []
-    assert await query_logistics("99999999999") == []
+    """未发货订单与未知订单返回空列表，不抛异常（004 归属 user2）。"""
+    assert await query_logistics("20240801002", _ctx()) == []
+    assert await query_logistics("20240801004", _ctx(username="user2")) == []
+    assert await query_logistics("99999999999", _ctx()) == []
 
 
 # ---------- 3. query_product ----------
@@ -100,8 +125,8 @@ async def test_query_product_unknown():
 
 
 async def test_apply_refund_rejects_unpaid():
-    """待付款订单拒绝退款（refund_id=None, status=failed）。"""
-    result = await apply_refund("20240801004", "不想要了")
+    """待付款订单拒绝退款（refund_id=None, status=failed；004 归属 user2）。"""
+    result = await apply_refund("20240801004", "不想要了", _ctx(username="user2"))
     assert result["refund_id"] is None
     assert result["status"] == "failed"
     assert "待付款" in result["message"]
@@ -110,7 +135,7 @@ async def test_apply_refund_rejects_unpaid():
 async def test_apply_refund_creates():
     """可售后状态（待发货）成功创建售后单。"""
     ds.reset_source()
-    result = await apply_refund("20240801002", "七天无理由退货")
+    result = await apply_refund("20240801002", "七天无理由退货", _ctx())
     assert result["refund_id"] == "AF20240801002"
     assert result["status"] == "处理中"
     assert "已提交" in result["message"]
@@ -119,7 +144,7 @@ async def test_apply_refund_creates():
 async def test_apply_refund_shipped_creates():
     """已发货订单成功创建售后单。"""
     ds.reset_source()
-    result = await apply_refund("20240801001", "商品质量问题")
+    result = await apply_refund("20240801001", "商品质量问题", _ctx())
     assert result["refund_id"] == "AF20240801001"
     assert result["status"] == "处理中"
 
@@ -127,15 +152,15 @@ async def test_apply_refund_shipped_creates():
 async def test_apply_refund_duplicate_idempotent():
     """同一订单重复申请幂等：返回已存在的售后单。"""
     ds.reset_source()
-    first = await apply_refund("20240801001", "商品质量问题")
-    second = await apply_refund("20240801001", "商品质量问题")
+    first = await apply_refund("20240801001", "商品质量问题", _ctx())
+    second = await apply_refund("20240801001", "商品质量问题", _ctx())
     assert second["refund_id"] == first["refund_id"] == "AF20240801001"
     assert "已申请过售后" in second["message"]
 
 
 async def test_apply_refund_unknown_order():
     """未知订单拒绝退款并提示订单不存在。"""
-    result = await apply_refund("99999999999", "测试")
+    result = await apply_refund("99999999999", "测试", _ctx())
     assert result["refund_id"] is None
     assert result["status"] == "failed"
     assert "不存在" in result["message"]

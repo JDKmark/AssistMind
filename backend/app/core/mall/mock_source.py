@@ -2,7 +2,7 @@
 
 数据与固定演示清单完全一致：
 - 商品 5 个（P001-P005）
-- 订单 4 个（20240801001-20240801004）
+- 订单 4 个（20240801001-20240801004；001/002 归属 user1，003/004 归属 user2）
 - 物流轨迹仅 20240801001（已揽收 → 运输中）
 
 售后单（apply_refund）进程内内存记录；未知单号/商品返回 None 不抛异常。
@@ -61,10 +61,11 @@ PRODUCTS: dict[str, dict[str, Any]] = {
 }
 
 # ---- 订单（固定清单） ----
-# {order_sn, status(中文), items(商品明细), pay_amount(实付), logistics_no(物流单号), created_at(下单时间)}
+# {order_sn, status, items, pay_amount, logistics_no, created_at}
 ORDERS: dict[str, dict[str, Any]] = {
     "20240801001": {
         "order_sn": "20240801001",
+        "owner_username": "user1",
         "status": "已发货",
         "items": [
             {
@@ -81,6 +82,7 @@ ORDERS: dict[str, dict[str, Any]] = {
     },
     "20240801002": {
         "order_sn": "20240801002",
+        "owner_username": "user1",
         "status": "待发货",
         "items": [
             {
@@ -104,6 +106,7 @@ ORDERS: dict[str, dict[str, Any]] = {
     },
     "20240801003": {
         "order_sn": "20240801003",
+        "owner_username": "user2",
         "status": "已完成",
         "items": [
             {
@@ -120,6 +123,7 @@ ORDERS: dict[str, dict[str, Any]] = {
     },
     "20240801004": {
         "order_sn": "20240801004",
+        "owner_username": "user2",
         "status": "待付款",
         "items": [
             {
@@ -160,19 +164,107 @@ class MockMallDataSource(MallDataSource):
     def source_mode(self) -> str:
         return "mock"
 
-    async def query_order(self, order_sn: str) -> dict | None:
-        """查询订单信息。未知 order_sn 返回 None。"""
-        return ORDERS.get(order_sn)
+    async def query_order(
+        self, order_sn: str, *, requester_username: str, requester_role: str
+    ) -> dict | None:
+        """查询订单信息。未知或无权访问时返回 None。"""
+        order = ORDERS.get(order_sn)
+        if order is None or (
+            requester_role not in {"agent", "admin"}
+            and order.get("owner_username") != requester_username
+        ):
+            return None
+        return {key: value for key, value in order.items() if key != "owner_username"}
 
-    async def query_logistics(self, order_sn: str) -> list[dict]:
-        """查询物流轨迹。未发货/未知订单返回空列表。"""
+    async def list_orders(
+        self,
+        *,
+        owner_username: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """查询订单列表：过滤 → created_at 倒序 → 先 total 后切片分页。
+
+        列表项含 owner_username（与 query_order 单查不返回 owner 的契约互补，
+        管理端需要归属信息做演示隔离展示）。
+        """
+        filtered = [
+            order
+            for order in ORDERS.values()
+            if (owner_username is None or order.get("owner_username") == owner_username)
+            and (status is None or order["status"] == status)
+        ]
+        filtered.sort(key=lambda order: order["created_at"], reverse=True)
+        return {
+            "orders": [
+                {
+                    "order_sn": order["order_sn"],
+                    "owner_username": order.get("owner_username"),
+                    "status": order["status"],
+                    "pay_amount": order["pay_amount"],
+                    "logistics_no": order["logistics_no"],
+                    "created_at": order["created_at"],
+                }
+                for order in filtered[offset : offset + limit]
+            ],
+            "total": len(filtered),
+        }
+
+    async def my_orders(
+        self,
+        *,
+        requester_username: str,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """查询当前用户订单列表：过滤 → created_at 倒序 → 先 total 后切片分页。
+
+        行含完整 items（用户端需要商品明细展示；与 list_orders 管理端摘要
+        不含 items 的契约互补）。
+        """
+        filtered = [
+            order
+            for order in ORDERS.values()
+            if order.get("owner_username") == requester_username
+            and (status is None or order["status"] == status)
+        ]
+        filtered.sort(key=lambda order: order["created_at"], reverse=True)
+        return {
+            "orders": [
+                {
+                    "order_sn": order["order_sn"],
+                    "status": order["status"],
+                    "pay_amount": order["pay_amount"],
+                    "logistics_no": order["logistics_no"],
+                    "created_at": order["created_at"],
+                    "items": order["items"],
+                }
+                for order in filtered[offset : offset + limit]
+            ],
+            "total": len(filtered),
+        }
+
+    async def query_logistics(
+        self, order_sn: str, *, requester_username: str, requester_role: str
+    ) -> list[dict]:
+        """查询物流轨迹。未发货、未知或无权访问时返回空列表。"""
+        order = ORDERS.get(order_sn)
+        if order is None or (
+            requester_role not in {"agent", "admin"}
+            and order.get("owner_username") != requester_username
+        ):
+            return []
         return list(LOGISTICS.get(order_sn, []))
 
     async def query_product(self, product_id: str) -> dict | None:
         """查询商品信息。未知 product_id 返回 None。"""
         return PRODUCTS.get(product_id)
 
-    async def apply_refund(self, order_sn: str, reason: str) -> dict:
+    async def apply_refund(
+        self, order_sn: str, reason: str, *, requester_username: str, requester_role: str
+    ) -> dict:
         """创建售后（退款）单。
 
         状态机：
@@ -182,11 +274,14 @@ class MockMallDataSource(MallDataSource):
         - 重复申请 → 返回已存在的售后单（幂等）
         """
         order = ORDERS.get(order_sn)
-        if order is None:
+        if order is None or (
+            requester_role not in {"agent", "admin"}
+            and order.get("owner_username") != requester_username
+        ):
             return {
                 "refund_id": None,
                 "status": "failed",
-                "message": f"订单 {order_sn} 不存在，无法申请退款",
+                "message": "订单不存在或无权操作，无法申请退款",
             }
         if order["status"] == "待付款":
             return {
@@ -207,8 +302,10 @@ class MockMallDataSource(MallDataSource):
         refund = {
             "refund_id": refund_id,
             "order_sn": order_sn,
+            "owner_username": order.get("owner_username"),
             "reason": reason,
             "status": "处理中",
+            "created_at": order["created_at"],
         }
         self._refunds[order_sn] = refund
         return {
@@ -216,3 +313,31 @@ class MockMallDataSource(MallDataSource):
             "status": refund["status"],
             "message": f"售后申请已提交，售后单号 {refund_id}",
         }
+
+    async def list_refunds(
+        self,
+        *,
+        status: str | None = None,
+        owner_username: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        refunds = [
+            refund
+            for refund in self._refunds.values()
+            if (status is None or refund["status"] == status)
+            and (owner_username is None or refund["owner_username"] == owner_username)
+        ]
+        refunds.sort(key=lambda item: item["created_at"], reverse=True)
+        return {"refunds": refunds[offset : offset + limit], "total": len(refunds)}
+
+    async def update_refund_status(self, refund_id: str, new_status: str) -> dict:
+        refund = next(
+            (item for item in self._refunds.values() if item["refund_id"] == refund_id), None
+        )
+        if refund is None:
+            raise LookupError(f"退款单不存在: {refund_id}")
+        if refund["status"] != "处理中" or new_status not in {"已通过", "已拒绝"}:
+            raise ValueError(f"非法状态流转: {refund['status']} -> {new_status}")
+        refund["status"] = new_status
+        return refund

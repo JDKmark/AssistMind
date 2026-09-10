@@ -7,6 +7,8 @@
 4. transfer_human：返回 message 含"转人工"和 ticket_id
 5. get_ticket_status 存在：返回工单详情
 6. get_ticket_status 不存在：返回 {error: "工单不存在"}
+7. 工单身份归属：create_ticket/transfer_human 从 JWT ctx 提取 user_id；
+   get_ticket_status 对 user 角色做归属隔离（他人工单与不存在统一返回 error）
 
 mock 策略：直接 patch server 模块中别名 import 的引用
 （_retrieve / _create_ticket / _get_ticket），不连真实 RAG/DB/Redis。
@@ -15,7 +17,7 @@ mock 策略：直接 patch server 模块中别名 import 的引用
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.core.mcp.server import (
     create_ticket,
@@ -23,6 +25,15 @@ from app.core.mcp.server import (
     search_knowledge,
     transfer_human,
 )
+from app.core.security.auth import create_access_token
+
+
+def _ctx(username="user1", role="user"):
+    """构造携带 JWT 的 MCP Context（与 test_mcp_mall_tools.py 一致）。"""
+    token = create_access_token({"sub": username, "role": role})
+    ctx = MagicMock()
+    ctx.headers = {"authorization": f"Bearer {token}"}
+    return ctx
 
 # ---------- 1. search_knowledge 正常 ----------
 
@@ -103,14 +114,14 @@ async def test_create_ticket_normal(mock_create):
         },
     }
 
-    result = await create_ticket("登录失败", "用户无法登录系统", priority="high")
+    result = await create_ticket("登录失败", "用户无法登录系统", priority="high", ctx=_ctx())
 
     assert result["ticket_id"] == "TK-1234567890abc"
     assert result["created"] is True
     assert result["ticket"]["title"] == "登录失败"
     assert result["ticket"]["priority"] == "high"
     mock_create.assert_awaited_once_with(
-        "登录失败", "用户无法登录系统", priority="high"
+        "登录失败", "用户无法登录系统", priority="high", user_id="user1"
     )
 
 
@@ -134,16 +145,17 @@ async def test_transfer_human(mock_create):
         },
     }
 
-    result = await transfer_human("用户要求人工服务")
+    result = await transfer_human("用户要求人工服务", ctx=_ctx(username="user2"))
 
     assert "人工" in result["message"]
     assert result["ticket_id"] == "TK-transfer001"
-    # 验证内部以 high 优先级 + transfer_human 分类创建工单
+    # 验证内部以 high 优先级 + transfer_human 分类创建工单，且携带请求者身份
     mock_create.assert_awaited_once_with(
         title="转人工：用户要求人工服务",
         description="用户要求人工服务",
         priority="high",
         category="transfer_human",
+        user_id="user2",
     )
 
 
@@ -152,7 +164,7 @@ async def test_transfer_human(mock_create):
 
 @patch("app.core.mcp.server._get_ticket", new_callable=AsyncMock)
 async def test_get_ticket_status_exists(mock_get):
-    """get_ticket_status 工单存在时返回工单详情。"""
+    """get_ticket_status 工单存在时返回工单详情（agent 查他人工单不受限）。"""
     mock_get.return_value = {
         "id": "TK-status001",
         "title": "查询状态",
@@ -165,7 +177,7 @@ async def test_get_ticket_status_exists(mock_get):
         "updated_at": "2026-08-04T11:00:00+00:00",
     }
 
-    result = await get_ticket_status("TK-status001")
+    result = await get_ticket_status("TK-status001", ctx=_ctx(username="agent1", role="agent"))
 
     assert result["id"] == "TK-status001"
     assert result["status"] == "in_progress"
@@ -181,7 +193,53 @@ async def test_get_ticket_status_not_found(mock_get):
     """get_ticket_status 工单不存在时返回 {error: "工单不存在"}。"""
     mock_get.return_value = None
 
-    result = await get_ticket_status("TK-notexist")
+    result = await get_ticket_status("TK-notexist", ctx=_ctx())
 
     assert result == {"error": "工单不存在"}
     mock_get.assert_awaited_once_with("TK-notexist")
+
+
+# ---------- 7. 工单身份归属 ----------
+
+
+@patch("app.core.mcp.server._get_ticket", new_callable=AsyncMock)
+async def test_get_ticket_status_user_cannot_view_others_ticket(mock_get):
+    """user 查他人工单：与不存在统一返回 {error: "工单不存在"}（防枚举）。"""
+    mock_get.return_value = {
+        "id": "TK-others",
+        "title": "他人工单",
+        "user_id": "user2",
+        "status": "open",
+    }
+
+    result = await get_ticket_status("TK-others", ctx=_ctx(username="user1", role="user"))
+
+    assert result == {"error": "工单不存在"}
+
+
+@patch("app.core.mcp.server._get_ticket", new_callable=AsyncMock)
+async def test_get_ticket_status_user_can_view_own_ticket(mock_get):
+    """user 查自己的工单：正常返回详情。"""
+    mock_get.return_value = {
+        "id": "TK-own",
+        "title": "我的工单",
+        "user_id": "user1",
+        "status": "in_progress",
+    }
+
+    result = await get_ticket_status("TK-own", ctx=_ctx(username="user1", role="user"))
+
+    assert result["id"] == "TK-own"
+    assert "error" not in result
+
+
+@patch("app.core.mcp.server._create_ticket", new_callable=AsyncMock)
+async def test_create_ticket_without_credentials_falls_back_to_system(mock_create):
+    """无 JWT 凭证的内部调用：user_id 回退 system（兼容旧行为）。"""
+    mock_create.return_value = {"ticket_id": "TK-x", "created": True, "ticket": {}}
+    ctx = MagicMock()
+    ctx.headers = {}
+
+    await create_ticket("内部任务", "描述", ctx=ctx)
+
+    mock_create.assert_awaited_once_with("内部任务", "描述", priority="normal", user_id="system")

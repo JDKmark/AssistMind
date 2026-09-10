@@ -5,7 +5,7 @@
 
 字段约定（与契约严格一致，勿改字面值）：
 - MallOrder.status 中文枚举：待付款 / 待发货 / 已发货 / 已完成
-- MallRefund.status：处理中
+- MallRefund.status：处理中 / 已通过 / 已拒绝
 - services 用 JSON 存中文服务标识列表（无忧退货 / 快速退款 / 免费包邮）
 """
 
@@ -39,6 +39,7 @@ class MallOrder(Base):
     __tablename__ = "mall_orders"
 
     order_sn: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_username: Mapped[str | None] = mapped_column(String(64), index=True, default=None)
     status: Mapped[str] = mapped_column(String(16), nullable=False)  # 待付款/待发货/已发货/已完成
     pay_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     logistics_no: Mapped[str | None] = mapped_column(String(64), default=None)  # 未发货为 None
