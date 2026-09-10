@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ===== 向量库 Qdrant =====
   qdrant:
@@ -52,7 +50,19 @@ services:
       timeout: 5s
       retries: 5
 
-  # ===== Langfuse 可观测平台（可选，开发环境默认启动）=====
+  # ===== Langfuse 可观测平台（v4：Postgres + ClickHouse + MinIO + Redis）=====
+  langfuse-redis:
+    # Langfuse 独立 Redis（官方建议）：带密码 + noeviction（其 queue 要求）
+    image: redis:7-alpine
+    container_name: smart-cs-langfuse-redis
+    command: redis-server --appendonly yes --requirepass langfuse-dev --maxmemory 512mb --maxmemory-policy noeviction
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a langfuse-dev ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   langfuse-db:
     image: postgres:15-alpine
     container_name: smart-cs-langfuse-db
@@ -69,20 +79,144 @@ services:
       timeout: 5s
       retries: 5
 
+  langfuse-clickhouse:
+    # langfuse v4 官方 compose pin 的版本（events 表迁移需全文索引 tokenizer 语法）
+    image: clickhouse/clickhouse-server:25.12
+    container_name: smart-cs-langfuse-clickhouse
+    environment:
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      # Windows 无 IPv6：注入 IPv4 监听（见文件注释）
+      - ./deploy/langfuse-clickhouse-listen.xml:/etc/clickhouse-server/config.d/zzz-listen.xml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  langfuse-minio:
+    image: minio/minio:latest
+    container_name: smart-cs-langfuse-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    volumes:
+      - langfuse-minio-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  langfuse-minio-init:
+    image: minio/mc:latest
+    container_name: smart-cs-langfuse-minio-init
+    depends_on:
+      langfuse-minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set lf http://langfuse-minio:9000 minio miniosecret; do sleep 1; done;
+      mc mb -p lf/langfuse-events 2>/dev/null || true;
+      mc mb -p lf/langfuse-media 2>/dev/null || true;
+      exit 0
+      "
+    restart: "no"
+
   langfuse:
-    image: langfuse/langfuse:2
+    # 服务端 v3 稳定线（SDK 4.14 OTLP 原生支持，单容器无独立 worker、
+    # 无需 x-langfuse-ingestion-version header）；v4 处于 events 双写迁移期，
+    # 本地演示受 events 分区/传播管道影响 trace 不聚合，暂不采用
+    image: langfuse/langfuse:3.225
     container_name: smart-cs-langfuse
     depends_on:
       langfuse-db:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-minio-init:
+        condition: service_completed_successfully
+      langfuse-redis:
         condition: service_healthy
     ports:
       - "3001:3000"
     environment:
       DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
-      NEXTAUTH_SECRET: changeme-langfuse-secret
       SALT: changeme-langfuse-salt
+      # v4 必需：64 位 hex（openssl rand -hex 32；演示固定值，生产请用密钥管理）
+      ENCRYPTION_KEY: 56ab419a89bf882ae16f24bb3be465a4372c1e4187188f380255d0e1c8d790d7
+      NEXTAUTH_SECRET: changeme-langfuse-secret
       NEXTAUTH_URL: http://localhost:3001
       TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@langfuse-clickhouse:9000
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      # 独立 Redis（带密码；官方变量名 REDIS_HOST/PORT/REDIS_AUTH）
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: langfuse-dev
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-events
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-media
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+    restart: unless-stopped
+
+  langfuse-worker:
+    # v3 架构同 v4：独立 worker 消费 BullMQ ingestion 队列写 ClickHouse（web 只提供 UI/API）
+    image: langfuse/langfuse-worker:3
+    container_name: smart-cs-langfuse-worker
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-minio-init:
+        condition: service_completed_successfully
+      langfuse-redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      SALT: changeme-langfuse-salt
+      NEXTAUTH_SECRET: changeme-langfuse-secret
+      NEXTAUTH_URL: http://localhost:3001
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@langfuse-clickhouse:9000
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: langfuse-dev
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-events
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-media
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
     restart: unless-stopped
 
   # ===== 真实运维数据源（Prometheus + 演示 exporter）=====
@@ -123,4 +257,6 @@ volumes:
   redis-data:
   pg-data:
   langfuse-db-data:
+  langfuse-clickhouse-data:
+  langfuse-minio-data:
   prom-data:

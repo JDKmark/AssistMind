@@ -1,0 +1,59 @@
+# AssistMind 应用层 overlay —— 与根目录 docker-compose.yml 叠加使用。
+# 基础设施（qdrant/redis/postgres/langfuse/prometheus/ops-exporter）由 docker-compose.yml 定义，
+# 本文件只新增 backend + frontend 两层，同一 project 网络内按服务名互通。
+#
+# 用法：
+#   docker compose -f docker-compose.yml -f docker-compose.app.yml up -d --build
+#   # 或一条命令部署：bash deploy/deploy.sh（见 deploy/README.md）
+#
+# 前置：先按 .env.prod.example 生成 .env.prod（含 DEEPSEEK_API_KEY / JWT_SECRET）。
+
+services:
+  # ===== 后端（FastAPI，自动初始化数据库 + 幂等灌库）=====
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: smart-cs-backend
+    env_file:
+      - .env.prod
+    ports:
+      - "8001:8001"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request;urllib.request.urlopen('http://localhost:8001/api/v1/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 300s
+    restart: unless-stopped
+
+  # ===== 前端（nginx 托管构建产物，/api 反代 backend:8001，SSE 已开 proxy_buffering off）=====
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: smart-cs-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===== 元数据库名对齐 .env.prod 的 DATABASE_URL（host:8001 的 smart_cs 不同名）=====
+  postgres:
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-assistmind}

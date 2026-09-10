@@ -1,0 +1,6 @@
+<!-- ClickHouse 额外监听配置：Windows/Docker Desktop 环境 IPv6 被禁用，
+默认 <listen_host>::</listen_host> 会导致 8123/9000 监听失败（服务不退出但无端口）。
+显式追加 IPv4 监听（与镜像默认的 IPv6 条目合并，IPv6 失败仅 warning）。 -->
+<clickhouse>
+    <listen_host>0.0.0.0</listen_host>
+</clickhouse>

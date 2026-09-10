@@ -1,0 +1,28 @@
+# 构建上下文防护（后端镜像以仓库根为 context，见 docker-compose.app.yml）
+.git
+**/.git
+
+# Python
+**/venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/*.egg-info
+**/.coverage
+backend/.env
+backend/eval
+
+# Node
+**/node_modules
+frontend/dist
+frontend/.vite
+
+# 数据/配置产物
+Dockerfile
+docker-compose*.yml
+start-*.ps1
+deploy
+README.md
+AGENTS.md
+docs
