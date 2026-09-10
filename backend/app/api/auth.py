@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
+from app.api.deps import get_current_user
 from app.core.infra.postgres import async_session
 from app.core.security.auth import create_access_token, verify_password
 from app.models.user import User
@@ -24,6 +27,11 @@ async def login(req: LoginRequest):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="用户名或密码错误",
             )
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="账号已停用",
+            )
         token = create_access_token({"sub": user.username, "role": user.role})
         return TokenResponse(
             access_token=token,
@@ -31,7 +39,7 @@ async def login(req: LoginRequest):
         )
 
 
-@router.get("/me")
-async def get_me():
-    """获取当前用户信息（占位，需配合鉴权依赖）。"""
-    return {"username": "placeholder", "role": "user"}
+@router.get("/me", response_model=UserInfo)
+async def get_me(user: Annotated[dict, Depends(get_current_user)]):
+    """获取当前登录用户信息（从 JWT 解析，供前端会话恢复）。"""
+    return UserInfo(username=user["username"], role=user["role"])

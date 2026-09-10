@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, chat, feedback, health, knowledge, ops, ticket
+from app.api import admin, auth, chat, feedback, health, knowledge, mall, ops, ticket
 from app.config import get_settings
 from app.core.infra.alertmanager import get_alertmanager
 from app.core.infra.circuit_breaker import init_breakers
@@ -20,6 +20,7 @@ from app.core.infra.elasticsearch import get_elasticsearch
 from app.core.infra.langfuse import get_langfuse, is_langfuse_enabled
 from app.core.infra.prometheus import get_prometheus
 from app.core.infra.qdrant import get_qdrant
+from app.core.infra.rate_limit import RateLimitMiddleware
 from app.core.infra.redis import get_redis
 from app.core.mcp.server import get_mcp_app, get_mcp_session_manager
 
@@ -73,7 +74,8 @@ async def lifespan(app: FastAPI):
             logger.info("[Main] Langfuse 已启用（host=%s）", settings.LANGFUSE_HOST)
         else:
             logger.info(
-                "[Main] Langfuse 未启用（未配置 LANGFUSE_PUBLIC_KEY/SECRET_KEY），跳过初始化，不进行埋点"
+                "[Main] Langfuse 未启用（未配置 LANGFUSE_PUBLIC_KEY/SECRET_KEY），"
+                "跳过初始化，不进行埋点"
             )
     except Exception as e:
         logger.warning("[Main] Langfuse 初始化失败（降级为不埋点）: %s", e)
@@ -130,13 +132,22 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # 全局限流（RATE_LIMIT_PER_MINUTE 消费方）：Redis 固定窗口按客户端 IP 计数，
+    # 超限 429；Redis 不可用时放行（降级语义见 rate_limit.py）。跳过 health/mcp。
+    app.add_middleware(
+        RateLimitMiddleware,
+        redis=get_redis(),
+        limit=settings.RATE_LIMIT_PER_MINUTE,
+    )
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+    app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
     app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
     app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["knowledge"])
     app.include_router(ticket.router, prefix="/api/v1/ticket", tags=["ticket"])
     app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"])
     app.include_router(ops.router, prefix="/api/v1/ops", tags=["ops"])
+    app.include_router(mall.router, prefix="/api/v1/mall", tags=["mall"])
 
     # 挂载 MCP Server（streamable_http 传输）
     if settings.MCP_SERVER_ENABLED:
