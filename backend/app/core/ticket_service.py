@@ -44,7 +44,7 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "open->in_progress": {"agent", "admin"},
     "in_progress->resolved": {"agent", "admin"},
-    "resolved->closed": {"admin"},
+    "resolved->closed": {"admin", "user"},
 }
 
 
@@ -74,10 +74,16 @@ async def _find_recent_duplicate(
 ) -> Ticket | None:
     """查找幂等窗口内 title+description 相同的最近工单。"""
     # DB 列为 TIMESTAMP WITHOUT TIME ZONE（naive），threshold 用 naive UTC 保持一致
-    threshold = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=IDEMPOTENCY_WINDOW_SECONDS)
+    threshold = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+        seconds=IDEMPOTENCY_WINDOW_SECONDS
+    )
     stmt = (
         select(Ticket)
-        .where(Ticket.title == title, Ticket.description == description, Ticket.created_at >= threshold)
+        .where(
+            Ticket.title == title,
+            Ticket.description == description,
+            Ticket.created_at >= threshold,
+        )
         .order_by(Ticket.created_at.desc())
         .limit(1)
     )
@@ -145,7 +151,9 @@ async def create_ticket(
                         "created": False,
                         "ticket": _ticket_to_dict(existing),
                     }
-                ticket = await _persist_ticket(session, title, description, priority, user_id, category)
+                ticket = await _persist_ticket(
+                    session, title, description, priority, user_id, category
+                )
                 return {"ticket_id": ticket.id, "created": True, "ticket": _ticket_to_dict(ticket)}
         elif redis.is_connected:
             # 锁获取失败（被其他请求持有）：直接查重返回
@@ -158,13 +166,17 @@ async def create_ticket(
                         "ticket": _ticket_to_dict(existing),
                     }
                 # 极端情况：锁被持有但查不到重复（对方尚未提交），仍创建避免请求堆积
-                ticket = await _persist_ticket(session, title, description, priority, user_id, category)
+                ticket = await _persist_ticket(
+                    session, title, description, priority, user_id, category
+                )
                 return {"ticket_id": ticket.id, "created": True, "ticket": _ticket_to_dict(ticket)}
         else:
             # Redis 不可用：降级直接创建（跳过幂等）
             logger.warning("[ticket] Redis 不可用，跳过幂等检查直接创建")
             async with async_session() as session:
-                ticket = await _persist_ticket(session, title, description, priority, user_id, category)
+                ticket = await _persist_ticket(
+                    session, title, description, priority, user_id, category
+                )
                 return {"ticket_id": ticket.id, "created": True, "ticket": _ticket_to_dict(ticket)}
     finally:
         if acquired and redis.is_connected:
@@ -179,6 +191,7 @@ async def create_ticket(
 async def list_tickets(
     status: str | None = None,
     user_id: str | None = None,
+    priority: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
@@ -195,6 +208,9 @@ async def list_tickets(
         if user_id is not None:
             stmt = stmt.where(Ticket.user_id == user_id)
             count_stmt = count_stmt.where(Ticket.user_id == user_id)
+        if priority is not None:
+            stmt = stmt.where(Ticket.priority == priority)
+            count_stmt = count_stmt.where(Ticket.priority == priority)
         stmt = stmt.order_by(Ticket.created_at.desc()).limit(limit).offset(offset)
 
         result = await session.execute(stmt)
@@ -228,15 +244,17 @@ async def update_status(
     ticket_id: str,
     new_status: str,
     user_role: str = "user",
+    user_id: str = "",
 ) -> dict:
-    """流转工单状态（状态机 + 角色权限校验）。
+    """流转工单状态（状态机 + 角色权限 + 归属校验）。
 
     合法流转：
     - open → in_progress（agent/admin）
     - in_progress → resolved（agent/admin）
-    - resolved → closed（admin）
+    - resolved → closed（admin 任意工单；user 仅限本人工单——用户确认问题已解决）
 
-    非法流转抛 ValueError；权限不足抛 PermissionError。
+    非法流转抛 ValueError；权限不足抛 PermissionError；user 角色操作
+    非本人工单抛 PermissionError（归属校验）。
     返回 {"ticket_id": str, "status": str}。
     """
     async with async_session() as session:
@@ -254,6 +272,9 @@ async def update_status(
         allowed_roles = ROLE_PERMISSIONS.get(transition_key, set())
         if user_role not in allowed_roles:
             raise PermissionError(f"角色 {user_role} 无权执行流转 {transition_key}")
+        # 3. 归属校验：user 角色仅可操作本人工单（agent/admin 不受限）
+        if user_role == "user" and ticket.user_id != user_id:
+            raise PermissionError(f"工单 {ticket_id} 不属于当前用户，无权操作")
 
         ticket.status = new_status
         await session.commit()

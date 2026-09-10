@@ -11,7 +11,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_current_user
+from app.api.deps import require_admin, require_staff
 from app.core.infra.qdrant import get_qdrant
 from app.core.rag.bm25 import get_bm25
 
@@ -49,8 +49,8 @@ def _aggregate_docs(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 @router.get("/list")
-async def list_docs(user: Annotated[dict, Depends(get_current_user)]):
-    """列出知识库文档（按 doc_id 聚合 chunk 数）。
+async def list_docs(user: Annotated[dict, Depends(require_staff)]):
+    """列出知识库文档（按 doc_id 聚合 chunk 数，仅 agent/admin）。
 
     Qdrant 不可用时返回 200 + error 字段（前端展示降级提示），不抛 500。
     """
@@ -65,9 +65,9 @@ async def list_docs(user: Annotated[dict, Depends(get_current_user)]):
 @router.post("/delete")
 async def delete_doc(
     req: DeleteDocRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[dict, Depends(require_admin)],
 ):
-    """删除文档（含所有 chunk）并重建 BM25 内存索引。"""
+    """删除文档（含所有 chunk）并重建 BM25 内存索引（仅管理员）。"""
     qdrant = get_qdrant()
     if not qdrant.is_connected:
         raise HTTPException(
@@ -87,8 +87,8 @@ async def delete_doc(
 
 
 @router.post("/rebuild")
-async def rebuild_index(user: Annotated[dict, Depends(get_current_user)]):
-    """从 Qdrant 全量数据重建 BM25 索引。"""
+async def rebuild_index(user: Annotated[dict, Depends(require_admin)]):
+    """从 Qdrant 全量数据重建 BM25 索引（仅管理员）。"""
     qdrant = get_qdrant()
     if not qdrant.is_connected:
         raise HTTPException(

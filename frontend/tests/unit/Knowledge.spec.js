@@ -19,6 +19,12 @@ const ElMessageMock = vi.hoisted(() => ({
 
 vi.mock('element-plus', () => ({ ElMessage: ElMessageMock }))
 
+const authMock = vi.hoisted(() => ({ role: 'admin' }))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authMock,
+}))
+
 import Knowledge from '@/views/Knowledge/index.vue'
 
 // ---------- 组件测试的 EP 组件 stub ----------
@@ -62,6 +68,7 @@ const DOCS = [
 describe('Knowledge 组件', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    authMock.role = 'admin'
   })
 
   function mountKnowledge() {
@@ -165,5 +172,22 @@ describe('Knowledge 组件', () => {
       .findAll('button.el-button-stub')
       .find((b) => b.text() === '重建索引')
     expect(btn).toBeTruthy()
+  })
+
+  it('agent 视角：隐藏重建索引与删除按钮，文档列表正常渲染', async () => {
+    authMock.role = 'agent'
+    knowledgeApi.listDocs.mockResolvedValue({ docs: DOCS, total: 2 })
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button.el-button-stub')
+    expect(buttons.find((b) => b.text() === '重建索引')).toBeUndefined()
+    expect(buttons.find((b) => b.text() === '删除')).toBeUndefined()
+    expect(wrapper.find('.el-popconfirm-stub').exists()).toBe(false)
+    // 文档列表正常展示
+    expect(knowledgeApi.listDocs).toHaveBeenCalledTimes(1)
+    expect(wrapper.vm.docs).toEqual(DOCS)
+    expect(wrapper.vm.total).toBe(2)
+    expect(wrapper.find('.el-table-stub').exists()).toBe(true)
   })
 })

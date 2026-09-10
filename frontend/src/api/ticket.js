@@ -1,7 +1,7 @@
 import request from './request'
 
-export function listTickets(status, limit) {
-  const params = {}
+export function listTickets(status, limit, filters = {}) {
+  const params = { ...filters }
   if (status) params.status = status
   if (limit) params.limit = limit
   return request.get('/ticket/list', { params })

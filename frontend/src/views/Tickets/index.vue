@@ -19,6 +19,7 @@
 
     <el-table :data="tickets" border stripe style="width: 100%">
       <el-table-column prop="id" label="工单ID" width="200" />
+      <el-table-column v-if="auth.role !== 'user'" prop="user_id" label="客户" width="110" />
       <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
       <el-table-column label="优先级" width="100">
         <template #default="{ row }">
@@ -33,12 +34,22 @@
       <el-table-column label="创建时间" width="180">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="170">
+      <el-table-column label="操作" width="250">
         <template #default="{ row }">
+          <el-button size="small" type="primary" link @click="openDetail(row)">详情</el-button>
+          <el-button
+            v-if="auth.role === 'user' && row.status === 'resolved'"
+            type="primary"
+            size="small"
+            @click="confirmResolve(row)"
+          >
+            确认解决
+          </el-button>
           <el-select
+            v-if="auth.role !== 'user'"
             v-model="row.status"
             size="small"
-            style="width: 140px"
+            style="width: 140px; margin-left: 8px"
             @change="(val) => handleStatusChange(row, val)"
           >
             <el-option label="待处理" value="open" />
@@ -77,13 +88,41 @@
         <el-button type="primary" :loading="submitting" @click="submitCreate">创建</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="detailVisible" title="工单详情" width="560px">
+      <div v-loading="detailLoading" class="detail-body">
+        <el-descriptions v-if="currentTicket" :column="1" border>
+          <el-descriptions-item label="标题">{{ currentTicket.title }}</el-descriptions-item>
+          <el-descriptions-item label="描述">{{ currentTicket.description }}</el-descriptions-item>
+          <el-descriptions-item label="优先级">
+            <el-tag :type="priorityTagType(currentTicket.priority)">
+              {{ priorityLabel(currentTicket.priority) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="statusTagType(currentTicket.status)">
+              {{ statusLabel(currentTicket.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间">
+            {{ formatTime(currentTicket.created_at) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="更新时间">
+            {{ formatTime(currentTicket.updated_at) }}
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { listTickets, createTicket, updateTicketStatus } from '@/api/ticket'
+import { listTickets, createTicket, updateTicketStatus, getTicket } from '@/api/ticket'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const loading = ref(false)
 const tickets = ref([])
@@ -97,6 +136,12 @@ const form = ref({
   description: '',
   priority: 'normal',
 })
+
+// 工单详情弹窗
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+const currentTicket = ref(null)
+
 const rules = {
   title: [{ required: true, message: '请输入标题', trigger: 'blur' }],
   description: [{ required: true, message: '请输入描述', trigger: 'blur' }],
@@ -154,6 +199,31 @@ async function handleStatusChange(row, newStatus) {
   }
 }
 
+async function openDetail(row) {
+  detailVisible.value = true
+  detailLoading.value = true
+  currentTicket.value = null
+  try {
+    const data = await getTicket(row.id)
+    currentTicket.value = data
+  } catch (e) {
+    // 错误已由 request 拦截器统一提示
+    currentTicket.value = null
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+async function confirmResolve(row) {
+  try {
+    await updateTicketStatus(row.id, 'closed')
+    ElMessage.success('已确认解决，工单关闭')
+    await loadTickets()
+  } catch (e) {
+    // 错误已由 request 拦截器统一提示
+  }
+}
+
 function openCreateDialog() {
   form.value = { title: '', description: '', priority: 'normal' }
   dialogVisible.value = true
@@ -184,12 +254,15 @@ onMounted(loadTickets)
 
 <style scoped>
 .tickets-page {
-  padding: 16px;
+  padding: 20px;
 }
 .toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+}
+.detail-body {
+  min-height: 80px;
 }
 </style>

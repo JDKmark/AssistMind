@@ -5,6 +5,7 @@
         <div class="card-header">
           <span class="card-title">知识库文档（共 {{ total }} 篇）</span>
           <el-button
+            v-if="auth.role === 'admin'"
             type="primary"
             :loading="rebuilding"
             @click="handleRebuild"
@@ -42,7 +43,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="chunk_count" label="Chunk 数" width="100" />
-        <el-table-column label="操作" width="110">
+        <el-table-column v-if="auth.role === 'admin'" label="操作" width="110">
           <template #default="{ row }">
             <el-popconfirm
               :title="`确认删除文档「${row ? row.title : ''}」？删除后不可恢复`"
@@ -76,6 +77,9 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listDocs, deleteDoc, rebuildIndex } from '@/api/knowledge'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const loading = ref(false)
 const rebuilding = ref(false)
@@ -129,7 +133,7 @@ onMounted(loadDocs)
 
 <style scoped>
 .knowledge-page {
-  padding: 16px;
+  padding: 20px;
 }
 .panel-card {
   margin-bottom: 16px;
