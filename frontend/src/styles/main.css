@@ -1,3 +1,50 @@
+/* ============================================================
+   AssistMind 设计系统（蓝白 · 工程蓝图风）
+   借鉴 open-design「设计系统即品牌契约」+ taste-skill 反模板化原则：
+   - 单一钴蓝主色 + 层级化白，拒绝默认 Element 蓝
+   - Sora 显示字体 + JetBrains Mono 数字/标识字体
+   - 点阵蓝图纹理，工程控制台气质
+   ============================================================ */
+
+:root {
+  /* 品牌色阶（墨蓝 → 钴蓝 → 浅蓝） */
+  --am-ink-950: #081426;
+  --am-ink-900: #0e2140;
+  --am-ink-800: #152d55;
+  --am-ink-700: #1c3a6e;
+  --am-blue-600: #2352c5;
+  --am-blue-500: #3565d9;
+  --am-blue-400: #5b84e6;
+  --am-blue-200: #c2d0f2;
+  --am-blue-100: #d9e4f8;
+  --am-blue-50: #edf2fc;
+
+  /* 中性色（蓝灰调，非纯灰） */
+  --am-paper: #f5f7fb;
+  --am-card: #ffffff;
+  --am-line: #e2e8f2;
+  --am-line-weak: #edf1f8;
+  --am-text: #1b2a41;
+  --am-text-2: #51607a;
+  --am-text-3: #8896ac;
+
+  /* 字体 */
+  --am-font-sans: 'Sora', -apple-system, BlinkMacSystemFont, 'PingFang SC',
+    'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+  --am-font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, Menlo, monospace;
+
+  /* 覆盖 Element Plus 主题变量 */
+  --el-color-primary: #2352c5;
+  --el-color-primary-light-3: #5b84e6;
+  --el-color-primary-light-5: #8ca6e5;
+  --el-color-primary-light-7: #b9c9f0;
+  --el-color-primary-light-8: #d0dcf6;
+  --el-color-primary-light-9: #edf2fc;
+  --el-color-primary-dark-2: #1b419e;
+  --el-border-radius-base: 6px;
+  --el-font-family: var(--am-font-sans);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -8,11 +55,81 @@ html,
 body,
 #app {
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
-    Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: var(--am-font-sans);
+  color: var(--am-text);
+}
+
+body {
+  background: var(--am-paper);
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
   text-decoration: none;
   color: inherit;
+}
+
+::selection {
+  background: var(--am-blue-600);
+  color: #fff;
+}
+
+/* 细滚动条（蓝灰） */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #c4cede;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a8b6cc;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 蓝图点阵纹理：内容区/品牌面板底纹 */
+.am-grid-bg {
+  background-image: radial-gradient(
+    circle,
+    rgba(35, 82, 197, 0.09) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+}
+
+/* 全局卡片质感：平面白卡 + 细描边，去默认阴影 */
+.el-card {
+  border: 1px solid var(--am-line);
+  border-radius: 10px;
+  box-shadow: none !important;
+}
+.el-card__header {
+  border-bottom: 1px solid var(--am-line-weak);
+  padding: 14px 20px;
+}
+.el-card__body {
+  padding: 20px;
+}
+
+/* 表格：去重斑马纹的模板感，行悬浮用浅蓝 */
+.el-table {
+  --el-table-header-bg-color: var(--am-blue-50);
+  --el-table-header-text-color: var(--am-text-2);
+  --el-table-row-hover-bg-color: var(--am-blue-50);
+  --el-table-border-color: var(--am-line);
+}
+.el-table th.el-table__cell {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* 等宽字体工具类：工单号/指标/代码 */
+.am-mono {
+  font-family: var(--am-font-mono);
+  font-size: 0.92em;
+  letter-spacing: -0.01em;
 }

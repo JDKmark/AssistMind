@@ -127,23 +127,22 @@
                 <div v-for="(s, i) in m.sources" :key="i" class="source-item">
                   <span class="source-index">{{ i + 1 }}</span>
                   <span class="source-title">{{ s.title || s.snippet || '知识库命中' }}</span>
+                  <span v-if="s.score !== undefined && s.score !== null" class="source-score">
+                    {{ fmtScore(s.score) }}
+                  </span>
+                  <el-button
+                    v-if="s.text"
+                    link
+                    type="primary"
+                    size="small"
+                    class="source-toggle"
+                    @click="toggleSourceDetail(m, i)"
+                  >
+                    {{ m.srcOpen === i ? '收起' : '查看溯因' }}
+                  </el-button>
+                  <div v-if="m.srcOpen === i" class="source-detail">{{ s.text }}</div>
                 </div>
               </div>
-
-              <!-- 诊断摘要提示（diagnose 意图） -->
-              <el-alert
-                v-if="m.intent === 'diagnose' && m.status === 'done'"
-                type="success"
-                :closable="false"
-                show-icon
-                class="ticket-alert"
-              >
-                <template #title>
-                  已生成诊断报告，可在
-                  <router-link to="/ops" class="ticket-link">运维诊断页</router-link>
-                  查看
-                </template>
-              </el-alert>
 
               <!-- 工单提示 -->
               <el-alert
@@ -154,7 +153,7 @@
                 class="ticket-alert"
               >
                 <template #title>
-                  {{ m.intent === 'diagnose' ? '已创建故障工单' : '已创建售后工单' }}
+                  已创建工单
                   {{ m.ticketId }}，前往
                   <router-link to="/tickets" class="ticket-link">工单列表</router-link>
                 </template>
@@ -163,10 +162,50 @@
               <!-- 回答 -->
               <div v-if="m.content" class="bubble-text md-body" v-html="renderMd(m.content)" />
               <div
-                v-else-if="m.status === 'done' && !m.report"
+                v-else-if="m.status === 'done'"
                 class="bubble-text muted-text"
               >
                 （暂无回答，可尝试转人工客服）
+              </div>
+
+              <!-- 反馈（Bad Case 收集入口）：打分 + 可选评论，随 conversation_id/trace_id 上传 -->
+              <div v-if="m.status === 'done'" class="feedback-row">
+                <template v-if="!m.feedbackSubmitted">
+                  <el-button
+                    size="small"
+                    :type="m.feedbackScore === 5 ? 'primary' : 'default'"
+                    round
+                    @click="m.feedbackScore = 5"
+                  >
+                    有帮助
+                  </el-button>
+                  <el-button
+                    size="small"
+                    :type="m.feedbackScore === 1 ? 'danger' : 'default'"
+                    round
+                    @click="m.feedbackScore = 1"
+                  >
+                    没帮助
+                  </el-button>
+                  <textarea
+                    v-model="m.feedbackComment"
+                    class="feedback-comment"
+                    rows="1"
+                    placeholder="补充说明（可选）"
+                    maxlength="1000"
+                  />
+                  <el-button
+                    size="small"
+                    type="primary"
+                    plain
+                    :disabled="!m.feedbackScore || m.feedbackSubmitting"
+                    :loading="m.feedbackSubmitting"
+                    @click="submitMessageFeedback(m)"
+                  >
+                    提交
+                  </el-button>
+                </template>
+                <span v-else class="muted-text">已提交反馈，感谢您的反馈！</span>
               </div>
 
               <!-- 错误提示 -->
@@ -225,7 +264,10 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import MarkdownIt from 'markdown-it'
+import DOMPurify from 'dompurify'
+import { ElMessage } from 'element-plus'
 import { chatStream } from '@/api/chat'
+import { submitFeedback } from '@/api/feedback'
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
 
@@ -242,10 +284,6 @@ const STAGE_TEXT = {
   start: '正在思考…',
   retrieving: '正在检索知识库…',
   generating: '正在生成回答…',
-  planning: '正在规划诊断…',
-  collecting: '正在采集故障证据…',
-  evidence: '正在分析证据…',
-  analyzing: '正在分析根因…',
 }
 
 // 工具名 → 中文标签
@@ -285,14 +323,23 @@ function newMessage(role, content) {
     rewrites: [],
     toolCalls: [],
     sources: [],
-    report: null,
     ticketId: '',
     errorMsg: '',
+    // Bad Case 闭环：会话/trace 关联 + 反馈状态 + 追溯快照
+    conversationId: '',
+    traceId: '',
+    cragAction: '',
+    degraded: [],
+    srcOpen: -1,
+    feedbackScore: 0,
+    feedbackComment: '',
+    feedbackSubmitted: false,
+    feedbackSubmitting: false,
   }
 }
 
 function stageText(m) {
-  return STAGE_TEXT[m.stage] || (m.intent === 'diagnose' ? '正在分析…' : '正在思考…')
+  return STAGE_TEXT[m.stage] || '正在思考…'
 }
 
 function toolLabel(name) {
@@ -352,7 +399,20 @@ function extractTicketId(result) {
 
 function renderMd(text) {
   if (!text) return ''
-  return md.render(text)
+  // markdown 渲染结果经 DOMPurify 消毒后再注入（LLM/知识库内容不可信，
+  // 防 javascript: 链接、事件属性等 XSS 载荷）
+  return DOMPurify.sanitize(md.render(text))
+}
+
+// 来源分数展示（保留 2 位小数）
+function fmtScore(score) {
+  const n = Number(score)
+  return Number.isFinite(n) ? n.toFixed(2) : ''
+}
+
+// 展开/收起某条检索来源的片段全文（查看溯因）
+function toggleSourceDetail(m, i) {
+  m.srcOpen = m.srcOpen === i ? -1 : i
 }
 
 // 处理一条 SSE 事件，更新对应客服消息
@@ -361,6 +421,8 @@ function handleEvent(msg, name, data) {
     case 'start':
       msg.intent = data.intent || ''
       msg.stage = 'start'
+      // 会话 ID：每条问答唯一，反馈关联 Bad Case 用
+      msg.conversationId = data.conversation_id || msg.conversationId || ''
       break
     case 'retrieving':
       msg.stage = 'retrieving'
@@ -392,36 +454,17 @@ function handleEvent(msg, name, data) {
       }
       break
     }
-    // diagnose 意图阶段（backend ops._diagnose_stream）
-    case 'planning':
-      msg.stage = 'planning'
-      break
-    case 'collecting':
-      msg.stage = 'collecting'
-      break
-    case 'evidence':
-      msg.stage = 'evidence'
-      if (Array.isArray(data.kb)) {
-        msg.sources = data.kb.map((kb) => ({
-          title: kb.title || kb.content || '知识库命中',
-        }))
-      }
-      break
-    case 'analyzing':
-      msg.stage = 'analyzing'
-      break
     case 'done':
       msg.stage = 'done'
       msg.status = 'done'
       msg.content = data.answer || ''
       if (Array.isArray(data.sources)) msg.sources = data.sources
-      msg.report = data.report || null
+      msg.conversationId = data.conversation_id || msg.conversationId || ''
+      msg.traceId = data.trace_id || ''
+      // 追溯快照：CRAG 决策与降级项（提交反馈随 payload 入库）
+      msg.cragAction = data.crag_action || ''
+      msg.degraded = Array.isArray(data.degraded) ? data.degraded : []
       if (data.ticket_id) msg.ticketId = data.ticket_id
-      if (msg.report && msg.report.ticket_id) msg.ticketId = msg.report.ticket_id
-      // diagnose 意图：done 无 answer，用报告摘要作为回答
-      if (msg.intent === 'diagnose' && !msg.content && msg.report) {
-        msg.content = msg.report.summary || ''
-      }
       break
     default:
       break
@@ -433,6 +476,35 @@ function handleError(msg, message) {
   msg.status = 'error'
   msg.stage = 'error'
   msg.errorMsg = message || '服务异常，请稍后重试'
+}
+
+// 提交本条问答的满意度反馈（Bad Case 收集入口）
+async function submitMessageFeedback(m) {
+  if (m.feedbackSubmitting || !m.feedbackScore) return
+  // 用户问题：本条客服消息的前一条用户消息
+  const idx = messages.value.indexOf(m)
+  const userMsg = idx > 0 ? messages.value[idx - 1] : null
+  m.feedbackSubmitting = true
+  try {
+    await submitFeedback({
+      score: m.feedbackScore,
+      comment: m.feedbackComment || '',
+      conversation_id: m.conversationId || '',
+      trace_id: m.traceId || '',
+      query: userMsg ? userMsg.content : '',
+      answer: m.content || '',
+      sources: m.sources || [],
+      intent: m.intent || '',
+      crag_action: m.cragAction || '',
+      degraded: m.degraded || [],
+    })
+    m.feedbackSubmitted = true
+    ElMessage.success('感谢您的反馈！')
+  } catch (e) {
+    // 错误已由 request 拦截器统一提示
+  } finally {
+    m.feedbackSubmitting = false
+  }
 }
 
 async function onSend() {
@@ -480,10 +552,28 @@ watch(messages, scrollToBottom, { deep: true })
 
 <style scoped>
 .chat-page {
-  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  min-height: 0;
 }
 .panel-card {
   margin-bottom: 16px;
+}
+/* 对话面板撑满剩余高度：卡片与消息区做 flex 列布局 */
+.chat-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-panel :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .card-header {
   display: flex;
@@ -496,18 +586,19 @@ watch(messages, scrollToBottom, { deep: true })
   font-weight: 600;
 }
 .muted-text {
-  color: #909399;
+  color: var(--am-text-3);
   font-size: 13px;
 }
 
 /* 消息列表 */
 .chat-messages {
-  height: 420px;
+  flex: 1;
+  min-height: 220px;
   overflow-y: auto;
-  padding: 12px;
-  background: #f7f8fa;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
+  padding: 16px;
+  background: var(--am-paper);
+  border: 1px solid var(--am-line);
+  border-radius: 10px;
 }
 .chat-empty {
   display: flex;
@@ -524,22 +615,23 @@ watch(messages, scrollToBottom, { deep: true })
 }
 .bubble {
   max-width: 76%;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.65;
   word-break: break-word;
 }
 .bubble.user {
-  background: #409eff;
+  background: var(--am-blue-600);
   color: #fff;
-  border-top-right-radius: 2px;
+  border-top-right-radius: 4px;
 }
 .bubble.assistant {
-  background: #fff;
-  color: #303133;
-  border: 1px solid #ebeef5;
-  border-top-left-radius: 2px;
+  background: var(--am-card);
+  color: var(--am-text);
+  border: 1px solid var(--am-line);
+  box-shadow: 0 1px 3px rgba(14, 33, 64, 0.05);
+  border-top-left-radius: 4px;
 }
 .bubble-text {
   white-space: pre-wrap;
@@ -553,7 +645,7 @@ watch(messages, scrollToBottom, { deep: true })
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #909399;
+  color: var(--am-text-3);
   font-size: 13px;
 }
 .rewrite-line {
@@ -580,12 +672,12 @@ watch(messages, scrollToBottom, { deep: true })
 }
 .tool-name {
   font-weight: 600;
-  color: #303133;
+  color: var(--am-text);
 }
 .tool-args {
-  color: #909399;
+  color: var(--am-text-3);
   font-size: 12px;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--am-font-mono);
   word-break: break-all;
 }
 
@@ -593,8 +685,8 @@ watch(messages, scrollToBottom, { deep: true })
 .tool-result-card {
   margin-top: 6px;
   padding: 8px;
-  background: #fafafa;
-  border: 1px solid #ebeef5;
+  background: var(--am-blue-50);
+  border: 1px solid var(--am-line);
   border-radius: 6px;
   width: 100%;
 }
@@ -612,11 +704,11 @@ watch(messages, scrollToBottom, { deep: true })
 .sources-section {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px dashed #e4e7ed;
+  border-top: 1px dashed var(--am-line);
 }
 .sources-title {
   font-weight: 600;
-  color: #606266;
+  color: var(--am-text-2);
   font-size: 13px;
   margin-bottom: 4px;
 }
@@ -624,15 +716,64 @@ watch(messages, scrollToBottom, { deep: true })
   display: flex;
   gap: 6px;
   font-size: 13px;
-  color: #606266;
+  color: var(--am-text-2);
   padding: 2px 0;
 }
 .source-index {
-  color: #409eff;
+  color: var(--am-blue-600);
   flex-shrink: 0;
 }
 .source-title {
   word-break: break-all;
+}
+.source-score {
+  color: var(--am-text-2);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.source-toggle {
+  flex-shrink: 0;
+}
+.source-detail {
+  width: 100%;
+  margin-top: 2px;
+  padding: 6px 8px;
+  background: var(--am-blue-50);
+  border-radius: 4px;
+  color: var(--am-text-2);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 反馈（Bad Case 收集入口） */
+.feedback-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--am-line);
+}
+.feedback-comment {
+  flex: 1;
+  min-width: 140px;
+  max-width: 260px;
+  resize: vertical;
+  min-height: 24px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--am-text);
+  border: 1px solid var(--am-line);
+  border-radius: 4px;
+  background: #fff;
+  outline: none;
+}
+.feedback-comment:focus {
+  border-color: var(--am-blue-600);
 }
 
 /* 工单 / 诊断提示 */
@@ -640,7 +781,7 @@ watch(messages, scrollToBottom, { deep: true })
   margin: 8px 0 4px;
 }
 .ticket-link {
-  color: #409eff;
+  color: var(--am-blue-600);
   text-decoration: none;
 }
 .error-alert {
@@ -652,14 +793,14 @@ watch(messages, scrollToBottom, { deep: true })
   margin: 4px 0;
 }
 .md-body :deep(pre) {
-  background: #f5f7fa;
+  background: var(--am-blue-50);
   border-radius: 4px;
   padding: 8px;
   overflow-x: auto;
   font-size: 12px;
 }
 .md-body :deep(code) {
-  background: #f5f7fa;
+  background: var(--am-blue-50);
   border-radius: 3px;
   padding: 1px 4px;
   font-size: 12px;
