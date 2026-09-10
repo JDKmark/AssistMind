@@ -1,17 +1,22 @@
 """电商客服 Agent 工具调用成功率评估脚本。
 
 用法（在 backend/ 目录下执行）：
-    venv\\Scripts\\python.exe scripts/run_eval_agent.py
+    venv\\Scripts\\python.exe scripts/run_eval_agent.py [--entity-fill both|on|off] [--data-source mock|real|auto]
 
 流程：
 1. LLM 连通性预检（DeepSeek → Ollama 自动降级），全部不可用则报错并以退出码 1 终止
 2. 进程内启动 MCP Server（uvicorn 挂在随机端口，streamable_http 传输），
-   MCPClient 连接本地端点；电商业务数据源为固定演示数据（mall 门面 mock 单实现），
-   全程不依赖外部 Docker 服务
+   MCPClient 连接本地端点；电商业务数据源默认固定演示数据（mall 门面 mock 单实现），
+   --data-source real/auto 可切 PostgreSQL 实现（real 需先跑 scripts/seed_mall_db.py 灌数据）
 3. 从 knowledge/mall 构建 BM25 内存索引（Qdrant 不可用时知识检索仍可用，BM25 一等公民）
 4. 依次执行 8 个多轮客服任务（任务列表见 TASKS），每轮调用真实 ToolAgent.run()，
    通过 history 注入上文，断言工具调用序列与最终回答
 5. 输出逐任务 通过/失败 + 原因，末尾成功率（x/N）
+
+评估体系分工（与 run_eval.py 不重叠）：
+- run_eval.py（eval_mall_qa.json 40 条）：RAGAS 检索/生成质量指标（faithfulness/context_precision/context_recall/answer_relevancy）
+- 本脚本（9 个手写多轮任务）：Agent 工具调用成功率与多轮闭环（查单/物流/退款状态机/CLARIFY 追问）
+- 两者互补：一个看「答得准不准」，一个看「办得成不成」
 
 退出码：
 - 0：评估正常完成
@@ -517,7 +522,19 @@ async def main() -> None:
         default="both",
         help="实体识别参数补填开关（默认 both：跑 on/off 两遍并对比）",
     )
+    parser.add_argument(
+        "--data-source",
+        choices=["mock", "real", "auto"],
+        default="mock",
+        help="mall 数据源模式（默认 mock：演示数据；real：PostgreSQL，需先跑 scripts/seed_mall_db.py；"
+        "auto：健康探测通过用 real 否则降级 mock）",
+    )
     args = parser.parse_args()
+
+    # ---- mall 数据源模式（进程内 MCP Server 的工具经门面惰性取配置，设置后重置缓存生效） ----
+    os.environ["MALL_DATA_SOURCE"] = args.data_source
+    mall_ds.reset_source()
+    print(f"[信息] mall 数据源模式: {args.data_source}（--data-source）")
 
     # ---- LLM 连通性预检（DeepSeek → Ollama 自动降级） ----
     print("[信息] LLM 连通性预检中（DeepSeek → Ollama 自动降级）…")

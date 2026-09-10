@@ -109,8 +109,12 @@ EVAL_METRICS = [faithfulness, context_precision, context_recall]
 
 
 def load_dataset(path: str) -> list[dict]:
-    """加载评估数据集，校验每条含非空 question / ground_truth。
+    """加载评估数据集，校验每条含非空 question；ground_truth 可空。
 
+    - question 为空 → 跳过（无效条目）
+    - ground_truth 为空 → 保留：这类条目来自 feedback bad case 回流
+      （export_feedback_badcases.py，无标准答案），评估时自动剔除依赖
+      reference 的 context_recall（见 _select_metrics）
     非法条目跳过并打印 warning；无任何有效条目时退出码 1。
     """
     if not os.path.exists(path):
@@ -128,12 +132,12 @@ def load_dataset(path: str) -> list[dict]:
             logger.warning("[Eval] 跳过非法条目 #%d：不是对象", i)
             continue
         question = (item.get("question") or "").strip()
-        ground_truth = (item.get("ground_truth") or "").strip()
-        if not question or not ground_truth:
+        if not question:
             logger.warning(
-                "[Eval] 跳过非法条目 #%d：question / ground_truth 不能为空", i
+                "[Eval] 跳过非法条目 #%d：question 不能为空", i
             )
             continue
+        ground_truth = (item.get("ground_truth") or "").strip()
         valid.append(
             {
                 "question": question,
@@ -142,16 +146,33 @@ def load_dataset(path: str) -> list[dict]:
             }
         )
 
+    no_gt = sum(1 for v in valid if not v["ground_truth"])
     logger.info(
-        "[Eval] 数据集加载完成：%d 条有效（含 %d 条对抗样本），跳过 %d 条",
+        "[Eval] 数据集加载完成：%d 条有效（含 %d 条对抗样本，%d 条无 ground_truth），跳过 %d 条",
         len(valid),
         sum(1 for v in valid if v["adversarial"]),
+        no_gt,
         len(data) - len(valid),
     )
     if not valid:
         logger.error("[Eval] 数据集没有任何有效条目，无法评估")
         sys.exit(1)
     return valid
+
+
+def _select_metrics(rows: list[dict]) -> list:
+    """根据样本集选择可评估的指标。
+
+    存在无 ground_truth 的样本（feedback bad case 回流）时剔除
+    context_recall——该指标强依赖 reference，无标准答案时得分无意义。
+    """
+    if rows and any(not (r.get("ground_truth") or "").strip() for r in rows):
+        if context_recall in EVAL_METRICS:
+            logger.warning(
+                "[Eval] 存在无 ground_truth 样本，本次评估跳过 context_recall（依赖标准答案）"
+            )
+        return [m for m in EVAL_METRICS if m != context_recall]
+    return list(EVAL_METRICS)
 
 
 def _load_knowledge_docs() -> list[dict]:
@@ -372,12 +393,13 @@ async def run_evaluation(rows: list[dict]):
     失败行（raise_exceptions=False）由 ragas 记为 NaN，逐条明细中显示为 "-"，
     平均分按有效行计算，不静默掩盖。
     """
+    metrics = _select_metrics(rows)
     samples = [
         SingleTurnSample(
             user_input=r["question"],
             retrieved_contexts=r["contexts"],
             response=r["answer"],
-            reference=r["ground_truth"],
+            reference=(r["ground_truth"] or None),  # 无标准答案（bad case 回流）时传 None
         )
         for r in rows
     ]
@@ -389,14 +411,14 @@ async def run_evaluation(rows: list[dict]):
     logger.info(
         "[Eval] 开始 ragas 评估：%d 条样本 × %d 项指标 + answer_relevancy(3 问题均值)（评分 LLM: %s / %s）",
         len(samples),
-        len(EVAL_METRICS),
+        len(metrics),
         settings.LLM_PROVIDER,
         settings.DEEPSEEK_MODEL if settings.LLM_PROVIDER != "ollama" else settings.OLLAMA_MODEL,
     )
 
     result = await aevaluate(
         dataset=dataset,
-        metrics=EVAL_METRICS,
+        metrics=metrics,
         llm=ragas_llm,
         embeddings=embeddings,
         raise_exceptions=False,
@@ -450,8 +472,8 @@ class _MultiGenDegradationCapture(logging.Handler):
 
 def print_report(rows: list[dict], scores: list[dict]) -> int:
     """输出逐条明细 + 平均分。返回全部 NaN 的行数（全失败时调用方退出非 0）。"""
-    # 打印项 = aevaluate 批处理指标 + collections 版 answer_relevancy（逐条 ascore 写入）
-    names = [m.name for m in EVAL_METRICS] + ["answer_relevancy"]
+    # 打印项 = 本次实际评估的指标（无 ground_truth 时不含 context_recall）+ collections 版 answer_relevancy
+    names = [m.name for m in _select_metrics(rows)] + ["answer_relevancy"]
 
     print("\n===== RAGAS 逐条评估明细 =====")
     all_nan_rows = 0
