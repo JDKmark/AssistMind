@@ -1112,3 +1112,254 @@ def test_chat_chat_intent_done_carries_trace_id_without_langfuse_keeps_empty():
     done = _events_dict(_parse_sse(resp.text))["done"]
     assert done["answer"] == "你好呀"
     assert done["trace_id"] == ""
+
+
+# ---------- phase15：产品消歧接线 ----------
+
+# 消歧管道返回值（契约见 spec 第 5 章；测试用 mock 固定形状）
+_DISAMBIG_CLARIFY = {
+    "status": "clarify",
+    "method": "clarify",
+    "product_id": None,
+    "product_name": None,
+    "annotated_query": "我的 S1 Pro 不吸了",
+    "confirm_hint": False,
+    "candidates": [
+        {
+            "product_id": "P006",
+            "name": "贝亲 S1 Pro 电动吸奶器",
+            "spec": "双边电动 静音款",
+            "score": 0,
+            "in_orders": True,
+        },
+        {
+            "product_id": "P007",
+            "name": "追觅 S1 Pro 扫地机器人",
+            "spec": "自集尘 拖扫一体",
+            "score": 0,
+            "in_orders": True,
+        },
+    ],
+    "clarify_text": (
+        "S1 Pro 有两款产品：贝亲 S1 Pro 电动吸奶器（双边电动 静音款）"
+        "和追觅 S1 Pro 扫地机器人（自集尘 拖扫一体）。请问您说的是哪一款？"
+    ),
+}
+
+_DISAMBIG_RESOLVED = {
+    "status": "resolved",
+    "method": "orders",
+    "product_id": "P006",
+    "product_name": "贝亲 S1 Pro 电动吸奶器",
+    "annotated_query": "我的 S1 Pro 不吸了 贝亲 S1 Pro 电动吸奶器",
+    "confirm_hint": True,
+    "candidates": [
+        {
+            "product_id": "P006",
+            "name": "贝亲 S1 Pro 电动吸奶器",
+            "spec": "双边电动 静音款",
+            "score": 0,
+            "in_orders": True,
+        },
+        {
+            "product_id": "P007",
+            "name": "追觅 S1 Pro 扫地机器人",
+            "spec": "自集尘 拖扫一体",
+            "score": 0,
+            "in_orders": True,
+        },
+    ],
+    "clarify_text": "",
+}
+
+
+def _disambig_route_patch(intent: str):
+    return patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": intent,
+                "confidence": 1.0,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    )
+
+
+def test_chat_faq_disambiguation_clarify_short_circuits():
+    """clarify 短路：事件序列 start → disambiguation → done，无检索/生成，LLM 零调用。"""
+    mock_engine = _mock_engine()
+    mock_engine.retrieve = AsyncMock()
+    gen_mock = MagicMock()
+    mock_engine.generate_stream = gen_mock
+    disamb_mock = AsyncMock(return_value=_DISAMBIG_CLARIFY)
+    with _disambig_route_patch("faq"), patch(
+        "app.api.chat.disambiguate_product", new=disamb_mock
+    ), patch("app.api.chat.rag_engine", new=mock_engine):
+        resp = client.post(
+            "/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "我的 S1 Pro 不吸了"}
+        )
+
+    assert resp.status_code == 200
+    events = _parse_sse(resp.text)
+    names = [e for e, _ in events]
+    assert names == ["start", "disambiguation", "done"]
+
+    ed = _events_dict(events)
+    assert ed["disambiguation"]["status"] == "clarify"
+    assert [c["product_id"] for c in ed["disambiguation"]["candidates"]] == ["P006", "P007"]
+    assert ed["done"]["answer"] == _DISAMBIG_CLARIFY["clarify_text"]
+    assert ed["done"]["conversation_id"]
+    assert ed["done"]["disambiguation"]["status"] == "clarify"
+    assert ed["done"]["disambiguation"]["candidates"][0]["name"] == "贝亲 S1 Pro 电动吸奶器"
+
+    # 短路语义：检索与生成零调用
+    mock_engine.retrieve.assert_not_awaited()
+    gen_mock.assert_not_called()
+
+
+def test_chat_faq_disambiguation_receives_requester_identity():
+    """消歧以登录身份查询订单层：requester_user_id / requester_username 来自 JWT。"""
+    disamb_mock = AsyncMock(return_value=_DISAMBIG_RESOLVED)
+    mock_engine = _mock_engine()
+    mock_engine.retrieve = AsyncMock(
+        return_value={
+            "rewrites": {"variants": [], "degraded": True},
+            "contexts": [{"doc_id": "d1", "text": "片段"}],
+            "crag": {"action": "generate", "score": 0.9, "degraded": False},
+            "degraded": [],
+        }
+    )
+    _mock_generate_stream(mock_engine, "这是答案")
+    with _disambig_route_patch("faq"), patch(
+        "app.api.chat.disambiguate_product", new=disamb_mock
+    ), patch("app.api.chat.rag_engine", new=mock_engine):
+        client.post(
+            "/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "我的 S1 Pro 不吸了"}
+        )
+    assert disamb_mock.await_args.kwargs["requester_user_id"] == "tester-id"
+    assert disamb_mock.await_args.kwargs["requester_username"] == "tester"
+
+
+def test_chat_faq_resolved_uses_annotated_query_and_confirm_hint():
+    """resolved：disambiguation 事件字段齐全；检索/生成收到 annotated_query；system 注入确认指令。"""
+    mock_engine = _mock_engine()
+    mock_engine.retrieve = AsyncMock(
+        return_value={
+            "rewrites": {"variants": [], "degraded": True},
+            "contexts": [{"doc_id": "d1", "text": "片段"}],
+            "crag": {"action": "generate", "score": 0.9, "degraded": False},
+            "degraded": [],
+        }
+    )
+    gen_kwargs: dict = {}
+
+    async def _gen(query, contexts, history, system_suffix=None):
+        gen_kwargs["query"] = query
+        gen_kwargs["system_suffix"] = system_suffix
+        yield {"delta": "答案"}
+        yield {"final": {"answer": "答案", "sources": [], "degraded": False}}
+
+    mock_engine.generate_stream = _gen
+    disamb_mock = AsyncMock(return_value=_DISAMBIG_RESOLVED)
+    with _disambig_route_patch("faq"), patch(
+        "app.api.chat.disambiguate_product", new=disamb_mock
+    ), patch("app.api.chat.rag_engine", new=mock_engine):
+        resp = client.post(
+            "/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "我的 S1 Pro 不吸了"}
+        )
+
+    events = _parse_sse(resp.text)
+    names = [e for e, _ in events]
+    # 消歧事件在 start 之后、retrieving 之前
+    assert names.index("disambiguation") > names.index("start")
+    assert names.index("disambiguation") < names.index("retrieving")
+
+    ed = _events_dict(events)
+    assert ed["disambiguation"] == {
+        "status": "resolved",
+        "method": "orders",
+        "product_id": "P006",
+        "product_name": "贝亲 S1 Pro 电动吸奶器",
+    }
+
+    # 检索与生成均以注记 query 进行
+    mock_engine.retrieve.assert_awaited_once_with(
+        "我的 S1 Pro 不吸了 贝亲 S1 Pro 电动吸奶器", role="admin"
+    )
+    assert gen_kwargs["query"] == "我的 S1 Pro 不吸了 贝亲 S1 Pro 电动吸奶器"
+    # system 追加产品确认指令
+    assert "贝亲 S1 Pro 电动吸奶器" in (gen_kwargs["system_suffix"] or "")
+
+
+def test_chat_task_resolved_passes_annotated_query_and_preset_entities():
+    """task resolved：Agent 收到 annotated_query 与 preset_entities（显式抽取优先在 Agent 内保证）。"""
+    fake_agent = MagicMock()
+    fake_agent.run = AsyncMock(
+        return_value={"answer": "已确认产品", "tool_calls": [], "iterations": 1}
+    )
+    disamb_mock = AsyncMock(return_value=_DISAMBIG_RESOLVED)
+    with _disambig_route_patch("task"), patch(
+        "app.api.chat.disambiguate_product", new=disamb_mock
+    ), patch("app.api.chat.ToolAgent", return_value=fake_agent):
+        resp = client.post(
+            "/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "我的 S1 Pro 不吸了"}
+        )
+
+    assert resp.status_code == 200
+    names = [e for e, _ in _parse_sse(resp.text)]
+    assert "disambiguation" in names
+    assert names[-1] == "done"
+    fake_agent.run.assert_awaited_once_with(
+        "我的 S1 Pro 不吸了 贝亲 S1 Pro 电动吸奶器",
+        history=None,
+        preset_entities={"product_id": "P006"},
+    )
+
+
+def test_chat_task_disambiguation_clarify_short_circuits_before_agent():
+    """task clarify 短路：不构造 Agent，事件序列 start → disambiguation → done。"""
+    fake_agent_cls = MagicMock()
+    disamb_mock = AsyncMock(return_value=_DISAMBIG_CLARIFY)
+    with _disambig_route_patch("task"), patch(
+        "app.api.chat.disambiguate_product", new=disamb_mock
+    ), patch("app.api.chat.ToolAgent", new=fake_agent_cls):
+        resp = client.post(
+            "/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "我的 S1 Pro 不吸了"}
+        )
+
+    names = [e for e, _ in _parse_sse(resp.text)]
+    assert names == ["start", "disambiguation", "done"]
+    fake_agent_cls.assert_not_called()
+
+
+def test_chat_intent_skips_disambiguation():
+    """chat 意图不触发消歧：无 disambiguation 事件，消歧函数零调用。"""
+    calls, gen = _stream_llm_mock("你好呀")
+    disamb_mock = AsyncMock()
+    with _disambig_route_patch("chat"), patch(
+        "app.api.chat.disambiguate_product", new=disamb_mock
+    ), patch("app.api.chat.stream_llm", side_effect=gen):
+        resp = client.post("/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "你好"})
+
+    names = [e for e, _ in _parse_sse(resp.text)]
+    assert "disambiguation" not in names
+    disamb_mock.assert_not_awaited()
+
+
+def test_unclear_intent_skips_disambiguation():
+    """unclear 意图不触发消歧：无 disambiguation 事件，消歧函数零调用。"""
+    disamb_mock = AsyncMock()
+    with _disambig_route_patch("unclear"), patch(
+        "app.api.chat.disambiguate_product", new=disamb_mock
+    ):
+        resp = client.post(
+            "/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "嗯嗯嗯？？"}
+        )
+
+    names = [e for e, _ in _parse_sse(resp.text)]
+    assert "disambiguation" not in names
+    assert names[-1] == "done"
+    disamb_mock.assert_not_awaited()
+

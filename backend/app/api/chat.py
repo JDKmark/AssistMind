@@ -9,9 +9,11 @@ POST /api/v1/chat/ask
 - 用 StreamingResponse + async generator 生成 SSE（text/event-stream）。
 
 SSE 事件类型：
-  start / retrieving / rewriting / generating / delta / tool_call / tool_result / done / error
+  start / disambiguation / retrieving / rewriting / generating / delta / tool_call /
+  tool_result / done / error
+- disambiguation：产品消歧决策（phase15，仅 faq/task 意图且未直通时发出，位于 start 之后）
 - delta：生成阶段逐 chunk 文本（前端打字机效果；done 仍带完整 answer 兜底）
-- done 与 error 也参与终止信号，共 9 个事件名。
+- done 与 error 也参与终止信号，共 10 个事件名。
 
 每条事件格式：`event: <name>\ndata: <json>\n\n`
 流已开始后无法改 HTTP status code，异常时发送 error 事件并结束流。
@@ -38,6 +40,7 @@ from app.core.dialog import trim_history
 from app.core.infra import metrics
 from app.core.infra.langfuse import get_langfuse
 from app.core.infra.llm_factory import LLMUnavailableError, stream_llm
+from app.core.mall.product_disambiguator import disambiguate_product
 from app.core.mcp.client import MCPClient
 from app.core.personas import emotion_override, list_personas, persona_prompt
 from app.core.rag import engine as rag_engine
@@ -62,6 +65,35 @@ _CLARIFY_ANSWER = (
 _CHAT_SYSTEM = "你是 AssistMind 智能客服，请友好、简洁地与用户对话。"
 
 _SSE_MEDIA_TYPE = "text/event-stream"
+
+# resolved 消歧的确认指令（faq/task 两链路 system 追加）：回答开头简短确认产品，
+# 用户否定时询问具体款式——「静默消歧 + 顺带确认」话术约束
+_DISAMBIG_CONFIRM_SUFFIX = (
+    "产品消歧确认：本轮已识别用户所指产品为「{product_name}」，回答开头用一句话简短确认"
+    "（例如「您说的是{product_name}吧」）；若用户表示不是该产品，请询问具体款式后再回答。"
+)
+
+
+def _disambig_confirm_suffix(disambiguation: dict | None) -> str | None:
+    """resolved 消歧 → 确认指令文本；pass/clarify/None → None（不注入）。"""
+    if not disambiguation or disambiguation.get("status") != "resolved":
+        return None
+    product_name = disambiguation.get("product_name") or ""
+    if not product_name:
+        return None
+    return _DISAMBIG_CONFIRM_SUFFIX.replace("{product_name}", product_name)
+
+
+def _disambig_candidates_payload(disambiguation: dict) -> list[dict]:
+    """clarify 候选的对外载荷（SSE 事件与 done 共用）：仅 product_id/name/spec。"""
+    return [
+        {
+            "product_id": c.get("product_id"),
+            "name": c.get("name"),
+            "spec": c.get("spec"),
+        }
+        for c in disambiguation.get("candidates") or []
+    ]
 
 
 def _sse_event(event: str, data: dict[str, Any]) -> str:
@@ -292,11 +324,13 @@ async def _event_stream(
     role: str = "user",
     access_token: str | None = None,
     username: str = "",
+    user_id: str = "",
 ) -> AsyncIterator[str]:
-    """SSE 事件生成器：意图路由 → 分流处理 → 流式返回。
+    """SSE 事件生成器：意图路由 → 产品消歧（faq/task）→ 分流处理 → 流式返回。
 
     异常时发送 error 事件并结束流（不抛 500，因为流已开始无法改 status code）。
-    username 透传给各意图处理器：done 路径持久化问答轮次时归属会话。
+    username 透传给各意图处理器：done 路径持久化问答轮次时归属会话；
+    user_id/username 透传消歧订单层（requester 身份）。
 
     T3 埋点（旁路）：t0=进入、t_first_delta=首个 delta 写出（TTFT）、t_done=流结束；
     阶段耗时经 handlers 回填 stage_ms；结束时统一落结构化日志 + 指标，异常被吞。
@@ -350,10 +384,62 @@ async def _event_stream(
         if override:
             logger.info("[Personas] 情绪安全阀触发，人格让位")
 
-        # 3. 按意图分流
+        # 3. 产品消歧（phase15，仅 faq/task）：路由后、分发前执行。
+        # pass（未提及别名/单候选）→ 原链路零改动；resolved → 静默定向（注记 query
+        # + 确认指令 + task preset 实体）；clarify → 反问短路（不进 LLM/检索/工具）。
+        disambiguation: dict | None = None
+        if intent in ("faq", "task"):
+            try:
+                disambiguation = await disambiguate_product(
+                    req.query,
+                    history,
+                    requester_user_id=user_id,
+                    requester_username=username,
+                )
+            except Exception as e:  # 消歧任何异常不得阻塞主链路
+                logger.warning("[Chat] 产品消歧失败（按直通处理）: %s", e)
+                disambiguation = None
+            if disambiguation and disambiguation.get("status") == "clarify":
+                clarify_answer = disambiguation.get("clarify_text") or "请问您说的是哪一款产品？"
+                candidates = _disambig_candidates_payload(disambiguation)
+                await _persist_round_safe(
+                    conversation_id, username, req.query, clarify_answer, intent=intent
+                )
+                yield _sse_event(
+                    "disambiguation",
+                    {"status": "clarify", "candidates": candidates},
+                )
+                yield _sse_event(
+                    "done",
+                    {
+                        "answer": clarify_answer,
+                        "conversation_id": conversation_id,
+                        "disambiguation": {"status": "clarify", "candidates": candidates},
+                    },
+                )
+                return
+            if disambiguation and disambiguation.get("status") == "resolved":
+                yield _sse_event(
+                    "disambiguation",
+                    {
+                        "status": "resolved",
+                        "method": disambiguation.get("method", ""),
+                        "product_id": disambiguation.get("product_id"),
+                        "product_name": disambiguation.get("product_name"),
+                    },
+                )
+
+        # resolved 时以注记 query（原 query + 商品名）驱动缓存键/检索/Agent 决策，
+        # 会话持久化仍用用户原话（original_query），不篡改会话历史
+        eff_query = req.query
+        confirm_suffix = _disambig_confirm_suffix(disambiguation)
+        if disambiguation and disambiguation.get("status") == "resolved":
+            eff_query = disambiguation.get("annotated_query") or req.query
+
+        # 4. 按意图分流
         if intent == "faq":
             async for chunk in _handle_faq(
-                req.query,
+                eff_query,
                 history,
                 role=role,
                 conversation_id=conversation_id,
@@ -362,11 +448,21 @@ async def _event_stream(
                 persona_id=req.persona or "",
                 override=override,
                 stage_ms=stage_ms,
+                confirm_suffix=confirm_suffix,
+                original_query=req.query,
             ):
                 yield _track(chunk)
         elif intent == "task":
+            # 消歧定向实体仅补缺：显式抽取结果优先（合并语义在 ToolAgent.run 内保证）
+            preset_entities = None
+            if (
+                disambiguation
+                and disambiguation.get("status") == "resolved"
+                and disambiguation.get("product_id")
+            ):
+                preset_entities = {"product_id": disambiguation["product_id"]}
             async for chunk in _handle_task(
-                req.query,
+                eff_query,
                 history,
                 access_token=access_token,
                 conversation_id=conversation_id,
@@ -374,6 +470,9 @@ async def _event_stream(
                 persona_suffix=persona_suffix,
                 override=override,
                 stage_ms=stage_ms,
+                confirm_suffix=confirm_suffix,
+                original_query=req.query,
+                preset_entities=preset_entities,
             ):
                 yield _track(chunk)
         elif intent == "chat":
@@ -423,6 +522,8 @@ async def _handle_faq(
     persona_id: str = "",
     override: str | None = None,
     stage_ms: dict[str, int] | None = None,
+    confirm_suffix: str | None = None,
+    original_query: str | None = None,
 ) -> AsyncIterator[str]:
     """faq 意图：retrieving → (rewriting) → generating → done。
 
@@ -435,8 +536,12 @@ async def _handle_faq(
     - 语义缓存按 role + persona 分桶：选人格不再放弃缓存，不同人格互不串桶；
       persona_id 传原始人格 id（空串落 default 桶），persona_suffix 只影响语气
     - stage_ms（T3，可选）：回填各阶段耗时供 SSE 收口统一落日志（旁路，不参与业务判断）
+    - 消歧（phase15）：query 可能是注记 query（原 query + 商品名），缓存键/检索/生成
+      共用之；original_query 传用户原话用于会话持久化（不篡改历史）；confirm_suffix
+      为产品确认指令，追加在 override/persona 之后
     """
     _sm = stage_ms if stage_ms is not None else {}
+    persist_query = original_query or query
     yield _sse_event("retrieving", {})
     # 阶段计时（后端精确）：检索耗时 / 生成耗时 / 全程，经 done.timings 回传诊断面板
     _t_start = time.monotonic()
@@ -457,7 +562,7 @@ async def _handle_faq(
             # 缓存命中指标（旁路）：level=L1/L2，按 role 维度（禁止跨角色命中已由分桶保证）
             _metric(metrics.inc_cache_hit, str(cached.get("from_cache", "")).lower() or "l2", role)
             await _persist_round_safe(
-                conversation_id, user_id, query, cached.get("answer", ""), intent="faq"
+                conversation_id, user_id, persist_query, cached.get("answer", ""), intent="faq"
             )
             yield _faq_done_event(
                 span,
@@ -498,7 +603,7 @@ async def _handle_faq(
             if not retry_retrieval.get("contexts") or crag.get("action") == "no_result":
                 fallback = rag_engine.no_result_answer(query)
                 await _persist_round_safe(
-                    conversation_id, user_id, query, fallback, intent="faq"
+                    conversation_id, user_id, persist_query, fallback, intent="faq"
                 )
                 yield _faq_done_event(
                     span,
@@ -515,7 +620,7 @@ async def _handle_faq(
             contexts = retry_retrieval.get("contexts", [])
         elif crag.get("action") == "no_result":
             fallback = rag_engine.no_result_answer(query)
-            await _persist_round_safe(conversation_id, user_id, query, fallback, intent="faq")
+            await _persist_round_safe(conversation_id, user_id, persist_query, fallback, intent="faq")
             yield _faq_done_event(
                 span,
                 query,
@@ -540,8 +645,8 @@ async def _handle_faq(
             query,
             contexts,
             history,
-            # 注入顺序：既有 system（engine 内部）→ override → persona（_compose_system）
-            system_suffix=_compose_system(override, persona_suffix) or None,
+            # 注入顺序：既有 system（engine 内部）→ override → persona → 消歧确认（_compose_system）
+            system_suffix=_compose_system(override, persona_suffix, confirm_suffix) or None,
         ):
             if "delta" in chunk:
                 yield _sse_event("delta", {"delta": chunk["delta"]})
@@ -567,7 +672,7 @@ async def _handle_faq(
                 logger.warning("[Chat] FAQ 缓存写入失败（忽略）: %s", e)
 
         await _persist_round_safe(
-            conversation_id, user_id, query, gen.get("answer", ""), intent="faq"
+            conversation_id, user_id, persist_query, gen.get("answer", ""), intent="faq"
         )
         yield _faq_done_event(
             span,
@@ -591,6 +696,9 @@ async def _handle_task(
     persona_suffix: str | None = None,
     override: str | None = None,
     stage_ms: dict[str, int] | None = None,
+    confirm_suffix: str | None = None,
+    original_query: str | None = None,
+    preset_entities: dict[str, str] | None = None,
 ) -> AsyncIterator[str]:
     """task 意图：tool_call → tool_result → (多轮) → done。
 
@@ -601,6 +709,9 @@ async def _handle_task(
     的 system prompt——人格只作用于 Final Answer 与 CLARIFY 的用户可见文本，
     Thought/Action/Action Input 决策协议不受影响；均空时保持默认构造（行为与
     无人格版本完全一致）。人格文本不注入 query 改写与工具参数。
+    消歧（phase15）：query 可能是注记 query（驱动 Agent 决策与 search_knowledge）；
+    preset_entities 为消歧定向实体（仅补缺）；confirm_suffix 为产品确认指令；
+    original_query 传用户原话用于会话持久化。
     整条链路包在 Langfuse 根 trace（chat_task）里，done 回传 trace_id——
     task 结果同样可按 trace 归因（工具调用链还原/提交反馈关联）。
     done 路径先持久化一轮问答（answer 取 result["answer"]，失败仅 warning）。
@@ -610,19 +721,23 @@ async def _handle_task(
     _t_agent = time.monotonic()
     with _chat_trace_span("chat_task", query) as span:
         client = MCPClient(access_token=access_token)
-        if override or persona_suffix:
+        if override or persona_suffix or confirm_suffix:
             agent = ToolAgent(
                 system_prompt=_compose_system(
                     DEFAULT_SYSTEM_PROMPT,
                     override,
                     persona_suffix,
                     TASK_PERSONA_GUARD,
+                    confirm_suffix,
                 ),
                 mcp_client=client,
             )
         else:
             agent = ToolAgent(mcp_client=client)
-        result = await agent.run(query, history=history)
+        if preset_entities:
+            result = await agent.run(query, history=history, preset_entities=preset_entities)
+        else:
+            result = await agent.run(query, history=history)
         _sm["agent_ms"] = round((time.monotonic() - _t_agent) * 1000)
         _sm["iterations"] = int(result.get("iterations") or 0)
 
@@ -648,7 +763,13 @@ async def _handle_task(
             if override:
                 metadata["emotion_override"] = True
             _safe_span_update(span, metadata=metadata)
-        await _persist_round_safe(conversation_id, user_id, query, answer, intent="task")
+        await _persist_round_safe(
+            conversation_id,
+            user_id,
+            original_query or query,
+            answer,
+            intent="task",
+        )
         yield _sse_event(
             "done",
             {
@@ -743,6 +864,7 @@ async def chat_ask(
             role=user.get("role", "user"),
             access_token=user.get("access_token"),
             username=user.get("username", ""),
+            user_id=user.get("user_id", ""),
         ),
         media_type=_SSE_MEDIA_TYPE,
     )

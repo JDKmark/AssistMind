@@ -426,3 +426,67 @@ async def test_business_intent_skips_retrieval(mock_call):
     assert called_names == ["query_order"]
     assert result["degraded"] is False
 
+
+# ---------- phase15：消歧定向实体注入（preset_entities） ----------
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_preset_entities_fills_product_id(mock_call):
+    """消歧 preset 补填：抽取无实体时 query_product 收到 preset 的 product_id。
+
+    场景：编排层消歧 resolved P006 后注入 preset_entities，用户 query 本身
+    不含商品 ID（「我的 S1 Pro 不吸了」），Agent 决策 query_product 缺参 → 补填 P006。
+    """
+    mcp = _make_mcp_mock(call_tool_return={"id": "P006", "name": "贝亲 S1 Pro 电动吸奶器"})
+    mock_call.side_effect = [
+        'Action: query_product\nAction Input: {}',
+        "Final Answer: 您说的是贝亲 S1 Pro 电动吸奶器吧，已为您排查。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    result = await agent.run("我的 S1 Pro 不吸了", preset_entities={"product_id": "P006"})
+
+    product_calls = [
+        call for call in mcp.call_tool.await_args_list if call.args[0] == "query_product"
+    ]
+    assert len(product_calls) == 1
+    assert product_calls[0].args[1]["product_id"] == "P006"
+    assert "贝亲" in result["answer"]
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_preset_entities_never_overrides_explicit_extraction(mock_call):
+    """显式抽取优先：query 明确含 P007 时，preset 的 P006 不得覆盖，补填用 P007。"""
+    mcp = _make_mcp_mock(call_tool_return={"id": "P007", "name": "追觅 S1 Pro 扫地机器人"})
+    mock_call.side_effect = [
+        'Action: query_product\nAction Input: {}',
+        "Final Answer: 您说的是追觅 S1 Pro 扫地机器人，已为您排查。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    await agent.run("P007 最近吸力变小了", preset_entities={"product_id": "P006"})
+
+    product_calls = [
+        call for call in mcp.call_tool.await_args_list if call.args[0] == "query_product"
+    ]
+    assert len(product_calls) == 1
+    assert product_calls[0].args[1]["product_id"] == "P007"
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_preset_entities_none_keeps_default_behavior(mock_call):
+    """preset_entities 默认 None：行为与未上线完全一致（不注入、不补缺）。"""
+    mcp = _make_mcp_mock(call_tool_return={"id": "P001", "name": "华为 Mate 70 Pro"})
+    mock_call.side_effect = [
+        'Action: query_product\nAction Input: {}',
+        "Final Answer: 华为 Mate 70 Pro 当前在售。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    await agent.run("P001 这个商品还有货吗")
+
+    product_calls = [
+        call for call in mcp.call_tool.await_args_list if call.args[0] == "query_product"
+    ]
+    assert product_calls[0].args[1]["product_id"] == "P001"
+

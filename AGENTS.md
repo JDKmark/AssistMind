@@ -80,7 +80,7 @@ docker-compose up -d
 
 - **Reranker 硬超时护栏**：`siliconflow` 路径用 `asyncio.wait_for(call_with_breaker(...), RERANKER_TIMEOUT+5)` 兜底——httpx timeout 曾偶发失效拖死整条 faq SSE（180s+）；超时返回 None 走 RRF 降级并计入断路器（连续失败后跳过重排）
 
-- **SSE 流式**：`/api/v1/chat/ask` 返回 SSE（事件：start/retrieving/rewriting/generating/**delta**/tool\_call/tool\_result/done/error），不要改成 WebSocket 或普通 JSON；`delta` 为生成阶段逐 chunk 文本（打字机），done 仍带完整 answer
+- **SSE 流式**：`/api/v1/chat/ask` 返回 SSE（事件：start/**disambiguation**/retrieving/rewriting/generating/**delta**/tool\_call/tool\_result/done/error），不要改成 WebSocket 或普通 JSON；`delta` 为生成阶段逐 chunk 文本（打字机），done 仍带完整 answer；`disambiguation` 为产品消歧决策事件（phase15，仅 faq/task 意图且别名召回 ≥2 候选时发出，位于 start 之后）——resolved 载荷 {status, method, product\_id, product\_name}，clarify 载荷 {status, candidates}，clarify 时事件序列短路为 start → disambiguation → done（done.answer 为反问文案、done.disambiguation.candidates 供前端渲染候选卡片）
 
 - **工单 ID 格式**：`TK-{时间戳}{7位随机数}`，后缀必须 >=7 位，否则高并发下 UNIQUE 约束碰撞
 

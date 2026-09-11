@@ -329,7 +329,10 @@ class ToolAgent(BaseReActAgent):
         return await self.mcp_client.call_tool(name, filled_args)
 
     async def run(
-        self, query: str, history: list[dict[str, str]] | None = None
+        self,
+        query: str,
+        history: list[dict[str, str]] | None = None,
+        preset_entities: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """运行 Agent，增加 MCP 可用性预检查。
 
@@ -337,6 +340,8 @@ class ToolAgent(BaseReActAgent):
             query: 用户当前输入
             history: 多轮对话历史（可选，见 BaseReActAgent.run），
                 用于「查物流到哪了」等依赖上文订单号的多轮场景。
+            preset_entities: 编排层消歧定向注入的实体（如 {"product_id": "P006"}，
+                可选）。合并语义：显式抽取结果优先，preset 仅补缺；默认 None 行为不变。
 
         MCP 不可用时直接返回降级话术，不进入 ReAct 循环。
         """
@@ -346,6 +351,15 @@ class ToolAgent(BaseReActAgent):
         self._entities = (
             await extract_with_llm(query, history) if (query and self.entity_fill) else {}
         )
+        # 消歧定向注入（phase15）：preset 是编排层的确定性事实，显式抽取结果优先
+        if preset_entities:
+            merged = False
+            for key, value in preset_entities.items():
+                if value and not self._entities.get(key):
+                    self._entities[key] = value
+                    merged = True
+            if merged:
+                logger.info("[ToolAgent] 消歧 preset 实体补缺: %s", self._entities)
 
         if not self.mcp_client.is_connected:
             connected = await self.mcp_client.connect()
