@@ -14,11 +14,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 from app.config import get_settings
 from app.core.dialog import format_history
-from app.core.infra.llm_factory import LLMUnavailableError, call_llm
+from app.core.infra import metrics
+from app.core.infra.llm_factory import (
+    LLMUnavailableError,
+    call_llm,
+    stream_llm,
+)
 from app.core.infra.qdrant import get_qdrant
 from app.core.query_rewriter import rewrite as rewrite_query
 from app.core.rag.bm25 import get_bm25
@@ -107,26 +114,39 @@ async def retrieve(
             "contexts": 最终检索结果,
             "crag": CRAG 评估,
             "degraded": list[str],  # 触发的降级项
+            "stage_ms": {rewrite_ms, embed_ms, retrieve_ms, rerank_ms, crag_ms},
         }
+
+    stage_ms（T3 埋点，旁路新增）：各阶段精确耗时，供 chat SSE 链路落日志 /
+    指标 / Langfuse span，仅用于观测，不参与任何业务判断。
     """
     degraded: list[str] = []
+    stage_ms: dict[str, int] = {}
 
     # 1. 查询改写
+    _t = time.monotonic()
     rewrite_result = await rewrite_query(query)
+    stage_ms["rewrite_ms"] = round((time.monotonic() - _t) * 1000)
+    metrics.safe(metrics.observe_stage, "rewrite", stage_ms["rewrite_ms"] / 1000)
     if rewrite_result["degraded"]:
         degraded.append("query_rewrite")
     all_queries = rewrite_result["all_queries"]
 
     # 2. Embedding（对原问题 + 变体分别 embedding）
+    _t = time.monotonic()
     embeddings = await embed_async(all_queries)
+    stage_ms["embed_ms"] = round((time.monotonic() - _t) * 1000)
     if embeddings is None:
         degraded.append("embedding")
 
     # 3. 并行召回（向量 + BM25）
+    _t = time.monotonic()
     vector_task = _vector_retrieve(embeddings, role) if embeddings else _empty()
     bm25_task = _bm25_retrieve(query, role)
 
     vector_results, bm25_results = await asyncio.gather(vector_task, bm25_task)
+    stage_ms["retrieve_ms"] = round((time.monotonic() - _t) * 1000)
+    metrics.safe(metrics.observe_stage, "retrieve", stage_ms["retrieve_ms"] / 1000)
 
     if not vector_results:
         degraded.append("qdrant")
@@ -141,6 +161,7 @@ async def retrieve(
             "contexts": [],
             "crag": {"score": 0.0, "action": "no_result", "degraded": False},
             "degraded": degraded,
+            "stage_ms": stage_ms,
         }
 
     # 4. RRF 融合 + 去重
@@ -148,6 +169,7 @@ async def retrieve(
     fused = _dedup(fused, settings.JACCARD_DEDUP_THRESHOLD)
 
     # 5. Reranker 精排
+    _t = time.monotonic()
     if settings.RERANKER_ENABLED and fused:
         reranked = await rerank_async(query, fused, top_k=settings.RERANK_TOP_K)
         if reranked is None:
@@ -159,9 +181,13 @@ async def retrieve(
             contexts = reranked[:top_k]
     else:
         contexts = fused[:top_k]
+    stage_ms["rerank_ms"] = round((time.monotonic() - _t) * 1000)
+    metrics.safe(metrics.observe_stage, "rerank", stage_ms["rerank_ms"] / 1000)
 
     # 6. CRAG 评估
+    _t = time.monotonic()
     crag_result = await crag_evaluate(query, contexts)
+    stage_ms["crag_ms"] = round((time.monotonic() - _t) * 1000)
 
     return {
         "query": query,
@@ -169,6 +195,7 @@ async def retrieve(
         "contexts": contexts,
         "crag": crag_result,
         "degraded": degraded,
+        "stage_ms": stage_ms,
     }
 
 
@@ -201,23 +228,9 @@ async def _empty() -> list[dict[str, Any]]:
     return []
 
 
-async def generate(
-    query: str, contexts: list[dict[str, Any]], history: list[dict[str, str]] | None = None
-) -> dict[str, Any]:
-    """LLM 生成答案。
-
-    Returns:
-        {
-            "answer": str,
-            "sources": [{doc_id, title, source, snippet, text, score}],
-            "degraded": bool
-        }
-        text 为检索片段全文（追溯展开用）；snippet 为前 100 字列表标题。
-    """
-    ctx_text = "\n\n".join(
-        [f"[{i+1}] {c.get('text', '')}" for i, c in enumerate(contexts)]
-    )
-    sources = [
+def _build_sources(contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """从检索结果构建来源列表（text 为片段全文，snippet 为前 100 字列表标题）。"""
+    return [
         {
             "doc_id": c.get("doc_id", ""),
             "title": c.get("title", ""),
@@ -229,9 +242,17 @@ async def generate(
         for c in contexts
     ]
 
+
+def _build_generate_prompt(
+    query: str, contexts: list[dict[str, Any]], history: list[dict[str, str]] | None
+) -> str:
+    """组装生成提示（generate / generate_stream 共用，保证 prompt 语义一致）。"""
+    ctx_text = "\n\n".join(
+        [f"[{i+1}] {c.get('text', '')}" for i, c in enumerate(contexts)]
+    )
     history_text = format_history(history)
 
-    prompt = f"""你是 AssistMind 智能客服。根据以下检索结果回答用户问题。
+    return f"""你是 AssistMind 智能客服。根据以下检索结果回答用户问题。
 
 检索结果：
 {ctx_text}
@@ -260,10 +281,40 @@ async def generate(
 
 回答："""
 
+
+def _build_generate_system(system_suffix: str | None) -> str:
+    """生成阶段 system prompt（人格语气指令拼在既有约束之后）。"""
+    system = "你是 AssistMind 智能客服，专注 SaaS 产品文档问答。"
+    if system_suffix:
+        system = f"{system}\n{system_suffix}"
+    return system
+
+
+async def generate(
+    query: str,
+    contexts: list[dict[str, Any]],
+    history: list[dict[str, str]] | None = None,
+    system_suffix: str | None = None,
+) -> dict[str, Any]:
+    """LLM 生成答案（一次性返回，answer() 等非流式调用方使用）。
+
+    system_suffix：人格语气指令（可选），拼在既有 system 之后——只改语气，
+    不覆盖「仅基于检索结果回答」等事实性约束（角色语气定制的提示词层落地）。
+
+    Returns:
+        {
+            "answer": str,
+            "sources": [{doc_id, title, source, snippet, text, score}],
+            "degraded": bool
+        }
+    """
+    prompt = _build_generate_prompt(query, contexts, history)
+    sources = _build_sources(contexts)
+
     try:
         answer = await call_llm(
             prompt,
-            system="你是 AssistMind 智能客服，专注 SaaS 产品文档问答。",
+            system=_build_generate_system(system_suffix),
             generation=True,
         )
         return {"answer": answer, "sources": sources, "degraded": False}
@@ -273,6 +324,39 @@ async def generate(
             "answer": "抱歉，服务暂时繁忙，请稍后重试或转人工客服。",
             "sources": sources,
             "degraded": True,
+        }
+
+
+async def generate_stream(
+    query: str,
+    contexts: list[dict[str, Any]],
+    history: list[dict[str, str]] | None = None,
+    system_suffix: str | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """流式生成：逐 chunk yield {"delta": str}，最后 yield {"final": {answer, sources, degraded}}。
+
+    供 chat SSE 链路使用：外层 async generator 把 delta 逐条转发为前端打字机，
+    final 用于 done 事件（完整答案 + 来源）。LLM 不可用时 final.degraded=True（模板兜底）。
+    """
+    prompt = _build_generate_prompt(query, contexts, history)
+    sources = _build_sources(contexts)
+
+    try:
+        answer = ""
+        async for delta in stream_llm(
+            prompt, system=_build_generate_system(system_suffix), generation=True
+        ):
+            answer += delta
+            yield {"delta": delta}
+        yield {"final": {"answer": answer, "sources": sources, "degraded": False}}
+    except LLMUnavailableError:
+        logger.warning("[RAGEngine] 流式 LLM 不可用，模板兜底")
+        yield {
+            "final": {
+                "answer": "抱歉，服务暂时繁忙，请稍后重试或转人工客服。",
+                "sources": sources,
+                "degraded": True,
+            }
         }
 
 

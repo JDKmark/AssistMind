@@ -9,10 +9,10 @@ from app.main import app
 
 client = TestClient(app)
 ADMIN_HEADERS = {
-    "Authorization": f"Bearer {create_access_token({'sub': 'admin', 'role': 'admin'})}"
+    "Authorization": f"Bearer {create_access_token({'uid': 'uid-admin', 'sub': 'admin', 'role': 'admin'})}"
 }
 USER_HEADERS = {
-    "Authorization": f"Bearer {create_access_token({'sub': 'alice', 'role': 'user'})}"
+    "Authorization": f"Bearer {create_access_token({'uid': 'uid-alice', 'sub': 'alice', 'role': 'user'})}"
 }
 
 

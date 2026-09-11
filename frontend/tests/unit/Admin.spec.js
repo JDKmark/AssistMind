@@ -14,6 +14,9 @@ const knowledgeApi = vi.hoisted(() => ({
 
 const ticketApi = vi.hoisted(() => ({
   listTickets: vi.fn(),
+  getTicket: vi.fn(),
+  listReplies: vi.fn(),
+  addReply: vi.fn(),
 }))
 
 const feedbackApi = vi.hoisted(() => ({
@@ -364,12 +367,13 @@ describe('Admin 组件', () => {
     })
   })
 
-  it('订单加载失败时 ElMessage.error 且不阻塞其它卡片数据', async () => {
+  it('订单加载失败时静默降级为空列表且不阻塞其它卡片数据', async () => {
     mallApi.listOrders.mockRejectedValueOnce(new Error('network error'))
     const wrapper = mountAdmin()
     await flushPromises()
 
-    expect(ElMessageMock.error).toHaveBeenCalledWith('商城订单加载失败')
+    // 后端不可用提示已统一由拦截器节流处理，页面内不再逐请求弹窗
+    expect(ElMessageMock.error).not.toHaveBeenCalledWith('商城订单加载失败')
     expect(wrapper.vm.orders).toEqual([])
     // 其它卡片仍正常加载
     expect(healthApi.getHealth).toHaveBeenCalledTimes(1)

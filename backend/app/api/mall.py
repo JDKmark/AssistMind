@@ -87,6 +87,7 @@ async def my_orders_api(
     客户端无法查询他人工单；数据源失败时返回降级空列表，不抛 500。
     """
     return await mall_ds.my_orders(
+        requester_user_id=user.get("user_id") or "",
         requester_username=user.get("username", ""),
         status=status,
         limit=limit,

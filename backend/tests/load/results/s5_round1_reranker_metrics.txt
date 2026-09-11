@@ -1,0 +1,4 @@
+=== reranker_fail round: metrics BEFORE 02:18:11 ===
+=== reranker_fail round: metrics AFTER 02:19:06 ===
+assistmind_degradation_total{component="reranker",reason="fault_fail"} 18.0
+assistmind_degradation_total{component="reranker",reason="fallback"} 12.0

@@ -3,18 +3,28 @@
 前置：docker-compose up -d postgres → python scripts/init_db.py → python scripts/seed_mall_db.py
 
 覆盖 real 实现四接口读写 + 契约形状 + 退款幂等 + list_orders 列表契约（真实库验证，不 mock）。
-演示账号归属：20240801001/002 → user1；20240801003/004 → user2。
+演示账号归属：20260801001/002 → user1；20260801003/004 → user2。
 运行：pytest tests -q -m integration（或去掉 -k "not integration"）
 """
 
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 
-from app.core.infra.postgres import engine
+from app.core.infra.postgres import async_session, engine
 from app.core.mall.real_source import RealMallDataSource
+from app.models.user import User
 
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture
+async def uid_by_username():
+    """真实库 users.username → id 映射（phase13 授权以 user_id 为权威）。"""
+    async with async_session() as session:
+        rows = (await session.execute(select(User.id, User.username))).all()
+    return {username: user_id for user_id, username in rows}
 
 
 @pytest.fixture(autouse=True)
@@ -35,25 +45,31 @@ async def real_ds():
     return RealMallDataSource()
 
 
-async def test_query_order_shipped_contract(real_ds):
+async def test_query_order_shipped_contract(real_ds, uid_by_username):
     """已发货订单：契约形状与固定清单数据一致。"""
     order = await real_ds.query_order(
-        "20240801001", requester_username="user1", requester_role="user"
+        "20260801001",
+        requester_user_id=uid_by_username["user1"],
+        requester_username="user1",
+        requester_role="user",
     )
     assert order is not None
     assert order["status"] == "已发货"
-    assert order["logistics_no"] == "SF1234567890"
+    assert order["logistics_no"] == "********7890"  # user 视角物流掩码（仅保留末四位）
     assert order["pay_amount"] == 6999
     assert order["items"][0]["product_id"] == "P001"
     assert order["items"][0]["price"] == 6999
     assert order["items"][0]["quantity"] == 1
-    assert order["created_at"].startswith("2024-08-01")
+    assert order["created_at"].startswith("2026-08-01")
 
 
-async def test_query_order_with_multi_items(real_ds):
+async def test_query_order_with_multi_items(real_ds, uid_by_username):
     """待发货订单含两条明细（P002 + P004）。"""
     order = await real_ds.query_order(
-        "20240801002", requester_username="user1", requester_role="user"
+        "20260801002",
+        requester_user_id=uid_by_username["user1"],
+        requester_username="user1",
+        requester_role="user",
     )
     assert order["status"] == "待发货"
     assert [(i["product_id"], i["quantity"]) for i in order["items"]] == [
@@ -64,10 +80,11 @@ async def test_query_order_with_multi_items(real_ds):
     assert order["logistics_no"] is None
 
 
-async def test_query_order_unknown_returns_none(real_ds):
+async def test_query_order_unknown_returns_none(real_ds, uid_by_username):
     assert (
         await real_ds.query_order(
             "99999999999",
+            requester_user_id=uid_by_username["user"],
             requester_username="user",
             requester_role="user",
         )
@@ -75,21 +92,24 @@ async def test_query_order_unknown_returns_none(real_ds):
     )
 
 
-async def test_customer_cannot_access_another_customer_order(real_ds):
+async def test_customer_cannot_access_another_customer_order(real_ds, uid_by_username):
     """user2 越权访问 user1 订单（001）：查单/轨迹为空；user1 对 user2 订单（004）退款被拒。"""
     order = await real_ds.query_order(
-        "20240801001",
+        "20260801001",
+        requester_user_id=uid_by_username["user2"],
         requester_username="user2",
         requester_role="user",
     )
     tracks = await real_ds.query_logistics(
-        "20240801001",
+        "20260801001",
+        requester_user_id=uid_by_username["user2"],
         requester_username="user2",
         requester_role="user",
     )
     refund = await real_ds.apply_refund(
-        "20240801004",
+        "20260801004",
         "越权申请",
+        requester_user_id=uid_by_username["user1"],
         requester_username="user1",
         requester_role="user",
     )
@@ -101,72 +121,106 @@ async def test_customer_cannot_access_another_customer_order(real_ds):
     assert "待付款" not in refund["message"]
 
 
-async def test_query_logistics_ordered_by_ts(real_ds):
+async def test_query_logistics_ordered_by_ts(real_ds, uid_by_username):
     """物流轨迹按时间正序，内容与固定清单一致。"""
     tracks = await real_ds.query_logistics(
-        "20240801001", requester_username="user1", requester_role="user"
+        "20260801001",
+        requester_user_id=uid_by_username["user1"],
+        requester_username="user1",
+        requester_role="user",
     )
     assert [t["content"] for t in tracks] == ["已揽收", "运输中（预计明天送达）"]
     assert tracks[0]["ts"] <= tracks[1]["ts"]
 
 
-async def test_query_logistics_empty_for_not_shipped(real_ds):
+async def test_query_logistics_empty_for_not_shipped(real_ds, uid_by_username):
     assert (
         await real_ds.query_logistics(
-            "20240801002", requester_username="user1", requester_role="user"
+            "20260801002",
+            requester_user_id=uid_by_username["user1"],
+            requester_username="user1",
+            requester_role="user",
         )
         == []
     )
     assert (
         await real_ds.query_logistics(
-            "99999999999", requester_username="user", requester_role="user"
+            "99999999999",
+            requester_user_id=uid_by_username["user"],
+            requester_username="user",
+            requester_role="user",
         )
         == []
     )
 
 
 async def test_query_product_contract(real_ds):
-    product = await real_ds.query_product("P003")
+    product = await real_ds.query_product("P003", requester_role="admin")
     assert product is not None
     assert product["name"] == "戴森 V12 吸尘器"
     assert product["price"] == 4990
     assert product["stock"] == 80
+    assert product["stock_status"] == "有货"
     assert product["services"] == ["无忧退货", "快速退款", "免费包邮"]
 
 
+async def test_query_product_user_view_has_no_stock(real_ds):
+    """user 视角商品：无精确 stock，仅 stock_status。"""
+    product = await real_ds.query_product("P003", requester_role="user")
+    assert product is not None
+    assert "stock" not in product
+    assert product["stock_status"] == "有货"
+
+
 async def test_query_product_unknown_returns_none(real_ds):
-    assert await real_ds.query_product("P999") is None
+    assert await real_ds.query_product("P999", requester_role="user") is None
 
 
-async def test_apply_refund_rejects_unpaid(real_ds):
+async def test_apply_refund_rejects_unpaid(real_ds, uid_by_username):
     result = await real_ds.apply_refund(
-        "20240801004", "不想要了", requester_username="user2", requester_role="user"
+        "20260801004",
+        "不想要了",
+        requester_user_id=uid_by_username["user2"],
+        requester_username="user2",
+        requester_role="user",
     )
     assert result["refund_id"] is None
     assert result["status"] == "failed"
     assert "待付款" in result["message"]
 
 
-async def test_apply_refund_unknown_order(real_ds):
+async def test_apply_refund_unknown_order(real_ds, uid_by_username):
     result = await real_ds.apply_refund(
-        "99999999999", "测试", requester_username="user", requester_role="user"
+        "99999999999",
+        "测试",
+        requester_user_id=uid_by_username["user"],
+        requester_username="user",
+        requester_role="user",
     )
     assert result["status"] == "failed"
     assert "不存在" in result["message"]
 
 
-async def test_apply_refund_success_and_idempotent(real_ds):
+async def test_apply_refund_success_and_idempotent(real_ds, uid_by_username):
     """真实库验证：首次创建成功，重复申请幂等返回同一售后单。"""
     first = await real_ds.apply_refund(
-        "20240801003", "重复购买", requester_username="user2", requester_role="user"
+        "20260801003",
+        "重复购买",
+        requester_user_id=uid_by_username["user2"],
+        requester_username="user2",
+        requester_role="user",
     )
-    assert first["refund_id"] == "AF20240801003"
+    assert first["refund_id"] == "AF20260801003"
     assert first["status"] == "处理中"
 
     second = await real_ds.apply_refund(
-        "20240801003", "重复购买", requester_username="user2", requester_role="user"
+        "20260801003",
+        "重复购买",
+        requester_user_id=uid_by_username["user2"],
+        requester_username="user2",
+        requester_role="user",
     )
-    assert second["refund_id"] == first["refund_id"] == "AF20240801003"
+    assert second["refund_id"] == first["refund_id"] == "AF20260801003"
     assert "已申请过售后" in second["message"]
 
 
@@ -178,15 +232,16 @@ async def test_list_orders_contract(real_ds):
     result = await real_ds.list_orders()
     assert result["total"] == 4
     assert [o["order_sn"] for o in result["orders"]] == [
-        "20240801004",
-        "20240801003",
-        "20240801002",
-        "20240801001",
+        "20260801004",
+        "20260801003",
+        "20260801002",
+        "20260801001",
     ]
     first = result["orders"][0]
     assert set(first.keys()) == {
         "order_sn",
         "owner_username",
+        "owner_user_id",
         "status",
         "pay_amount",
         "logistics_no",
@@ -195,11 +250,12 @@ async def test_list_orders_contract(real_ds):
 
 
 async def test_list_orders_filter_by_owner(real_ds):
-    """owner 过滤：user1 → 001/002 两笔，total 与列表一致。"""
+    """owner 过滤：user1 → 001/002 两笔，total 与列表一致；username 掩码展示值。"""
     result = await real_ds.list_orders(owner_username="user1")
     assert result["total"] == 2
-    assert {o["order_sn"] for o in result["orders"]} == {"20240801001", "20240801002"}
-    assert all(o["owner_username"] == "user1" for o in result["orders"])
+    assert {o["order_sn"] for o in result["orders"]} == {"20260801001", "20260801002"}
+    assert all(o["owner_username"] == "u***" for o in result["orders"])
+    assert all(o["owner_user_id"] for o in result["orders"])
 
 
 async def test_source_mode_is_real(real_ds):
@@ -209,11 +265,13 @@ async def test_source_mode_is_real(real_ds):
 # ---- my_orders 契约（真实库） ----
 
 
-async def test_my_orders_contract(real_ds):
+async def test_my_orders_contract(real_ds, uid_by_username):
     """user1：2 单含 items（倒序），列表项字段完整且 items[0] 有 name。"""
-    result = await real_ds.my_orders(requester_username="user1")
+    result = await real_ds.my_orders(
+        requester_user_id=uid_by_username["user1"], requester_username="user1"
+    )
     assert result["total"] == 2
-    assert [o["order_sn"] for o in result["orders"]] == ["20240801002", "20240801001"]
+    assert [o["order_sn"] for o in result["orders"]] == ["20260801002", "20260801001"]
     first = result["orders"][0]
     assert set(first.keys()) == {
         "order_sn",
@@ -234,8 +292,10 @@ async def test_my_orders_contract(real_ds):
     assert first["items"][0]["price"] == 3499
 
 
-async def test_my_orders_unknown_requester_empty(real_ds):
+async def test_my_orders_unknown_requester_empty(real_ds, uid_by_username):
     """agent（无订单）返回空列表。"""
-    result = await real_ds.my_orders(requester_username="agent")
+    result = await real_ds.my_orders(
+        requester_user_id=uid_by_username["agent"], requester_username="agent"
+    )
     assert result["orders"] == []
     assert result["total"] == 0

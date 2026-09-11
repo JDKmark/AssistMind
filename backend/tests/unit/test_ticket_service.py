@@ -20,7 +20,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.ticket_service import (
+    add_reply,
     create_ticket,
+    list_replies,
     list_tickets,
     update_status,
 )
@@ -372,3 +374,79 @@ async def test_list_tickets_filters_priority(mock_session_cls):
 
     assert result == {"tickets": [], "total": 0}
     assert "tickets.priority" in str(session.execute.await_args_list[0].args[0])
+
+
+# ---------- 工单回复（人工介入线程） ----------
+
+
+def _ticket_mock(status="open"):
+    ticket = MagicMock()
+    ticket.id = "TK-1"
+    ticket.status = status
+    return ticket
+
+
+@patch("app.core.ticket_service.async_session")
+async def test_add_reply_agent_takes_open_ticket_in_progress(mock_session_cls):
+    """客服回复 open 工单：自动流转 in_progress（人工介入语义）。"""
+    session = _make_session()
+    session.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=_ticket_mock("open")))
+    )
+    _bind_session(mock_session_cls, session)
+
+    reply = await add_reply("TK-1", "agent", "agent1", "您好，正在为您处理")
+
+    assert reply["content"] == "您好，正在为您处理"
+    assert reply["sender_role"] == "agent"
+    # 状态流转断言：传入的 ticket mock 状态被改写
+    assert session.execute.return_value.scalar_one_or_none.return_value.status == "in_progress"
+
+
+@patch("app.core.ticket_service.async_session")
+async def test_add_reply_user_does_not_change_status(mock_session_cls):
+    """用户补充回复：状态不变。"""
+    session = _make_session()
+    ticket = _ticket_mock("in_progress")
+    session.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=ticket))
+    )
+    _bind_session(mock_session_cls, session)
+
+    await add_reply("TK-1", "user", "user1", "补充一下订单号")
+
+    assert ticket.status == "in_progress"
+
+
+@patch("app.core.ticket_service.async_session")
+async def test_add_reply_missing_ticket_raises(mock_session_cls):
+    """工单不存在：抛 ValueError（API 层转 404）。"""
+    session = _make_session()
+    session.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+    )
+    _bind_session(mock_session_cls, session)
+
+    with pytest.raises(ValueError):
+        await add_reply("TK-404", "user", "user1", "hello")
+
+
+@patch("app.core.ticket_service.async_session")
+async def test_list_replies_ordered_asc(mock_session_cls):
+    """回复线程按 id 正序。"""
+    session = _make_session()
+    r1, r2 = MagicMock(), MagicMock()
+    r1.id, r2.id = 1, 2
+    r1.ticket_id = r2.ticket_id = "TK-1"
+    r1.sender_role = r2.sender_role = "user"
+    r1.sender_username, r2.sender_username = "user1", "user1"
+    r1.content, r2.content = "第一条", "第二条"
+    r1.created_at = r2.created_at = None
+    session.execute = AsyncMock(
+        return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[r1, r2]))))
+    )
+    _bind_session(mock_session_cls, session)
+
+    replies = await list_replies("TK-1")
+
+    assert [r["content"] for r in replies] == ["第一条", "第二条"]

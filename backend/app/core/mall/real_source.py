@@ -14,11 +14,19 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, false, func, or_, select
 
 from app.core.infra.postgres import async_session
 from app.core.mall.base import MallDataSource
+from app.core.mall.presentation import (
+    admin_order_row,
+    mask_free_text,
+    order_view,
+    product_view,
+    refund_view,
+)
 from app.models.mall import MallLogistics, MallOrder, MallOrderItem, MallProduct, MallRefund
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +35,35 @@ _REFUNDABLE_STATUSES = ("待发货", "已发货", "已完成")
 
 # 契约里 created_at 的字符串格式（与 mock 数据一致，Agent 回复可直接引用）
 _DATETIME_FMT = "%Y-%m-%d %H:%M:%S"
+
+
+def _owner_filter(requester_user_id: str | None, requester_username: str | None):
+    """普通用户归属过滤：owner_user_id 权威，owner_user_id 为空的旧行按 username 兼容。
+
+    迁移窗口语义：新数据写 owner_user_id，旧数据仅在 owner_user_id 为空时回退。
+    防御：requester 身份为空时不得渲染 `owner_user_id == None`（SQLAlchemy 会渲染成
+    IS NULL，命中全部未回填旧行导致越权读取）；身份全空返回恒假条件。
+    """
+    user_id = requester_user_id or ""
+    username = requester_username or ""
+    if not user_id and not username:
+        return false()
+    return or_(
+        MallOrder.owner_user_id == user_id,
+        and_(
+            MallOrder.owner_user_id.is_(None),
+            MallOrder.owner_username == username,
+        ),
+    )
+
+
+async def _resolve_user_id(session, username: str | None) -> str | None:
+    """将 username 解析为 users.id（未知用户返回 None）。"""
+    if not username:
+        return None
+    return (
+        await session.execute(select(User.id).where(User.username == username))
+    ).scalar_one_or_none()
 
 
 def _to_amount(value: Decimal | float | int | None) -> float | int | None:
@@ -50,14 +87,19 @@ class RealMallDataSource(MallDataSource):
         return "real"
 
     async def query_order(
-        self, order_sn: str, *, requester_username: str, requester_role: str
+        self,
+        order_sn: str,
+        *,
+        requester_user_id: str,
+        requester_username: str,
+        requester_role: str,
     ) -> dict | None:
         """查询订单信息（订单 + 商品明细）。未知或无权访问时返回 None。"""
         try:
             async with async_session() as session:
                 stmt = select(MallOrder).where(MallOrder.order_sn == order_sn)
                 if requester_role not in {"agent", "admin"}:
-                    stmt = stmt.where(MallOrder.owner_username == requester_username)
+                    stmt = stmt.where(_owner_filter(requester_user_id, requester_username))
                 order = (await session.execute(stmt)).scalar_one_or_none()
                 if order is None:
                     return None
@@ -74,14 +116,19 @@ class RealMallDataSource(MallDataSource):
                     }
                     for it in result.scalars().all()
                 ]
-                return {
-                    "order_sn": order.order_sn,
-                    "status": order.status,
-                    "items": items,
-                    "pay_amount": _to_amount(order.pay_amount),
-                    "logistics_no": order.logistics_no,
-                    "created_at": order.created_at.strftime(_DATETIME_FMT),
-                }
+                return order_view(
+                    {
+                        "order_sn": order.order_sn,
+                        "owner_username": order.owner_username,
+                        "owner_user_id": order.owner_user_id,
+                        "status": order.status,
+                        "items": items,
+                        "pay_amount": _to_amount(order.pay_amount),
+                        "logistics_no": order.logistics_no,
+                        "created_at": order.created_at.strftime(_DATETIME_FMT),
+                    },
+                    requester_role,
+                )
         except Exception as e:
             logger.warning("[Mall] query_order 失败（PostgreSQL）: %s", e)
             return None
@@ -103,7 +150,10 @@ class RealMallDataSource(MallDataSource):
             async with async_session() as session:
                 stmt = select(MallOrder)
                 if owner_username is not None:
-                    stmt = stmt.where(MallOrder.owner_username == owner_username)
+                    resolved = await _resolve_user_id(session, owner_username)
+                    if resolved is None:
+                        return {"orders": [], "total": 0}
+                    stmt = stmt.where(_owner_filter(resolved, owner_username))
                 if status is not None:
                     stmt = stmt.where(MallOrder.status == status)
                 total = (
@@ -116,14 +166,17 @@ class RealMallDataSource(MallDataSource):
                 ).scalars().all()
                 return {
                     "orders": [
-                        {
-                            "order_sn": row.order_sn,
-                            "owner_username": row.owner_username,
-                            "status": row.status,
-                            "pay_amount": _to_amount(row.pay_amount),
-                            "logistics_no": row.logistics_no,
-                            "created_at": row.created_at.strftime(_DATETIME_FMT),
-                        }
+                        admin_order_row(
+                            {
+                                "order_sn": row.order_sn,
+                                "owner_username": row.owner_username,
+                                "owner_user_id": row.owner_user_id,
+                                "status": row.status,
+                                "pay_amount": _to_amount(row.pay_amount),
+                                "logistics_no": row.logistics_no,
+                                "created_at": row.created_at.strftime(_DATETIME_FMT),
+                            }
+                        )
                         for row in rows
                     ],
                     "total": int(total),
@@ -135,6 +188,7 @@ class RealMallDataSource(MallDataSource):
     async def my_orders(
         self,
         *,
+        requester_user_id: str,
         requester_username: str,
         status: str | None = None,
         limit: int = 50,
@@ -150,7 +204,7 @@ class RealMallDataSource(MallDataSource):
         """
         try:
             async with async_session() as session:
-                stmt = select(MallOrder).where(MallOrder.owner_username == requester_username)
+                stmt = select(MallOrder).where(_owner_filter(requester_user_id, requester_username))
                 if status is not None:
                     stmt = stmt.where(MallOrder.status == status)
                 total = (
@@ -182,14 +236,17 @@ class RealMallDataSource(MallDataSource):
                         )
                 return {
                     "orders": [
-                        {
-                            "order_sn": row.order_sn,
-                            "status": row.status,
-                            "pay_amount": _to_amount(row.pay_amount),
-                            "logistics_no": row.logistics_no,
-                            "created_at": row.created_at.strftime(_DATETIME_FMT),
-                            "items": items_by_order.get(row.order_sn, []),
-                        }
+                        order_view(
+                            {
+                                "order_sn": row.order_sn,
+                                "status": row.status,
+                                "pay_amount": _to_amount(row.pay_amount),
+                                "logistics_no": row.logistics_no,
+                                "created_at": row.created_at.strftime(_DATETIME_FMT),
+                                "items": items_by_order.get(row.order_sn, []),
+                            },
+                            "user",
+                        )
                         for row in rows
                     ],
                     "total": int(total),
@@ -199,14 +256,21 @@ class RealMallDataSource(MallDataSource):
             return {"orders": [], "total": 0, "degraded": ["postgres"]}
 
     async def query_logistics(
-        self, order_sn: str, *, requester_username: str, requester_role: str
+        self,
+        order_sn: str,
+        *,
+        requester_user_id: str,
+        requester_username: str,
+        requester_role: str,
     ) -> list[dict]:
         """查询物流轨迹 [{ts, content}] 按时间正序。未发货/未知订单返回空列表。"""
         try:
             async with async_session() as session:
                 order_stmt = select(MallOrder.order_sn).where(MallOrder.order_sn == order_sn)
                 if requester_role not in {"agent", "admin"}:
-                    order_stmt = order_stmt.where(MallOrder.owner_username == requester_username)
+                    order_stmt = order_stmt.where(
+                        _owner_filter(requester_user_id, requester_username)
+                    )
                 if (await session.execute(order_stmt)).scalar_one_or_none() is None:
                     return []
                 result = await session.execute(
@@ -215,34 +279,46 @@ class RealMallDataSource(MallDataSource):
                     .order_by(MallLogistics.ts)
                 )
                 return [
-                    {"ts": row.ts.strftime(_DATETIME_FMT), "content": row.content}
+                    {
+                        "ts": row.ts.strftime(_DATETIME_FMT),
+                        "content": mask_free_text(row.content),
+                    }
                     for row in result.scalars().all()
                 ]
         except Exception as e:
             logger.warning("[Mall] query_logistics 失败（PostgreSQL）: %s", e)
             return []
 
-    async def query_product(self, product_id: str) -> dict | None:
-        """查询商品信息。未知 product_id 返回 None。"""
+    async def query_product(self, product_id: str, *, requester_role: str) -> dict | None:
+        """查询商品信息。未知 product_id 返回 None；展示按角色最小披露。"""
         try:
             async with async_session() as session:
                 product = await session.get(MallProduct, product_id)
                 if product is None:
                     return None
-                return {
-                    "id": product.id,
-                    "name": product.name,
-                    "spec": product.spec,
-                    "price": _to_amount(product.price),
-                    "stock": product.stock,
-                    "services": list(product.services or []),
-                }
+                return product_view(
+                    {
+                        "id": product.id,
+                        "name": product.name,
+                        "spec": product.spec,
+                        "price": _to_amount(product.price),
+                        "stock": product.stock,
+                        "services": list(product.services or []),
+                    },
+                    requester_role,
+                )
         except Exception as e:
             logger.warning("[Mall] query_product 失败（PostgreSQL）: %s", e)
             return None
 
     async def apply_refund(
-        self, order_sn: str, reason: str, *, requester_username: str, requester_role: str
+        self,
+        order_sn: str,
+        reason: str,
+        *,
+        requester_user_id: str,
+        requester_username: str,
+        requester_role: str,
     ) -> dict:
         """创建售后（退款）单。
 
@@ -256,7 +332,7 @@ class RealMallDataSource(MallDataSource):
             async with async_session() as session:
                 stmt = select(MallOrder).where(MallOrder.order_sn == order_sn)
                 if requester_role not in {"agent", "admin"}:
-                    stmt = stmt.where(MallOrder.owner_username == requester_username)
+                    stmt = stmt.where(_owner_filter(requester_user_id, requester_username))
                 order = (await session.execute(stmt)).scalar_one_or_none()
                 if order is None:
                     return {
@@ -318,13 +394,19 @@ class RealMallDataSource(MallDataSource):
     ) -> dict:
         try:
             async with async_session() as session:
-                stmt = select(MallRefund, MallOrder.owner_username, MallOrder.created_at).join(
-                    MallOrder, MallOrder.order_sn == MallRefund.order_sn
-                )
+                stmt = select(
+                    MallRefund,
+                    MallOrder.owner_username,
+                    MallOrder.owner_user_id,
+                    MallOrder.created_at,
+                ).join(MallOrder, MallOrder.order_sn == MallRefund.order_sn)
                 if status is not None:
                     stmt = stmt.where(MallRefund.status == status)
                 if owner_username is not None:
-                    stmt = stmt.where(MallOrder.owner_username == owner_username)
+                    resolved = await _resolve_user_id(session, owner_username)
+                    if resolved is None:
+                        return {"refunds": [], "total": 0}
+                    stmt = stmt.where(_owner_filter(resolved, owner_username))
                 count_stmt = select(func.count()).select_from(stmt.subquery())
                 total = (await session.execute(count_stmt)).scalar_one()
                 rows = (
@@ -334,17 +416,21 @@ class RealMallDataSource(MallDataSource):
                 ).all()
                 return {
                     "refunds": [
-                        {
-                            "refund_id": refund.refund_id,
-                            "order_sn": refund.order_sn,
-                            "owner_username": owner,
-                            "reason": refund.reason,
-                            "status": refund.status,
-                            "created_at": (refund.created_at or order_created).strftime(
-                                _DATETIME_FMT
-                            ),
-                        }
-                        for refund, owner, order_created in rows
+                        refund_view(
+                            {
+                                "refund_id": refund.refund_id,
+                                "order_sn": refund.order_sn,
+                                "owner_username": owner,
+                                "owner_user_id": owner_user_id,
+                                "reason": refund.reason,
+                                "status": refund.status,
+                                "created_at": (refund.created_at or order_created).strftime(
+                                    _DATETIME_FMT
+                                ),
+                            },
+                            "admin",
+                        )
+                        for refund, owner, owner_user_id, order_created in rows
                     ],
                     "total": int(total),
                 }
@@ -364,13 +450,16 @@ class RealMallDataSource(MallDataSource):
                     raise ValueError(f"非法状态流转: {refund.status} -> {new_status}")
                 refund.status = new_status
                 await session.commit()
-                return {
-                    "refund_id": refund.refund_id,
-                    "order_sn": refund.order_sn,
-                    "reason": refund.reason,
-                    "status": refund.status,
-                    "created_at": refund.created_at.isoformat() if refund.created_at else None,
-                }
+                return refund_view(
+                    {
+                        "refund_id": refund.refund_id,
+                        "order_sn": refund.order_sn,
+                        "reason": refund.reason,
+                        "status": refund.status,
+                        "created_at": refund.created_at.isoformat() if refund.created_at else None,
+                    },
+                    "admin",
+                )
         except (LookupError, ValueError):
             raise
         except Exception as e:

@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+SSE,s4_mixed:faq_miss,RuntimeError('no_done_event'),1,2026-09-10T17:10:37Z,2026-09-10T17:10:37Z

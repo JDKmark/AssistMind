@@ -8,10 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user
+from app.core import audit_service
 from app.core.ticket_service import (
+    add_reply,
     create_ticket,
     get_ticket,
+    list_replies,
     list_tickets,
+    list_updates,
     update_status,
 )
 
@@ -28,6 +32,11 @@ class TicketCreateRequest(BaseModel):
 class TicketStatusUpdateRequest(BaseModel):
     """状态流转请求。"""
     status: str = Field(..., description="新状态 open/in_progress/resolved/closed")
+
+
+class TicketReplyRequest(BaseModel):
+    """工单回复请求（人工介入线程）。"""
+    content: str = Field(..., min_length=1, max_length=2000, description="回复内容")
 
 
 @router.post("/")
@@ -69,6 +78,28 @@ async def list_tickets_api(
     return result
 
 
+@router.get("/updates")
+async def ticket_updates_api(
+    user: Annotated[dict, Depends(get_current_user)],
+    since: str | None = Query(None, description="上次轮询基线时间（ISO 8601，允许 Z 后缀）"),
+):
+    """工单更新轮询（前端徽标）。user 仅返回本人工单，agent/admin 全量。
+
+    since 缺省返回空列表（仅同步 server_time 基线）；非法 since 返回 422。
+    注意：本路由必须注册在 GET /{ticket_id} 之前，否则被路径参数吞掉。
+    """
+    try:
+        return await list_updates(
+            since_iso=since,
+            requester_role=user.get("role", "user"),
+            requester_username=user.get("username", ""),
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="since 参数无效"
+        ) from e
+
+
 @router.patch("/{ticket_id}/status")
 async def update_ticket_status_api(
     ticket_id: str,
@@ -106,3 +137,54 @@ async def get_ticket_api(
         # 与不存在的工单统一 404 形状，防止他人工单枚举
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工单不存在")
     return ticket
+
+
+@router.get("/{ticket_id}/replies")
+async def list_replies_api(
+    ticket_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+):
+    """列出工单回复线程。user 仅可查看自己的工单（404 防枚举，同详情接口）。"""
+    ticket = await get_ticket(ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工单不存在")
+    if user.get("role") == "user" and ticket.get("user_id") != user.get("username"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工单不存在")
+    return {"ticket_id": ticket_id, "replies": await list_replies(ticket_id)}
+
+
+@router.post("/{ticket_id}/replies")
+async def add_reply_api(
+    ticket_id: str,
+    req: TicketReplyRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+):
+    """追加工单回复。user 仅可回复自己的工单；客服/管理员回复即人工介入
+    （open 状态自动流转为 in_progress）。"""
+    ticket = await get_ticket(ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工单不存在")
+    if user.get("role") == "user" and ticket.get("user_id") != user.get("username"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工单不存在")
+    try:
+        reply = await add_reply(
+            ticket_id=ticket_id,
+            sender_role=user.get("role", "user"),
+            sender_username=user.get("username", ""),
+            content=req.content,
+        )
+    except ValueError as e:
+        # 语义区分：工单不存在 404；回复内容非法（空白串）400
+        msg = str(e)
+        code = status.HTTP_404_NOT_FOUND if "不存在" in msg else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=msg) from e
+    if user.get("role") in {"agent", "admin"}:
+        # 人工介入属客服侧写操作，写审计追责链（record 内部旁路，失败不回滚业务）
+        await audit_service.record(
+            user.get("username", ""),
+            "ticket.reply",
+            "ticket",
+            ticket_id,
+            {"sender_role": user.get("role"), "prev_status": ticket.get("status")},
+        )
+    return reply

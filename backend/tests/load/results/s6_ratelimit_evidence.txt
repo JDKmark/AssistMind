@@ -1,0 +1,11 @@
+# 429 限流验证取证（8014, RATE_LIMIT_PER_MINUTE=20, S1 10u/30s, 2026-09-12 02:12:14）
+
+## /metrics 与 /health 限流跳过验证（限流激活期间连测 5 轮，期望均 200）
+round1 /metrics=200 /api/v1/health=200
+round2 /metrics=200 /api/v1/health=200
+round3 /metrics=200 /api/v1/health=200
+round4 /metrics=200 /api/v1/health=200
+round5 /metrics=200 /api/v1/health=200
+
+## curl /metrics 关键计数器
+assistmind_rate_limited_total{scope="ip"} 18.0

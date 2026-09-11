@@ -9,11 +9,25 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, auth, chat, feedback, health, knowledge, mall, ops, ticket
+from app.api import (
+    admin,
+    auth,
+    chat,
+    conversation,
+    feedback,
+    health,
+    jobs,
+    knowledge,
+    mall,
+    ops,
+    ticket,
+    tts,
+)
 from app.config import get_settings
+from app.core.infra import metrics as app_metrics
 from app.core.infra.alertmanager import get_alertmanager
 from app.core.infra.circuit_breaker import init_breakers
 from app.core.infra.elasticsearch import get_elasticsearch
@@ -143,11 +157,21 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
     app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
+    app.include_router(conversation.router, prefix="/api/v1/conversations", tags=["conversations"])
     app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["knowledge"])
+    app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
     app.include_router(ticket.router, prefix="/api/v1/ticket", tags=["ticket"])
     app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"])
     app.include_router(ops.router, prefix="/api/v1/ops", tags=["ops"])
     app.include_router(mall.router, prefix="/api/v1/mall", tags=["mall"])
+    app.include_router(tts.router, prefix="/api/v1/tts", tags=["tts"])
+
+    # 应用级 Prometheus 指标（T5）：挂在根路径 /metrics（不在 /api/v1 下，
+    # 不与 /api/v1/health 冲突）；未启用/未安装 prometheus_client 时返回空体，不报错。
+    @app.get(settings.METRICS_PATH, include_in_schema=False)
+    async def _metrics_endpoint() -> Response:  # pragma: no cover - 薄封装
+        body, content_type = app_metrics.render()
+        return Response(content=body, media_type=content_type)
 
     # 挂载 MCP Server（streamable_http 传输）
     if settings.MCP_SERVER_ENABLED:

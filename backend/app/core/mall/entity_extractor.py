@@ -149,7 +149,9 @@ async def extract_with_llm(
         # 用 replace 而非 str.format：模板内含 JSON 示例花括号（{order_sn} 等），
         # format 会把它们当占位符解析导致 KeyError
         raw = await call_llm(
-            _LLM_EXTRACT_PROMPT.replace("{query}", query), system=_LLM_SYSTEM_PROMPT
+            _LLM_EXTRACT_PROMPT.replace("{query}", query),
+            system=_LLM_SYSTEM_PROMPT,
+            fast=True,  # 失败可降级（空实体），快速失败不拖住 Agent 主链路
         )
     except LLMUnavailableError as e:
         logger.warning("[MallEntity] LLM 兜底不可用（degraded，返回空实体）: %s", e)

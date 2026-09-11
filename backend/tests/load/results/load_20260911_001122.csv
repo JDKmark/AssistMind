@@ -1,0 +1,1 @@
+ts,scenario,query_len,status_code,ttft_ms,total_ms,intent,from_cache,degraded,n_degraded,events,answer_len,tool_calls,ok,error

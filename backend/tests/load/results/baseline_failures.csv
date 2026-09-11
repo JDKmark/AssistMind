@@ -1,0 +1,20 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+SSE,s4_mixed:task,RuntimeError('no_done_event'),8,2026-09-10T16:35:53Z,2026-09-10T16:36:57Z
+SSE,s4_mixed:cache_hit,"RuntimeError(""ReadTimeout: HTTPConnectionPool(host='localhost', port=8012): Read timed out. (read timeout=90.0)"")",69,2026-09-10T16:36:39Z,2026-09-10T16:37:26Z
+SSE,s4_mixed:faq_miss,"RuntimeError(""ConnectionError: ('Connection aborted.', ConnectionResetError(10054, '远程主机强迫关闭了一个现有的连接。', None, 10054, None))"")",9,2026-09-10T16:36:27Z,2026-09-10T16:36:57Z
+SSE,s4_mixed:faq_miss,RuntimeError('no_done_event'),5,2026-09-10T16:35:41Z,2026-09-10T16:36:45Z
+SSE,s4_mixed:task,"RuntimeError(""ConnectionError: ('Connection aborted.', ConnectionResetError(10054, '远程主机强迫关闭了一个现有的连接。', None, 10054, None))"")",1,2026-09-10T16:36:02Z,2026-09-10T16:36:02Z
+SSE,s4_mixed:task_multi,"RuntimeError(""ConnectionError: ('Connection aborted.', ConnectionResetError(10054, '远程主机强迫关闭了一个现有的连接。', None, 10054, None))"")",1,2026-09-10T16:36:36Z,2026-09-10T16:36:36Z
+SSE,s4_mixed:cache_hit,"RuntimeError('ConnectionError: HTTPConnectionPool(host=\'localhost\', port=8012): Max retries exceeded with url: /api/v1/chat/ask (Caused by NewConnectionError(""HTTPConnection(host=\'localhost\', port=8012): Failed to establish a new connection: [Errno 10061] [WinError 10061] 由于目标计算机积极拒绝，无法连接。""))')",941,2026-09-10T16:36:01Z,2026-09-10T16:37:51Z
+SSE,s4_mixed:faq_miss,"RuntimeError('ConnectionError: HTTPConnectionPool(host=\'localhost\', port=8012): Max retries exceeded with url: /api/v1/chat/ask (Caused by NewConnectionError(""HTTPConnection(host=\'localhost\', port=8012): Failed to establish a new connection: [Errno 10061] [WinError 10061] 由于目标计算机积极拒绝，无法连接。""))')",569,2026-09-10T16:36:03Z,2026-09-10T16:37:51Z
+SSE,s4_mixed:task_multi,RuntimeError('no_done_event'),24,2026-09-10T16:35:53Z,2026-09-10T16:37:06Z
+SSE,s4_mixed:faq_miss,"RuntimeError(""ReadTimeout: HTTPConnectionPool(host='localhost', port=8012): Read timed out. (read timeout=90.0)"")",56,2026-09-10T16:36:40Z,2026-09-10T16:37:27Z
+SSE,s4_mixed:cache_hit,"RuntimeError(""ConnectionError: ('Connection aborted.', ConnectionResetError(10054, '远程主机强迫关闭了一个现有的连接。', None, 10054, None))"")",11,2026-09-10T16:35:45Z,2026-09-10T16:37:05Z
+SSE,s4_mixed:task,"RuntimeError('ConnectionError: HTTPConnectionPool(host=\'localhost\', port=8012): Max retries exceeded with url: /api/v1/chat/ask (Caused by NewConnectionError(""HTTPConnection(host=\'localhost\', port=8012): Failed to establish a new connection: [Errno 10061] [WinError 10061] 由于目标计算机积极拒绝，无法连接。""))')",179,2026-09-10T16:36:07Z,2026-09-10T16:37:50Z
+SSE,s4_mixed:cache_hit,"RuntimeError(""ConnectionError: HTTPConnectionPool(host='localhost', port=8012): Read timed out."")",16,2026-09-10T16:36:26Z,2026-09-10T16:37:38Z
+SSE,s4_mixed:task_multi,"RuntimeError('ConnectionError: HTTPConnectionPool(host=\'localhost\', port=8012): Max retries exceeded with url: /api/v1/chat/ask (Caused by NewConnectionError(""HTTPConnection(host=\'localhost\', port=8012): Failed to establish a new connection: [Errno 10061] [WinError 10061] 由于目标计算机积极拒绝，无法连接。""))')",205,2026-09-10T16:36:00Z,2026-09-10T16:37:50Z
+SSE,s4_mixed:faq_miss,"RuntimeError(""ConnectionError: HTTPConnectionPool(host='localhost', port=8012): Read timed out."")",63,2026-09-10T16:32:18Z,2026-09-10T16:36:48Z
+SSE,s4_mixed:task_multi,"RuntimeError(""ConnectionError: HTTPConnectionPool(host='localhost', port=8012): Read timed out."")",162,2026-09-10T16:32:14Z,2026-09-10T16:36:50Z
+SSE,s4_mixed:task_multi,"RuntimeError(""ReadTimeout: HTTPConnectionPool(host='localhost', port=8012): Read timed out. (read timeout=90.0)"")",22,2026-09-10T16:36:41Z,2026-09-10T16:37:03Z
+SSE,s4_mixed:task,"RuntimeError(""ConnectionError: HTTPConnectionPool(host='localhost', port=8012): Read timed out."")",75,2026-09-10T16:32:14Z,2026-09-10T16:37:12Z
+SSE,s4_mixed:task,"RuntimeError(""ReadTimeout: HTTPConnectionPool(host='localhost', port=8012): Read timed out. (read timeout=90.0)"")",1,2026-09-10T16:36:57Z,2026-09-10T16:36:57Z

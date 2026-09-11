@@ -15,6 +15,7 @@
     "axios": "^1.7.0",
     "dompurify": "^3.4.13",
     "element-plus": "^2.7.0",
+    "gsap": "^3.15.0",
     "highlight.js": "^11.9.0",
     "markdown-it": "^14.0.0",
     "pinia": "^2.1.0",

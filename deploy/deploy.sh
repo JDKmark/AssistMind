@@ -57,6 +57,31 @@ if ! grep -q '^DEEPSEEK_API_KEY=.\+' .env.prod; then
 fi
 ok "DEEPSEEK_API_KEY 就绪（将不再显示明文）。"
 
+# DATABASE_MIGRATION_URL：生产必须配置独立迁移账号（phase13 最小权限）。
+# runtime（DATABASE_URL）只跑业务 DML；DDL/授权由迁移账号执行；不回退默认凭据。
+if ! grep -q '^DATABASE_MIGRATION_URL=.\+' .env.prod; then
+    die ".env.prod 缺少 DATABASE_MIGRATION_URL：生产部署必须配置独立数据库迁移账号（runtime 账号仅业务 DML，不拥有 DDL 权限）。参考 .env.prod.example。"
+fi
+ok "DATABASE_MIGRATION_URL 已配置（迁移账号与 runtime 账号分离）。"
+
+# runtime 账号校验：禁止 postgres 超级用户 / 占位符未填写 / 与迁移账号复用。
+# （python 参考实现：app/config.py Settings.db_minimal_privilege_error，容器入口使用之；
+#   此处 bash 版为部署前置校验，生产语义更严——postgres 无条件拒绝；两处修改需同步）
+runtime_url="$(grep -E '^DATABASE_URL=' .env.prod | tail -1 | cut -d= -f2-)"
+migration_url="$(grep -E '^DATABASE_MIGRATION_URL=' .env.prod | tail -1 | cut -d= -f2-)"
+runtime_user="${runtime_url#*://}"; runtime_user="${runtime_user%%@*}"; runtime_user="${runtime_user%%:*}"
+migration_user="${migration_url#*://}"; migration_user="${migration_user%%@*}"; migration_user="${migration_user%%:*}"
+if [ -z "${runtime_user}" ] || [ "${runtime_user}" = "<your_runtime_user>" ]; then
+    die "DATABASE_URL 未填写独立 runtime 账号：生产部署必须配置非 postgres 的独立账号（模板中 <your_runtime_user> 需替换成实际账号）。"
+fi
+if [ "${runtime_user}" = "postgres" ]; then
+    die "DATABASE_URL 仍使用 postgres 超级用户：最小权限要求 runtime 账号不是默认超级用户，请改为独立账号（如 assistmind_runtime）。"
+fi
+if [ -n "${migration_user}" ] && [ "${migration_user}" = "${runtime_user}" ]; then
+    die "DATABASE_MIGRATION_URL 与 DATABASE_URL 使用同一账号：迁移账号与 runtime 账号必须分离。"
+fi
+ok "runtime 账号已校验（${runtime_user}，非 postgres、与迁移账号分离）。"
+
 # ---------- 2. 构建并启动 ----------
 step "2. 构建并启动应用"
 warn "首次构建需安装 torch/langchain 等依赖，约 10-20 分钟；二次构建走层缓存会很快。"

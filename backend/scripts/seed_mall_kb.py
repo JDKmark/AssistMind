@@ -118,7 +118,6 @@ async def main() -> None:
 
     docs = _load_docs()
     docs = _apply_file_override(docs, file_path)
-    total_docs = len(docs)
     per_doc: list[tuple[str, int, int]] = []
     for doc in docs:
         chunks = chunk_text(doc["text"], metadata=_chunk_metadata(doc))

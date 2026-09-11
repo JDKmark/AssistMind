@@ -34,12 +34,14 @@ class MallProduct(Base):
 
 
 class MallOrder(Base):
-    """订单表（order_sn 形如 20240801001，状态为中文枚举）。"""
+    """订单表（order_sn 形如 20260801001，状态为中文枚举）。"""
 
     __tablename__ = "mall_orders"
 
     order_sn: Mapped[str] = mapped_column(String(32), primary_key=True)
     owner_username: Mapped[str | None] = mapped_column(String(64), index=True, default=None)
+    # 归属规范字段（phase13）：优先按 user_id 授权；owner_username 仅迁移窗口兼容
+    owner_user_id: Mapped[str | None] = mapped_column(String(36), index=True, default=None)
     status: Mapped[str] = mapped_column(String(16), nullable=False)  # 待付款/待发货/已发货/已完成
     pay_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     logistics_no: Mapped[str | None] = mapped_column(String(64), default=None)  # 未发货为 None

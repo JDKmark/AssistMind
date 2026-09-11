@@ -1,0 +1,17 @@
+[
+  {
+    "id": "professional",
+    "name": "专业客服",
+    "description": "严谨简洁，信息密度高"
+  },
+  {
+    "id": "gentle",
+    "name": "温柔客服",
+    "description": "亲切耐心，服务感强"
+  },
+  {
+    "id": "lively",
+    "name": "活泼客服",
+    "description": "热情俏皮，互动感强"
+  }
+]

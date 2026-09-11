@@ -14,14 +14,17 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.core.security.auth import create_access_token, hash_password
+from app.api.deps import get_current_user
+from app.core.security.auth import create_access_token, decode_access_token, hash_password
 from app.main import app
 from app.models.user import User
 
 client = TestClient(app)
 
-ADMIN_TOKEN = create_access_token({"sub": "admin", "role": "admin"})
-USER_TOKEN = create_access_token({"sub": "alice", "role": "user"})
+ADMIN_TOKEN = create_access_token({"uid": "user-admin-id", "sub": "admin", "role": "admin"})
+USER_TOKEN = create_access_token({"uid": "user-alice-id", "sub": "alice", "role": "user"})
+OLD_USER_TOKEN = create_access_token({"sub": "alice", "role": "user"})
+OLD_ADMIN_TOKEN = create_access_token({"sub": "boss", "role": "admin"})
 AUTH = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
@@ -47,8 +50,14 @@ class FakeSession:
         return FakeScalarResult(self._user)
 
 
-def _make_user(username: str = "admin", password: str = "admin123", role: str = "admin") -> User:
+def _make_user(
+    username: str = "admin",
+    password: str = "admin123",
+    role: str = "admin",
+    user_id: str = "user-admin-id",
+) -> User:
     return User(
+        id=user_id,
         username=username,
         hashed_password=hash_password(password),
         role=role,
@@ -71,6 +80,10 @@ def test_login_success_returns_token_and_user(monkeypatch):
     assert data["access_token"]
     assert data["token_type"] == "bearer"
     assert data["user"] == {"username": "admin", "role": "admin"}
+    payload = decode_access_token(data["access_token"])
+    assert payload["uid"] == "user-admin-id"
+    assert payload["sub"] == "admin"
+    assert payload["role"] == "admin"
 
 
 def test_login_inactive_user_403(monkeypatch):
@@ -138,6 +151,127 @@ def test_me_returns_user_role_token():
         headers={"Authorization": f"Bearer {USER_TOKEN}"},
     )
     assert resp.json() == {"username": "alice", "role": "user"}
+
+
+def test_new_token_me_does_not_touch_db(monkeypatch):
+    """带 uid 的新 token：/me 走 JWT 快速路径，PostgreSQL 不可用也 200。
+
+    保证身份解析不引入运行时 DB 依赖（聊天类接口在 PG 故障时不受影响）。
+    """
+    def _db_down():
+        raise RuntimeError("postgres down")
+
+    monkeypatch.setattr("app.api.deps.async_session", _db_down)
+
+    resp = client.get("/api/v1/auth/me", headers=AUTH)
+
+    assert resp.status_code == 200
+    assert resp.json() == {"username": "admin", "role": "admin"}
+
+
+async def test_old_token_resolves_active_user_identity(monkeypatch):
+    user = _make_user(username="alice", role="user", user_id="user-alice-id")
+    monkeypatch.setattr("app.api.deps.async_session", lambda: FakeSession(user))
+
+    identity = await get_current_user(OLD_USER_TOKEN)
+
+    assert identity == {
+        "user_id": "user-alice-id",
+        "username": "alice",
+        "role": "user",
+        "access_token": OLD_USER_TOKEN,
+    }
+
+
+def test_old_token_rejects_unknown_user(monkeypatch):
+    monkeypatch.setattr("app.api.deps.async_session", lambda: FakeSession(None))
+
+    resp = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {OLD_USER_TOKEN}"},
+    )
+
+    assert resp.status_code == 401
+
+
+async def test_old_token_pg_down_degrades_to_jwt_identity(monkeypatch):
+    """旧 token + PG 故障：降级为 JWT 自证身份（user_id 置空、特权角色降为 user）。
+
+    聊天类接口不受 PG 故障影响的降级哲学：签名可信的旧 token 放行，
+    但安全收紧——无法核验用户的真实存在性/活跃状态时，角色一律降级为
+    user（被删/停用的旧管理 token 不再具备 require_admin/require_staff 能力）。
+    """
+    def _db_down():
+        raise RuntimeError("postgres down")
+
+    monkeypatch.setattr("app.api.deps.async_session", _db_down)
+
+    identity = await get_current_user(OLD_USER_TOKEN)
+
+    assert identity["username"] == "alice"
+    assert identity["role"] == "user"
+    assert identity["user_id"] is None
+    assert identity["access_token"] == OLD_USER_TOKEN
+
+
+def test_old_admin_token_pg_down_role_downgraded_to_user(monkeypatch):
+    """旧 admin token + PG 故障：特权角色降级为 user（/me 只显示降级角色）。"""
+    def _db_down():
+        raise RuntimeError("postgres down")
+
+    monkeypatch.setattr("app.api.deps.async_session", _db_down)
+
+    resp = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {OLD_ADMIN_TOKEN}"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"username": "boss", "role": "user"}
+
+
+def test_old_admin_token_pg_down_cannot_access_admin_api(monkeypatch):
+    """旧 admin token + PG 故障：管理接口 403（降级角色被 require_admin 拒绝）。"""
+    def _db_down():
+        raise RuntimeError("postgres down")
+
+    monkeypatch.setattr("app.api.deps.async_session", _db_down)
+
+    resp = client.post(
+        "/api/v1/knowledge/rebuild",
+        headers={"Authorization": f"Bearer {OLD_ADMIN_TOKEN}"},
+    )
+
+    assert resp.status_code == 403
+
+
+def test_old_token_me_pg_down_still_200(monkeypatch):
+    """旧 token + PG 故障：/me 正常 200（HTTP 层面验证不 500）。"""
+    def _db_down():
+        raise RuntimeError("postgres down")
+
+    monkeypatch.setattr("app.api.deps.async_session", _db_down)
+
+    resp = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {OLD_USER_TOKEN}"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"username": "alice", "role": "user"}
+
+
+def test_old_token_rejects_inactive_user(monkeypatch):
+    user = _make_user(username="alice", role="user", user_id="user-alice-id")
+    user.is_active = False
+    monkeypatch.setattr("app.api.deps.async_session", lambda: FakeSession(user))
+
+    resp = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {OLD_USER_TOKEN}"},
+    )
+
+    assert resp.status_code == 401
 
 
 # ---------- 管理接口角色校验（knowledge delete/rebuild 仅 admin）----------

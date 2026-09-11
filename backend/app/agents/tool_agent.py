@@ -49,23 +49,23 @@ DEFAULT_SYSTEM_PROMPT = """你是 AssistMind 电商智能客服，帮用户处�
 9. 实体预填：系统可能已自动识别用户问题中的订单号/商品 ID 并补填到工具参数（query_order / query_logistics / apply_refund 的 order_sn、query_product 的 product_id）；调用工具时以补填后的参数为准，不要重复索要或编造。
 
 执行示例（订单/物流/退款必须照此调用工具）：
-用户：查一下订单 20240801001
+用户：查一下订单 20260801001
 助手：Action: query_order
-Action Input: {"order_sn": "20240801001"}
-（收到工具返回后）Final Answer: 您的订单 20240801001 已发货……
+Action Input: {"order_sn": "20260801001"}
+（收到工具返回后）Final Answer: 您的订单 20260801001 已发货……
 
 用户：我要退货
 助手：CLARIFY: 好的，请问您的订单号是多少？我需要先查询订单信息。
 
-用户：订单号是 20240801001，原因不想要了
+用户：订单号是 20260801001，原因不想要了
 助手：Action: apply_refund
-Action Input: {"order_sn": "20240801001", "reason": "不想要了"}
-（收到工具返回后）Final Answer: 您的退货申请已提交，售后单号 AF20240801001……
+Action Input: {"order_sn": "20260801001", "reason": "不想要了"}
+（收到工具返回后）Final Answer: 您的退货申请已提交，售后单号 AF20260801001……
 
 用户：物流到哪了？
 助手：Action: query_logistics
-Action Input: {"order_sn": "20240801001"}
-（收到工具返回后）Final Answer: 您的订单 20240801001 物流轨迹：已揽收 → 运输中，预计明天送达……
+Action Input: {"order_sn": "20260801001"}
+（收到工具返回后）Final Answer: 您的订单 20260801001 物流轨迹：已揽收 → 运输中，预计明天送达……
 
 用户：订单 999999 查一下
 助手：Action: query_order
@@ -78,8 +78,21 @@ Action Input: {"order_sn": "999999"}
 - 参数缺失：CLARIFY: <追问内容>
 """
 
+# task 链路人格护栏：人格语气指令拼进 system prompt 时必须跟在后面，
+# 把语气约束钉死在用户可见文本上，防止人格文本诱导 LLM 在 Action 行前
+# 加语气词导致 parse_action 解析失败（ReAct 决策协议不可被语气影响）
+TASK_PERSONA_GUARD = (
+    "注意：以上语气要求仅适用于 Final Answer 与 CLARIFY 的用户可见文本；\n"
+    "Thought/Action/Action Input 的输出格式与工具决策逻辑不受语气要求影响，保持原有协议。"
+)
+
 # 工单操作动作词
 _TICKET_ACTION_VERBS = ("创建", "提交", "建", "查", "查询", "转", "转接")
+
+# 明确业务数据操作关键词（意图直通工具：跳过知识库检索）
+# 这类查询的数据源是实时业务系统（订单/物流/售后），不是知识库——
+# 前置检索只会叠加改写/embedding/召回/重排/CRAG 的等待时间，且不贡献回答依据
+_BUSINESS_KEYWORDS = ("订单", "物流", "快递", "退款", "退货")
 
 # 意图粗判关键词（按优先级：退款 > 物流 > 订单 > 工单；无法判断则跳过）
 _INTENT_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
@@ -118,7 +131,7 @@ class ToolAgent(BaseReActAgent):
             {
                 "name": "search_knowledge",
                 "description": "搜索知识库，返回相关文档片段",
-                "input_schema": {"query": "str", "role": "str"},
+                "input_schema": {"query": "str"},
             },
             {
                 "name": "query_order",
@@ -185,6 +198,19 @@ class ToolAgent(BaseReActAgent):
             return any(verb in query for verb in _TICKET_ACTION_VERBS)
         return False
 
+    def _should_skip_retrieval(self, query: str) -> bool:
+        """是否跳过知识库检索（意图直通工具）。
+
+        纯工单操作（转人工/工单）或明确业务数据操作（订单/物流/快递/退款/退货）
+        直接走业务工具，不做 Retrieval Before Agency——这些查询的数据源是实时
+        业务系统而非知识库，前置检索只增加 Multi-Query 改写/embedding/双路召回/
+        重排/CRAG 的等待时间，且不贡献回答依据（对应调研结论：task 意图路由后
+        不再做知识检索）。知识型问题（商品咨询等）仍保留检索。
+        """
+        if self._is_pure_ticket_op(query):
+            return True
+        return any(kw in query for kw in _BUSINESS_KEYWORDS)
+
     def _has_retrieved(self, state: AgentState) -> bool:
         """检查本轮是否已调用 search_knowledge。"""
         return any(
@@ -216,7 +242,7 @@ class ToolAgent(BaseReActAgent):
         if (
             query
             and not self._has_retrieved(state)
-            and not self._is_pure_ticket_op(query)
+            and not self._should_skip_retrieval(query)
         ):
             logger.info("[ToolAgent] Retrieval Before Agency: 先检索知识库")
             iterations = state.get("iterations", 0) + 1
@@ -331,4 +357,8 @@ class ToolAgent(BaseReActAgent):
                     "iterations": 0,
                     "degraded": True,
                 }
+            # 预连接仅作可用性探测：LangGraph 节点任务 ≠ 当前任务，跨任务复用
+            # session 会触发 anyio cancel scope 错乱，execute_tool 会走一次性
+            # 任务自建连接（见 MCPClient._one_shot_call），此处探完即关防泄漏
+            await self.mcp_client.close()
         return await super().run(query, history=history)

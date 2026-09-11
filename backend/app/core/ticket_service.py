@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.infra.postgres import async_session
 from app.core.infra.redis import get_redis
-from app.models.ticket import Ticket, generate_ticket_id
+from app.models.ticket import Ticket, TicketReply, generate_ticket_id
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +220,85 @@ async def list_tickets(
         return {"tickets": [_ticket_to_dict(t) for t in tickets], "total": total}
 
 
+def _parse_since(since_iso: str) -> datetime:
+    """解析轮询基线时间（ISO 8601，允许 Z 后缀）。
+
+    转为 naive UTC 与 DB 列（TIMESTAMP WITHOUT TIME ZONE）一致，
+    参照 _find_recent_duplicate 的阈值写法；解析失败抛 ValueError（API 层转 422）。
+    """
+    try:
+        dt = datetime.fromisoformat(since_iso.replace("Z", "+00:00"))
+    except ValueError as e:
+        raise ValueError(f"since 参数无效: {since_iso}") from e
+    if dt.tzinfo is not None:
+        # 带时区 → 先归一到 UTC 再去 tzinfo；naive 输入视为已是 UTC
+        dt = dt.astimezone(UTC).replace(tzinfo=None)
+    return dt
+
+
+async def list_updates(
+    since_iso: str | None, requester_role: str, requester_username: str
+) -> dict:
+    """查询 since 之后的工单更新（前端徽标轮询）。
+
+    - since_iso 为 None → 空结果（首轮仅同步 server_time 作为基线），不查 DB
+    - 可见范围：agent/admin 全量；user 仅本人工单
+    - 命中条件：updated_at > since OR 存在 created_at > since 的回复
+      （后者覆盖"回复不触发 tickets.updated_at"的场景，如状态不变的追加回复）
+    - new_replies = 该工单 created_at > since 的回复计数
+
+    返回 {"tickets": [...按 updated_at 倒序...], "server_time": <当前 UTC ISO>}。
+    """
+    # DB 列为 TIMESTAMP WITHOUT TIME ZONE（naive），统一用 naive UTC 保持一致
+    now = datetime.now(UTC).replace(tzinfo=None)
+    if since_iso is None:
+        return {"tickets": [], "server_time": now.isoformat()}
+
+    since = _parse_since(since_iso)
+
+    async with async_session() as session:
+        # 新回复子查询：按 ticket_id 分组计数 created_at > since 的回复
+        new_reply_sq = (
+            select(
+                TicketReply.ticket_id,
+                func.count(TicketReply.id).label("new_replies"),
+            )
+            .where(TicketReply.created_at > since)
+            .group_by(TicketReply.ticket_id)
+            .subquery()
+        )
+        stmt = (
+            select(Ticket, func.coalesce(new_reply_sq.c.new_replies, 0))
+            .outerjoin(new_reply_sq, new_reply_sq.c.ticket_id == Ticket.id)
+            .where(
+                or_(
+                    Ticket.updated_at > since,
+                    new_reply_sq.c.ticket_id.isnot(None),
+                )
+            )
+            .order_by(Ticket.updated_at.desc())
+        )
+        if requester_role not in {"agent", "admin"}:
+            stmt = stmt.where(Ticket.user_id == requester_username)
+
+        result = await session.execute(stmt)
+        rows = result.all()
+        tickets = [
+            {
+                "id": ticket.id,
+                "title": ticket.title,
+                "status": ticket.status,
+                "priority": ticket.priority,
+                "updated_at": (
+                    ticket.updated_at.isoformat() if ticket.updated_at else None
+                ),
+                "new_replies": int(new_replies or 0),
+            }
+            for ticket, new_replies in rows
+        ]
+        return {"tickets": tickets, "server_time": now.isoformat()}
+
+
 async def search_tickets(keyword: str, limit: int = 5) -> list[dict]:
     """按关键词检索工单（title/description 模糊匹配），按创建时间倒序。
 
@@ -289,3 +368,69 @@ async def get_ticket(ticket_id: str) -> dict | None:
         if ticket is None:
             return None
         return _ticket_to_dict(ticket)
+
+
+# ---------- 工单回复（人工介入线程） ----------
+
+
+def _reply_to_dict(reply: TicketReply) -> dict:
+    return {
+        "id": reply.id,
+        "ticket_id": reply.ticket_id,
+        "sender_role": reply.sender_role,
+        "sender_username": reply.sender_username,
+        "content": reply.content,
+        "created_at": reply.created_at.isoformat() if reply.created_at else None,
+    }
+
+
+async def list_replies(ticket_id: str) -> list[dict]:
+    """按创建时间正序返回工单回复线程。"""
+    async with async_session() as session:
+        result = await session.execute(
+            select(TicketReply)
+            .where(TicketReply.ticket_id == ticket_id)
+            .order_by(TicketReply.id.asc())
+        )
+        replies = result.scalars().all()
+        return [_reply_to_dict(r) for r in replies]
+
+
+async def add_reply(
+    ticket_id: str,
+    sender_role: str,
+    sender_username: str,
+    content: str,
+) -> dict:
+    """追加工单回复。
+
+    人工介入语义：客服/管理员首次回复 open 状态的工单时，自动流转为
+    in_progress（表示人工已介入处理），流转失败仅记日志不阻塞回复。
+    """
+    content = content.strip()
+    if not content:
+        raise ValueError("回复内容不能为空")
+    async with async_session() as session:
+        result = await session.execute(select(Ticket).where(Ticket.id == ticket_id))
+        ticket = result.scalar_one_or_none()
+        if ticket is None:
+            raise ValueError("工单不存在")
+
+        reply = TicketReply(
+            ticket_id=ticket_id,
+            sender_role=sender_role,
+            sender_username=sender_username,
+            content=content,
+        )
+        session.add(reply)
+
+        if sender_role in {"agent", "admin"} and ticket.status == "open":
+            ticket.status = "in_progress"
+            logger.info(
+                "[Ticket] 人工介入：%s 回复工单 %s，状态 open → in_progress",
+                sender_username,
+                ticket_id,
+            )
+        await session.commit()
+        await session.refresh(reply)
+        return _reply_to_dict(reply)

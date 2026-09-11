@@ -72,7 +72,7 @@ class FakeSession:
         self.committed = True
 
 
-def _make_order(order_sn: str = "20240801001", status: str = "已发货") -> MallOrder:
+def _make_order(order_sn: str = "20260801001", status: str = "已发货") -> MallOrder:
     return MallOrder(
         order_sn=order_sn,
         status=status,
@@ -90,7 +90,7 @@ async def test_query_order_returns_none_on_pg_error(monkeypatch, caplog):
     """PG 异常：query_order 返回 None + logger.warning。"""
     monkeypatch.setattr("app.core.mall.real_source.async_session", BrokenSession)
     result = await RealMallDataSource().query_order(
-        "20240801001", requester_username="user", requester_role="user"
+        "20260801001", requester_user_id="uid-user", requester_username="user", requester_role="user"
     )
     assert result is None
     assert any("query_order 失败" in r.message for r in caplog.records)
@@ -100,7 +100,7 @@ async def test_query_logistics_returns_empty_on_pg_error(monkeypatch, caplog):
     """PG 异常：query_logistics 返回 [] + logger.warning。"""
     monkeypatch.setattr("app.core.mall.real_source.async_session", BrokenSession)
     result = await RealMallDataSource().query_logistics(
-        "20240801001", requester_username="user", requester_role="user"
+        "20260801001", requester_user_id="uid-user", requester_username="user", requester_role="user"
     )
     assert result == []
     assert any("query_logistics 失败" in r.message for r in caplog.records)
@@ -109,7 +109,7 @@ async def test_query_logistics_returns_empty_on_pg_error(monkeypatch, caplog):
 async def test_query_product_returns_none_on_pg_error(monkeypatch, caplog):
     """PG 异常：query_product 返回 None + logger.warning。"""
     monkeypatch.setattr("app.core.mall.real_source.async_session", BrokenSession)
-    result = await RealMallDataSource().query_product("P001")
+    result = await RealMallDataSource().query_product("P001", requester_role="user")
     assert result is None
     assert any("query_product 失败" in r.message for r in caplog.records)
 
@@ -118,7 +118,7 @@ async def test_apply_refund_returns_failed_on_pg_error(monkeypatch, caplog):
     """PG 异常：apply_refund 返回 failed dict + logger.warning（不抛异常）。"""
     monkeypatch.setattr("app.core.mall.real_source.async_session", BrokenSession)
     result = await RealMallDataSource().apply_refund(
-        "20240801001", "不想要了", requester_username="user", requester_role="user"
+        "20260801001", "不想要了", requester_user_id="uid-user", requester_username="user", requester_role="user"
     )
     assert result["refund_id"] is None
     assert result["status"] == "failed"
@@ -161,10 +161,10 @@ async def test_apply_refund_unpaid_message_matches_mock(monkeypatch):
         lambda: FakeSession(order=_make_order(status="待付款")),
     )
     result = await RealMallDataSource().apply_refund(
-        "20240801001", "不想要了", requester_username="user", requester_role="user"
+        "20260801001", "不想要了", requester_user_id="uid-user", requester_username="user", requester_role="user"
     )
     assert result["status"] == "failed"
-    assert result["message"] == "订单 20240801001 待付款，请先完成支付后再申请退款"
+    assert result["message"] == "订单 20260801001 待付款，请先完成支付后再申请退款"
 
 
 async def test_apply_refund_other_status_message_is_dynamic(monkeypatch):
@@ -174,7 +174,7 @@ async def test_apply_refund_other_status_message_is_dynamic(monkeypatch):
         lambda: FakeSession(order=_make_order(status="已取消")),
     )
     result = await RealMallDataSource().apply_refund(
-        "20240801001", "不想要了", requester_username="user", requester_role="user"
+        "20260801001", "不想要了", requester_user_id="uid-user", requester_username="user", requester_role="user"
     )
     assert result["status"] == "failed"
     assert "已取消" in result["message"]
@@ -185,7 +185,7 @@ async def test_apply_refund_unknown_order_message(monkeypatch):
     """未知订单：拒绝文案含订单号。"""
     monkeypatch.setattr("app.core.mall.real_source.async_session", lambda: FakeSession(order=None))
     result = await RealMallDataSource().apply_refund(
-        "20240801999", "不想要了", requester_username="user", requester_role="user"
+        "20260801999", "不想要了", requester_user_id="uid-user", requester_username="user", requester_role="user"
     )
     assert result["status"] == "failed"
     assert "不存在" in result["message"]

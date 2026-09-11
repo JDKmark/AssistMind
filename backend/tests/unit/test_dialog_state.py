@@ -18,16 +18,16 @@ from app.core.dialog import REQUIRED_SLOTS, extract_slots, missing_slots, requir
 
 
 def test_extract_slots_refund_reason():
-    """「原因不想要了」+ 历史含「我要退货」「订单号是 20240801001」→ 订单号 + 原因。"""
+    """「原因不想要了」+ 历史含「我要退货」「订单号是 20260801001」→ 订单号 + 原因。"""
     slots = extract_slots(
         "原因不想要了",
         history=[
             {"role": "user", "content": "我要退货"},
             {"role": "assistant", "content": "好的，请问您的订单号是多少？"},
-            {"role": "user", "content": "订单号是 20240801001"},
+            {"role": "user", "content": "订单号是 20260801001"},
         ],
     )
-    assert slots["order_sn"] == "20240801001"
+    assert slots["order_sn"] == "20260801001"
     assert slots["reason"] == "不想要了"
 
 

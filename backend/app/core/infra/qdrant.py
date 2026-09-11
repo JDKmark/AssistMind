@@ -18,6 +18,7 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models
 
 from app.config import get_settings
+from app.core.infra import fault_injection
 from app.core.infra.circuit_breaker import (
     CircuitBreakerOpenError,
     call_with_breaker,
@@ -130,6 +131,9 @@ class QdrantClient:
         断路器 Open 时直接返回 []，避免无谓调用。
         """
         if not self._client:
+            return []
+        # 故障注入（T6）：命中即按既有降级契约返回空，调用方降级为仅 BM25
+        if fault_injection.apply_qdrant_fault():
             return []
         if is_open("qdrant"):
             logger.warning("[Qdrant] 断路器 Open，跳过 search")

@@ -1,0 +1,7 @@
+query: 华为 Mate 60 Pro 多少钱，下单能免运费吗？
+persona: gentle
+
+degraded: False
+
+华为 Mate 60 Pro 的售价为 ¥6999，下单可享受免运费服务 [1]。  
+该商品的 service_ids 包含 3（免费包邮服务标识），根据运费规则，满足「商品带免费包邮服务」的免运费条件 [3]。

@@ -1,7 +1,7 @@
 # AssistMind 后端结构设计
 
 > 由 code-structuring 技能产出（模式判定 → 模块清单 → 层间契约 → 现有代码映射 → 落地建议）。
-> 最后更新：2026-08-08。结构变化时更新本文档，作为 spec 的 Why/What Changes 前置输入。
+> 最后更新：2026-08-08（2026-08-27 补记 RQ 异步任务 / 语音 TTS / 人格库模块，见文末「新增模块」）。结构变化时更新本文档，作为 spec 的 Why/What Changes 前置输入。
 
 ## Why（现状缺口）
 
@@ -40,16 +40,34 @@ response_generator）逐项对账后发现一个明确缺口：
 | `core/mcp/server` | MCP 工具注册（13 个） | `@mcp.tool()` 声明 | core/mall、core/ops、core/rag |
 | `core/dialog` | 对话上下文管理：裁剪/提取/格式化 + 槽位状态机 | `trim_history(history)` / `extract_query(messages)` / `format_history(history)` / `extract_slots(query, history)` / `missing_slots(intent, slots)` | 无 |
 
+## 新增模块（2026-08-27：RQ 异步任务 / 语音 TTS / 人格库）
+
+| 模块 | 职责（一句话） | 接口签名 | 依赖 |
+|---|---|---|---|
+| `api/jobs` | RQ 任务状态查询（queued/started/finished/failed + 结果/错误摘要） | `GET /api/v1/jobs/{job_id}` | core/tasks |
+| `core/tasks` | RQ 异步任务队列：知识库重建 / 坏例回流 / 评估运行 | `enqueue_task(func, *, timeout)` / `rebuild_knowledge_base()` / `export_badcases()` / `run_evaluation()` / `fetch_job(id)` | infra/qdrant、rag/bm25、feedback_service、Redis(RQ) |
+| `api/tts` | 语音播报端点：edge-tts 流式合成（首块预取，失败 503 降级） | `POST /api/v1/tts/speak` → audio/mpeg | core/infra/tts |
+| `core/infra/tts` | edge-tts 云端神经音色合成（免费无 key，流式产 MP3） | `synthesize(text) -> AsyncIterator[bytes]` | config（TTS_VOICE） |
+| `core/personas` | 客服人格库（提示词层语气定制，mtime 热加载） | `load_personas()` / `list_personas()` / `persona_prompt(id) -> str | None` | data/personas.json |
+
+设计要点：
+- **RQ 队列复用 Redis**：`Queue("assistmind")` 走 `settings.REDIS_URL` 独立连接（RQ 需原始 Connection，不强行复用 RedisClient），worker 由 `scripts/run_worker.py` 启动（Windows 降级 SimpleWorker），docker-compose.app.yml 提供 `worker` 服务。
+- **异步任务内按需连接**：worker 不经过 FastAPI lifespan，任务内先 `await qdrant.connect()`（幂等、失败自降级）再校验 `is_connected`。
+- **TTS 两级降级**：前端 `speak()` 优先走 `/api/v1/tts/speak`（后端失败 503），回落浏览器 `speechSynthesis`；ASR 保持浏览器 Web Speech API。
+- **人格只改语气**：`persona_prompt(id)` 返回的语气指令由 chat 层拼在既有 system prompt 之后，不覆盖客服职责与 RAG 事实约束；未知 id 回落默认 + warning。
+
 ## 层间数据契约
 
 ```
 HTTP POST /api/v1/chat/ask {query, history?}
-  → [api/chat] 意图分流
+  → [api/chat] 意图分流（faq / task / chat / unclear）
       → faq:  [core/rag] retrieve(query, history) → generate(query, contexts, history)
       → task: [agents/tool_agent] run(query, history) → {answer, tool_calls}
       → chat: LLM 直连（历史拼 prompt）
-      → diagnose: [agents/ops_supervisor] run(query) → {report}
   → SSE 事件流（start/tool_call/tool_result/done/...）
+
+[agents/ops_supervisor]：由独立后端 API POST /api/v1/ops/diagnose 调用（非聊天意图路由）
+  run(query) → {report}
 
 [core/dialog]（新增，统一对话上下文）
   trim_history(history: list[{role, content}] | None) -> list | None

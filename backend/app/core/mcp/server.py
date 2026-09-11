@@ -23,42 +23,44 @@ import logging
 
 from mcp.server.mcpserver import Context, MCPServer
 
+from app.api.deps import resolve_token_identity
+from app.config import get_settings
+from app.core.infra.redis import get_redis
 from app.core.mall import data_source as mall_ds
+from app.core.mcp.security import MCPAuthMiddleware
 from app.core.ops import data_source as ops_ds
 from app.core.rag.engine import retrieve as _retrieve
-from app.core.security.auth import decode_access_token
 from app.core.ticket_service import create_ticket as _create_ticket
 from app.core.ticket_service import get_ticket as _get_ticket
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 mcp = MCPServer("AssistOps")
 
 
-def _requester(ctx: Context) -> tuple[str, str]:
-    headers = ctx.headers or {}
+async def _requester(ctx: Context | None) -> dict:
+    headers = (ctx.headers or {}) if ctx is not None else {}
     authorization = headers.get("authorization") or headers.get("Authorization") or ""
     if not authorization.startswith("Bearer "):
-        return "", ""
-    try:
-        payload = decode_access_token(authorization.removeprefix("Bearer ").strip())
-    except Exception:
-        return "", ""
-    return str(payload.get("sub") or ""), str(payload.get("role") or "user")
+        raise ValueError("未认证")
+    return await resolve_token_identity(authorization.removeprefix("Bearer ").strip())
 
 
 @mcp.tool()
-async def search_knowledge(query: str, role: str = "user") -> list[dict]:
-    """搜索运维知识库（故障案例手册），返回相关文档片段。
+async def search_knowledge(query: str, ctx: Context = None) -> list[dict]:
+    """搜索知识库（故障案例手册），返回相关文档片段。
 
     Args:
         query: 用户查询问题（如"数据库连接池耗尽如何排查"）
-        role: 用户角色（user/agent/admin），用于 RBAC 过滤
 
     Returns:
         相关文档列表，每个含 doc_id/title/source/text/score
+
+    role 只取自身份上下文（token），不接受调用方传入，防角色提权绕过知识库 RBAC。
     """
-    result = await _retrieve(query, role=role)
+    identity = await _requester(ctx)
+    result = await _retrieve(query, role=identity["role"])
     return result["contexts"]
 
 
@@ -177,10 +179,10 @@ async def create_incident(
     """
     priority_map = {"low": "low", "medium": "normal", "high": "high", "critical": "urgent"}
     priority = priority_map.get(severity, "normal")
-    username, _ = _requester(ctx) if ctx is not None else ("", "")
+    identity = await _requester(ctx)
     return await _create_ticket(
         title, description, priority=priority, category="incident",
-        user_id=username or "system",
+        user_id=identity["username"],
     )
 
 
@@ -198,9 +200,9 @@ async def create_ticket(
     Returns:
         {ticket_id, created, ticket}
     """
-    username, _ = _requester(ctx) if ctx is not None else ("", "")
+    identity = await _requester(ctx)
     return await _create_ticket(
-        title, description, priority=priority, user_id=username or "system"
+        title, description, priority=priority, user_id=identity["username"]
     )
 
 
@@ -214,13 +216,13 @@ async def transfer_human(reason: str, ctx: Context = None) -> dict:
     Returns:
         {message, ticket_id}
     """
-    username, _ = _requester(ctx) if ctx is not None else ("", "")
+    identity = await _requester(ctx)
     result = await _create_ticket(
         title=f"转人工：{reason[:50]}",
         description=reason,
         priority="high",
         category="transfer_human",
-        user_id=username or "system",
+        user_id=identity["username"],
     )
     return {
         "message": "已为您转接人工客服，客服人员将尽快与您联系。工单号：" + result["ticket_id"],
@@ -238,12 +240,12 @@ async def get_ticket_status(ticket_id: str, ctx: Context = None) -> dict:
     Returns:
         工单详情；工单不存在或无权访问返回 {"error": "工单不存在"}
     """
-    username, role = _requester(ctx) if ctx is not None else ("", "")
+    identity = await _requester(ctx)
     ticket = await _get_ticket(ticket_id)
     if ticket is None:
         return {"error": "工单不存在"}
     # user 角色归属隔离：他人工单与不存在统一形状（防枚举）
-    if role == "user" and ticket.get("user_id") != username:
+    if identity["role"] == "user" and ticket.get("user_id") != identity["username"]:
         return {"error": "工单不存在"}
     return ticket
 
@@ -259,8 +261,13 @@ async def query_order(order_sn: str, ctx: Context) -> dict:
         订单详情 {order_sn, status, items: [{product_id, name, spec, price, quantity}],
         pay_amount, logistics_no, created_at}；订单不存在返回 {"error": "订单不存在"}
     """
-    username, role = _requester(ctx)
-    order = await mall_ds.query_order(order_sn, requester_username=username, requester_role=role)
+    identity = await _requester(ctx)
+    order = await mall_ds.query_order(
+        order_sn,
+        requester_user_id=identity.get("user_id") or "",
+        requester_username=identity["username"],
+        requester_role=identity["role"],
+    )
     if order is None:
         return {"error": "订单不存在"}
     return order
@@ -276,22 +283,28 @@ async def query_logistics(order_sn: str, ctx: Context) -> list[dict]:
     Returns:
         物流轨迹列表 [{ts, content}]；未发货或订单不存在返回空列表 []
     """
-    username, role = _requester(ctx)
-    return await mall_ds.query_logistics(order_sn, requester_username=username, requester_role=role)
+    identity = await _requester(ctx)
+    return await mall_ds.query_logistics(
+        order_sn,
+        requester_user_id=identity.get("user_id") or "",
+        requester_username=identity["username"],
+        requester_role=identity["role"],
+    )
 
 
 @mcp.tool()
-async def query_product(product_id: str) -> dict:
-    """查询商品信息（价格/库存/服务标识）。
+async def query_product(product_id: str, ctx: Context = None) -> dict:
+    """查询商品信息（价格/服务标识/库存状态；精确库存仅管理员可见）。
 
     Args:
         product_id: 商品 ID（如 P001）
 
     Returns:
-        商品信息 {id, name, spec, price, stock, services}；
+        商品信息 {id, name, spec, price, stock_status, services}；admin 额外含 stock；
         商品不存在返回 {"error": "商品不存在"}
     """
-    product = await mall_ds.query_product(product_id)
+    identity = await _requester(ctx)
+    product = await mall_ds.query_product(product_id, requester_role=identity["role"])
     if product is None:
         return {"error": "商品不存在"}
     return product
@@ -311,9 +324,13 @@ async def apply_refund(order_sn: str, reason: str, ctx: Context) -> dict:
         - 待付款/未知订单拒绝：refund_id=None，status=failed（message 含原因）
         - 重复申请幂等：返回已存在的售后单
     """
-    username, role = _requester(ctx)
+    identity = await _requester(ctx)
     return await mall_ds.apply_refund(
-        order_sn, reason, requester_username=username, requester_role=role
+        order_sn,
+        reason,
+        requester_user_id=identity.get("user_id") or "",
+        requester_username=identity["username"],
+        requester_role=identity["role"],
     )
 
 
@@ -325,8 +342,8 @@ _mcp_session_manager = None
 def get_mcp_app():
     """获取 MCP Server 的 ASGI app，用于挂载到 FastAPI。
 
-    返回 Starlette 实例（ASGI）。streamable_http_path 设为 '/'，
-    配合 FastAPI app.mount('/mcp', ...) 使 MCP 端点位于 /mcp/。
+    返回外层包了 MCPAuthMiddleware 的 ASGI 实例（统一 Bearer 认证 + 身份维度限流），
+    streamable_http_path 设为 '/'，配合 FastAPI app.mount('/mcp', ...) 使 MCP 端点位于 /mcp/。
 
     注意：streamable_http_app() 内部创建 StreamableHTTPSessionManager 并存到
     mcp._lowlevel_server._session_manager。由于挂载到 FastAPI 时子 app 的
@@ -336,8 +353,21 @@ def get_mcp_app():
     """
     global _mcp_app, _mcp_session_manager
     if _mcp_app is None:
-        _mcp_app = mcp.streamable_http_app(streamable_http_path="/")
+        # json_response=True：POST 响应走普通 JSON。本机（Windows/CPU 慢工具）实测
+        # SSE 响应流模式下的长耗时工具调用（search_knowledge ~5-20s）会被提前掐断
+        # （客户端报 "SSE stream ended without a response"）。JSON 模式下同任务复用
+        # 与跨任务一次性调用（_one_shot_call）均实测稳定；会话保持有状态（GET 流
+        # 承载 202 异步响应，stateless 会令其失效）。工具均为请求-响应模式，无服务
+        # 端推送需求，不影响 MCP 协议语义。
+        _mcp_app = mcp.streamable_http_app(streamable_http_path="/", json_response=True)
         _mcp_session_manager = mcp._lowlevel_server._session_manager
+        _mcp_app = MCPAuthMiddleware(
+            _mcp_app,
+            redis=get_redis(),
+            limit=settings.RATE_LIMIT_PER_MINUTE,
+            period=60,
+            key_prefix="scqa:rl:mcp",
+        )
     return _mcp_app
 
 

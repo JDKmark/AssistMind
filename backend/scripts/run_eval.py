@@ -360,8 +360,8 @@ Examples of noncommittal answers: "I don't know", "I'm not sure", "It depends"."
 
     examples = [
         (
-            AnswerRelevanceInput(response="华为 Mate 60 Pro 售价 6999 元。"),
-            AnswerRelevanceOutput(question="华为 Mate 60 Pro 多少钱？", noncommittal=0),
+            AnswerRelevanceInput(response="华为 Mate 70 Pro 售价 6999 元。"),
+            AnswerRelevanceOutput(question="华为 Mate 70 Pro 多少钱？", noncommittal=0),
         ),
         (
             AnswerRelevanceInput(

@@ -9,14 +9,34 @@ set -euo pipefail
 
 echo "[entrypoint] == AssistMind backend 初始化 =="
 
-# 1. 建表 + 初始用户（幂等）。postgres 未就绪时重试。
+# phase13 最小权限：runtime 账号与迁移账号必须分离且 runtime 不得是 postgres 超级用户
+# （DDL/授权走 DATABASE_MIGRATION_URL，runtime 仅业务 DML；不合规则拒绝启动）。
+# 本地单账号开发（runtime=postgres 且无迁移账号）保持放行，与旧行为一致。
+python - <<'PY'
+import os
+from app.config import Settings
+err = Settings.db_minimal_privilege_error(
+    os.environ.get("DATABASE_URL", ""),
+    os.environ.get("DATABASE_MIGRATION_URL", ""),
+)
+if err:
+    raise SystemExit(f"ERROR: {err}")
+PY
+
+# 1. 建表 + 初始用户（幂等）。postgres 未就绪时重试；持续失败则拒绝启动（最小权限/迁移失败不启动）。
+INIT_OK=0
 for i in $(seq 1 20); do
     if python scripts/init_db.py; then
+        INIT_OK=1
         break
     fi
     echo "[entrypoint] init_db 失败，重试 (${i}/20)…"
     sleep 3
 done
+if [ "${INIT_OK}" != "1" ]; then
+    echo "[entrypoint] init_db 持续失败（DDL/回填/授权未完成），拒绝启动 uvicorn。" >&2
+    exit 1
+fi
 
 # 2. 电商业务数据落 PostgreSQL（幂等：表非空跳过；MALL_DATA_SOURCE=mock 时本步可忽略）
 python scripts/seed_mall_db.py || echo "[entrypoint] seed_mall_db 未执行成功（mock 模式可忽略），继续"

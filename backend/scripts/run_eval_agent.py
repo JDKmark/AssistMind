@@ -275,7 +275,7 @@ TASKS: list[dict] = [
     {
         "name": "商品咨询（价格命中）",
         "turns": [
-            {"user": "华为 Mate 60 Pro 多少钱？", "check": check_product_price},
+            {"user": "华为 Mate 70 Pro 多少钱？", "check": check_product_price},
         ],
     },
     {

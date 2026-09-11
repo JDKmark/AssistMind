@@ -61,7 +61,7 @@ async def evaluate(question: str, contexts: list[dict[str, Any]]) -> dict[str, A
             [f"[{i+1}] {c.get('text', '')[:200]}" for i, c in enumerate(contexts[:5])]
         )
         prompt = _CRAG_PROMPT.format(question=question, contexts=ctx_text)
-        result = await call_llm(prompt, system="你是相关性评估助手。")
+        result = await call_llm(prompt, system="你是相关性评估助手。", fast=True)
         # 修复后的正则：能匹配 "0.8" "0.85" "1" "0" 等
         match = _SCORE_PATTERN.search(result)
         score = float(match.group(1)) if match else 1.0

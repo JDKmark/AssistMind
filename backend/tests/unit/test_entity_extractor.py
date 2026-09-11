@@ -23,12 +23,12 @@ from app.core.mall.entity_extractor import (
 
 def test_extract_order_sn():
     """从问题中提取 11 位订单号（20 开头）。"""
-    assert extract("查一下订单 20240801001")["order_sn"] == "20240801001"
+    assert extract("查一下订单 20260801001")["order_sn"] == "20260801001"
 
 
 def test_extract_order_sn_with_prefix():
     """订单号夹杂在句子中也能提取。"""
-    assert extract("帮我看看订单号是20240801001的物流信息")["order_sn"] == "20240801001"
+    assert extract("帮我看看订单号是20260801001的物流信息")["order_sn"] == "20260801001"
 
 
 def test_extract_product_id():
@@ -38,8 +38,8 @@ def test_extract_product_id():
 
 def test_extract_both_entities():
     """同一问题同时含订单号与商品 ID。"""
-    result = extract("订单 20240801001 里的 P002 是什么规格")
-    assert result["order_sn"] == "20240801001"
+    result = extract("订单 20260801001 里的 P002 是什么规格")
+    assert result["order_sn"] == "20260801001"
     assert result["product_id"] == "P002"
 
 
@@ -71,22 +71,22 @@ def test_extract_from_history_when_query_has_no_entity():
     result = extract(
         "物流到哪了？",
         history=[
-            {"role": "user", "content": "查一下订单 20240801001"},
+            {"role": "user", "content": "查一下订单 20260801001"},
             {"role": "assistant", "content": "您的订单已发货。"},
         ],
     )
-    assert result["order_sn"] == "20240801001"
+    assert result["order_sn"] == "20260801001"
 
 
 def test_extract_current_query_takes_priority_over_history():
     """当前问题有实体时优先用当前，不用历史。"""
     result = extract(
-        "查一下 20240801002",
+        "查一下 20260801002",
         history=[
-            {"role": "user", "content": "订单 20240801001 在哪"},
+            {"role": "user", "content": "订单 20260801001 在哪"},
         ],
     )
-    assert result["order_sn"] == "20240801002"
+    assert result["order_sn"] == "20260801002"
 
 
 def test_extract_history_ignored_when_empty():
@@ -99,12 +99,12 @@ def test_extract_history_takes_earliest_entity():
     result = extract(
         "现在能退款吗",
         history=[
-            {"role": "user", "content": "订单 20240801001 到哪了"},
+            {"role": "user", "content": "订单 20260801001 到哪了"},
             {"role": "assistant", "content": "已发货"},
-            {"role": "user", "content": "那 20240801003 呢"},
+            {"role": "user", "content": "那 20260801003 呢"},
         ],
     )
-    assert result["order_sn"] == "20240801003"
+    assert result["order_sn"] == "20260801003"
 
 
 # ---------- 实体 → 工具参数补填 ----------
@@ -122,9 +122,9 @@ def test_entity_to_tools_mapping():
 def test_fill_tool_args_fills_missing_order_sn():
     """query_order 缺 order_sn 时用实体补填。"""
     args, filled = fill_tool_args(
-        "query_order", {}, {"order_sn": "20240801001", "product_id": None}
+        "query_order", {}, {"order_sn": "20260801001", "product_id": None}
     )
-    assert args == {"order_sn": "20240801001"}
+    assert args == {"order_sn": "20260801001"}
     assert filled is True
 
 
@@ -132,10 +132,10 @@ def test_fill_tool_args_keeps_llm_provided_value():
     """LLM 已给 order_sn 时不覆盖。"""
     args, filled = fill_tool_args(
         "query_order",
-        {"order_sn": "20240801002"},
-        {"order_sn": "20240801001", "product_id": None},
+        {"order_sn": "20260801002"},
+        {"order_sn": "20260801001", "product_id": None},
     )
-    assert args["order_sn"] == "20240801002"
+    assert args["order_sn"] == "20260801002"
     assert filled is False
 
 
@@ -151,7 +151,7 @@ def test_fill_tool_args_product():
 def test_fill_tool_args_unrelated_tool_untouched():
     """非业务工具（create_ticket）不补填。"""
     args, filled = fill_tool_args(
-        "create_ticket", {"title": "t"}, {"order_sn": "20240801001", "product_id": None}
+        "create_ticket", {"title": "t"}, {"order_sn": "20260801001", "product_id": None}
     )
     assert args == {"title": "t"}
     assert filled is False
@@ -175,7 +175,7 @@ async def _patch_llm(monkeypatch, responder):
     )
     calls: list[str] = []
 
-    async def fake_call_llm(prompt, system=None, *, generation=False):
+    async def fake_call_llm(prompt, system=None, *, generation=False, fast=False):
         calls.append(prompt)
         result = responder(prompt)
         if asyncio.iscoroutine(result):
@@ -189,10 +189,10 @@ async def _patch_llm(monkeypatch, responder):
 async def test_extract_with_llm_hit_when_rule_misses(monkeypatch):
     """规则未命中 + 兜底开启：LLM 返回合法 JSON → 提取实体。"""
     calls = await _patch_llm(
-        monkeypatch, lambda prompt: '{"order_sn": "20240801001", "product_id": null}'
+        monkeypatch, lambda prompt: '{"order_sn": "20260801001", "product_id": null}'
     )
     result = await extract_with_llm("帮我看下我买的那个东西到哪了")
-    assert result["order_sn"] == "20240801001"
+    assert result["order_sn"] == "20260801001"
     assert len(calls) == 1
 
 
@@ -201,8 +201,8 @@ async def test_extract_with_llm_rule_hit_skips_llm(monkeypatch):
     calls = await _patch_llm(
         monkeypatch, lambda prompt: '{"order_sn": "99999999999", "product_id": "P099"}'
     )
-    result = await extract_with_llm("查一下订单 20240801001 的物流")
-    assert result["order_sn"] == "20240801001"
+    result = await extract_with_llm("查一下订单 20260801001 的物流")
+    assert result["order_sn"] == "20260801001"
     assert calls == []
 
 
@@ -243,9 +243,30 @@ async def test_extract_with_llm_disabled_never_calls_llm(monkeypatch):
 
     async def spy(prompt):
         calls.append(prompt)
-        return '{"order_sn": "20240801001", "product_id": null}'
+        return '{"order_sn": "20260801001", "product_id": null}'
 
     monkeypatch.setattr("app.core.mall.entity_extractor.call_llm", spy)
     result = await extract_with_llm("帮我看下我买的那个东西到哪了")
     assert result == {"order_sn": None, "product_id": None}
     assert calls == []
+
+
+async def test_extract_with_llm_uses_fast_mode(monkeypatch):
+    """LLM 兜底以 fast=True 调用（失败可降级空实体，快速失败不拖住 Agent 主链路）。
+
+    回归背景：实体兜底曾用标准 call_llm（失败感知长达分钟级），Agent 主链路
+    会被 LLM 兜底慢调用拖住；fast → ~16s 内失败并返回空实体（degraded 语义）。
+    """
+    monkeypatch.setattr(
+        "app.core.mall.entity_extractor.settings.ENTITY_LLM_FALLBACK", True
+    )
+    seen: list[bool] = []
+
+    async def spy(prompt, system=None, *, generation=False, fast=False):
+        seen.append(fast)
+        return '{"order_sn": "20260801001", "product_id": null}'
+
+    monkeypatch.setattr("app.core.mall.entity_extractor.call_llm", spy)
+    result = await extract_with_llm("帮我看下我买的那个东西到哪了")
+    assert result["order_sn"] == "20260801001"
+    assert seen == [True]

@@ -1,5 +1,19 @@
 <template>
   <div class="admin-page">
+    <!-- 后端不可用降级横幅：任一请求 5xx/网络失败时展示，恢复后自动消失 -->
+    <el-alert
+      v-if="backendStatus.down"
+      type="error"
+      :closable="false"
+      show-icon
+      class="degraded-banner"
+    >
+      <template #title>
+        后端服务暂不可用，当前页面数据可能不完整或为空。
+        <el-button size="small" type="primary" link @click="retryAll">重试</el-button>
+      </template>
+    </el-alert>
+
     <el-row :gutter="16">
       <!-- 系统状态 -->
       <el-col :xs="24" :sm="12">
@@ -16,7 +30,7 @@
             <el-table-column prop="label" label="组件" width="140" />
             <el-table-column label="状态">
               <template #default="{ row }">
-                <el-tag :type="row && row.tagType" size="small">
+                <el-tag :type="row && row.tagType" size="small" effect="plain" class="am-tag-pill">
                   {{ row && row.statusText }}
                 </el-tag>
               </template>
@@ -35,30 +49,34 @@
             </div>
           </template>
 
-          <div class="overview-grid">
-            <div class="overview-block">
-              <div class="overview-title">知识库</div>
-              <el-descriptions :column="2" border size="small">
-                <el-descriptions-item label="文档数">{{ kbTotal }}</el-descriptions-item>
-                <el-descriptions-item label="Chunk 数">{{ kbChunks }}</el-descriptions-item>
-              </el-descriptions>
-              <div v-if="kbError" class="muted-text">{{ kbError }}</div>
+          <!-- 指标卡：大数字 + 灰标 + 状态点（Stripe 式数据呈现） -->
+          <div class="metric-grid">
+            <div class="metric">
+              <div class="metric-label">文档数</div>
+              <div class="metric-value am-mono">{{ kbTotal }}</div>
+              <div class="metric-sub">知识库</div>
             </div>
-
-            <div class="overview-block">
-              <div class="overview-title">工单</div>
-              <el-descriptions :column="2" border size="small">
-                <el-descriptions-item label="总数">{{ ticketTotal }}</el-descriptions-item>
-                <el-descriptions-item
-                  v-for="(count, st) in statusDist"
-                  :key="st"
-                  :label="statusLabel(st)"
-                >
-                  {{ count }}
-                </el-descriptions-item>
-              </el-descriptions>
+            <div class="metric">
+              <div class="metric-label">Chunk 数</div>
+              <div class="metric-value am-mono">{{ kbChunks }}</div>
+              <div class="metric-sub">检索单元</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">工单总数</div>
+              <div class="metric-value am-mono">{{ ticketTotal }}</div>
+              <div class="metric-sub">全部工单</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">状态分布</div>
+              <div class="metric-chips">
+                <span v-for="(count, st) in statusDist" :key="st" class="mchip">
+                  {{ statusLabel(st) }} {{ count }}
+                </span>
+              </div>
+              <div class="metric-sub">待处理 · 已解决</div>
             </div>
           </div>
+          <div v-if="kbError" class="muted-text">{{ kbError }}</div>
         </el-card>
       </el-col>
     </el-row>
@@ -107,19 +125,124 @@
           </div>
         </div>
       </template>
+      <!-- 窄屏容器内横滚（P0-3）：页面不横向溢出，表格可滑动查看 -->
+      <div class="table-scroll">
       <el-table :data="tickets" size="small" border empty-text="暂无工单">
-        <el-table-column prop="id" label="工单号" />
-        <el-table-column prop="user_id" label="客户" />
-        <el-table-column prop="status" label="状态" />
-        <el-table-column prop="priority" label="优先级" />
+        <el-table-column prop="id" label="工单号" min-width="220" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span class="am-mono">{{ row.id }}</span>
+        </template>
+      </el-table-column>
+        <el-table-column prop="user_id" label="客户" width="110" />
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="ticketStatusTagType(row.status)" size="small" effect="plain" class="am-tag-pill">
+              {{ ticketStatusLabel(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="优先级" width="90">
+          <template #default="{ row }">
+            <el-tag :type="priorityTagType(row.priority)" size="small" effect="plain" class="am-tag-pill">
+              {{ priorityLabel(row.priority) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" link @click="openTicketDetail(row)">
+              详情
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
+      </div>
     </el-card>
+
+    <!-- 工单详情（管理员查看）：右侧抽屉 -->
+    <el-drawer
+      v-model="ticketDetailVisible"
+      title="工单详情"
+      :size="isMobile ? '100%' : '560px'"
+    >
+      <div v-loading="ticketDetailLoading" class="detail-body">
+        <el-descriptions v-if="currentTicketDetail" :column="1" border>
+          <el-descriptions-item label="工单号">
+            <span class="am-mono ticket-id-text">{{ currentTicketDetail.id }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="客户">
+            {{ currentTicketDetail.user_id }}
+          </el-descriptions-item>
+          <el-descriptions-item label="标题">{{ currentTicketDetail.title }}</el-descriptions-item>
+          <el-descriptions-item label="描述">
+            {{ currentTicketDetail.description }}
+          </el-descriptions-item>
+          <el-descriptions-item label="优先级">
+            <el-tag :type="priorityTagType(currentTicketDetail.priority)" size="small" effect="plain" class="am-tag-pill">
+              {{ priorityLabel(currentTicketDetail.priority) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="ticketStatusTagType(currentTicketDetail.status)" size="small" effect="plain" class="am-tag-pill">
+              {{ ticketStatusLabel(currentTicketDetail.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间">
+            {{ fmtTime(currentTicketDetail.created_at) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="更新时间">
+            {{ fmtTime(currentTicketDetail.updated_at) }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 人工介入沟通线程：回复 open 工单自动转为处理中 -->
+        <div class="reply-section">
+          <div class="reply-title">沟通记录</div>
+          <div v-if="ticketReplies.length" class="reply-list">
+            <div v-for="r in ticketReplies" :key="r.id" class="reply-item">
+              <div class="reply-meta">
+                <el-tag size="small" :type="r.sender_role === 'user' ? 'info' : 'warning'" effect="plain">
+                  {{ r.sender_role === 'admin' ? '管理员 ' : r.sender_role === 'agent' ? '客服 ' : '用户 ' }}{{ r.sender_username }}
+                </el-tag>
+                <span class="reply-time">{{ fmtTime(r.created_at) }}</span>
+              </div>
+              <div class="reply-content">{{ r.content }}</div>
+            </div>
+          </div>
+          <div v-else class="muted-text reply-empty">暂无沟通记录，回复后用户可见</div>
+
+          <div class="reply-input-row">
+            <el-input
+              v-model="ticketReplyDraft"
+              type="textarea"
+              :rows="2"
+              maxlength="2000"
+              placeholder="以人工身份回复用户（open 工单将自动转为处理中）"
+            />
+            <el-button
+              type="primary"
+              :loading="replySubmitting"
+              :disabled="!ticketReplyDraft.trim()"
+              @click="sendTicketReply"
+            >
+              发送回复
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </el-drawer>
 
     <el-card shadow="never" class="panel-card">
       <template #header><span class="card-title">用户管理</span></template>
       <el-table :data="users" size="small" border empty-text="暂无用户">
         <el-table-column prop="username" label="用户名" />
-        <el-table-column prop="role" label="角色" />
+        <el-table-column label="角色" width="120">
+          <template #default="{ row }">
+            <el-tag :type="roleTagType(row.role)" size="small" effect="plain" class="am-tag-pill">
+              {{ roleLabel(row.role) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="状态">
           <template #default="{ row }">{{ row.is_active ? '启用' : '停用' }}</template>
         </el-table-column>
@@ -127,14 +250,21 @@
           <template #default="{ row }">
             <el-button v-if="row.role === 'user'" size="small" @click="changeUserRole(row, 'agent')">设为客服</el-button>
             <el-button v-else-if="row.role === 'agent'" size="small" @click="changeUserRole(row, 'user')">设为用户</el-button>
-            <el-button
+            <el-popconfirm
               v-if="row.role !== 'admin'"
-              size="small"
-              :type="row.is_active ? 'danger' : 'success'"
-              @click="toggleUser(row)"
+              :title="row.is_active ? `确认停用用户 ${row.username}？` : `确认启用用户 ${row.username}？`"
+              width="240"
+              @confirm="toggleUser(row)"
             >
-              {{ row.is_active ? '停用' : '启用' }}
-            </el-button>
+              <template #reference>
+                <el-button
+                  size="small"
+                  :type="row.is_active ? 'danger' : 'success'"
+                >
+                  {{ row.is_active ? '停用' : '启用' }}
+                </el-button>
+              </template>
+            </el-popconfirm>
           </template>
         </el-table-column>
       </el-table>
@@ -146,7 +276,13 @@
         <el-table-column prop="refund_id" label="退款单" />
         <el-table-column prop="order_sn" label="订单号" />
         <el-table-column prop="owner_username" label="用户" />
-        <el-table-column prop="status" label="状态" />
+        <el-table-column prop="status" label="状态" width="96">
+        <template #default="{ row }">
+          <el-tag size="small" type="info" effect="plain" class="am-tag-pill">
+            {{ row.status }}
+          </el-tag>
+        </template>
+      </el-table-column>
         <el-table-column label="操作">
           <template #default="{ row }">
             <template v-if="row.status === '处理中'">
@@ -204,6 +340,8 @@
         </div>
       </template>
 
+      <!-- 窄屏容器内横滚（P0-3） -->
+      <div class="table-scroll">
       <el-table :data="orders" size="small" border empty-text="暂无订单数据">
         <el-table-column label="订单号" min-width="150">
           <template #default="{ row }">{{ row.order_sn || '-' }}</template>
@@ -213,13 +351,15 @@
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="orderStatusTagType(row.status)" size="small">
+            <el-tag :type="orderStatusTagType(row.status)" size="small" effect="plain" class="am-tag-pill">
               {{ row.status || '-' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="实付金额(¥)" width="110">
-          <template #default="{ row }">{{ fmtAmount(row.pay_amount) }}</template>
+        <el-table-column label="实付金额(¥)" width="110" align="right">
+          <template #default="{ row }">
+            <span class="am-mono amount-cell">{{ fmtAmount(row.pay_amount) }}</span>
+          </template>
         </el-table-column>
         <el-table-column label="物流单号" min-width="140">
           <template #default="{ row }">{{ row.logistics_no || '-' }}</template>
@@ -228,6 +368,7 @@
           <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
       </el-table>
+      </div>
 
       <div class="mall-pagination">
         <el-pagination
@@ -257,14 +398,23 @@
               <el-option label="待回流" value="pending" />
             </el-select>
             <el-button size="small" :loading="fbLoading" @click="loadFeedback">刷新</el-button>
+            <el-divider direction="vertical" />
+            <el-button size="small" :loading="evalRunning" @click="runEvaluation">
+              运行评估
+            </el-button>
+            <span v-if="evalStatusText" class="muted-text">{{ evalStatusText }}</span>
           </div>
         </div>
       </template>
 
+      <!-- 窄屏容器内横滚（P0-3） -->
+      <div class="table-scroll">
       <el-table :data="feedbacks" size="small" border empty-text="暂无反馈数据">
         <el-table-column label="评分" width="70">
           <template #default="{ row }">
-            <el-tag :type="row.score <= 2 ? 'danger' : 'success'" size="small">{{ row.score }}</el-tag>
+            <el-tag :type="row.score <= 2 ? 'danger' : 'success'" size="small" effect="plain" class="am-tag-pill">
+              {{ row.score }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="问题" min-width="170">
@@ -273,7 +423,7 @@
         <el-table-column label="回答摘要" min-width="170">
           <template #default="{ row }">{{ (row.answer || '').slice(0, 40) }}</template>
         </el-table-column>
-        <el-table-column label="来源" width="64">
+        <el-table-column label="来源数" width="70">
           <template #default="{ row }">{{ (row.sources || []).length }}</template>
         </el-table-column>
         <el-table-column label="时间" width="104">
@@ -285,11 +435,12 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
       <div v-if="fbError" class="muted-text">{{ fbError }}</div>
     </el-card>
 
     <!-- 会话追溯时间线抽屉（步骤可视化：意图 → 检索 → 决策 → 回答 → 证据链） -->
-    <el-drawer v-model="traceDrawer" title="会话追溯" size="560px">
+    <el-drawer v-model="traceDrawer" title="会话追溯" :size="isMobile ? '100%' : '560px'">
       <div v-if="currentTrace" class="trace-body">
         <div class="trace-question">
           <div class="overview-title">问题</div>
@@ -360,7 +511,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getHealth } from '@/api/health'
 import { listFeedback } from '@/api/feedback'
@@ -368,9 +519,25 @@ import { listDocs } from '@/api/knowledge'
 import { listTickets } from '@/api/ticket'
 import { listOrders, listRefunds, updateRefundStatus } from '@/api/mall'
 import { getOverview, listUsers, updateUser, listAuditLogs } from '@/api/admin'
+import { getTicket, listReplies, addReply } from '@/api/ticket'
+import { triggerEvaluation } from '@/api/evaluate'
+import { getJobStatus } from '@/api/knowledge'
+import { backendStatus } from '@/api/request'
+import { useBreakpoint } from '@/utils/useBreakpoint'
+import {
+  ticketStatusLabel,
+  ticketStatusTagType,
+  priorityLabel,
+  priorityTagType,
+  roleLabel,
+  roleTagType,
+} from '@/utils/labels'
 
 const health = ref(null)
 const healthLoading = ref(false)
+
+// 移动端抽屉全宽 / 表格横滚（P0-2 / P0-3）
+const { isMobile } = useBreakpoint()
 const kbTotal = ref(0)
 const kbChunks = ref(0)
 const kbError = ref('')
@@ -492,46 +659,143 @@ async function loadHealth() {
 }
 
 async function loadAdminData(includeOverview = true) {
-  const requests = [listUsers(), listAuditLogs()]
-  if (includeOverview) requests.unshift(getOverview())
-  const data = await Promise.all(requests)
-  const overview = includeOverview ? data[0] : null
-  const userData = includeOverview ? data[1] : data[0]
-  const auditData = includeOverview ? data[2] : data[1]
-  if (overview) adminOverview.value = overview
-  users.value = userData.users || []
-  userTotal.value = userData.total || 0
-  auditLogs.value = auditData.items || []
-  auditTotal.value = auditData.total || 0
+  // 后端不可用时降级为空数据（拦截器节流提示一次，页面横幅提示重试），不裸抛
+  try {
+    const requests = [listUsers(), listAuditLogs()]
+    if (includeOverview) requests.unshift(getOverview())
+    const data = await Promise.all(requests)
+    const overview = includeOverview ? data[0] : null
+    const userData = includeOverview ? data[1] : data[0]
+    const auditData = includeOverview ? data[2] : data[1]
+    if (overview) adminOverview.value = overview
+    users.value = userData.users || []
+    userTotal.value = userData.total || 0
+    auditLogs.value = auditData.items || []
+    auditTotal.value = auditData.total || 0
+  } catch (e) {
+    console.warn('[Admin] 用户/审计数据加载失败', e)
+    users.value = []
+    auditLogs.value = []
+  }
+}
+
+async function retryAll() {
+  await Promise.allSettled([
+    loadHealth(),
+    loadOverview(),
+    loadAdminData(),
+    loadRefunds(),
+    loadOrders(),
+    loadFeedback(),
+  ])
 }
 
 async function changeUserRole(user, role) {
-  await updateUser(user.id, { role })
+  try {
+    await updateUser(user.id, { role })
+    ElMessage.success(`已将 ${user.username} 设为${role === 'agent' ? '客服' : '用户'}`)
+  } catch (e) {
+    console.warn('[Admin] 角色变更失败', e)
+    return
+  }
   await loadAdminData()
 }
 
 async function toggleUser(user) {
-  await updateUser(user.id, { is_active: !user.is_active })
+  try {
+    await updateUser(user.id, { is_active: !user.is_active })
+    ElMessage.success(user.is_active ? `已停用 ${user.username}` : `已启用 ${user.username}`)
+  } catch (e) {
+    console.warn('[Admin] 启停失败', e)
+    return
+  }
   await loadAdminData()
 }
 
+// ---------- 工单详情（管理员查看） ----------
+
+const ticketDetailVisible = ref(false)
+const ticketDetailLoading = ref(false)
+const currentTicketDetail = ref(null)
+const ticketReplies = ref([])
+const ticketReplyDraft = ref('')
+const replySubmitting = ref(false)
+
+async function openTicketDetail(row) {
+  ticketDetailVisible.value = true
+  ticketDetailLoading.value = true
+  currentTicketDetail.value = null
+  ticketReplies.value = []
+  ticketReplyDraft.value = ''
+  try {
+    const [detail, replyData] = await Promise.all([getTicket(row.id), listReplies(row.id)])
+    currentTicketDetail.value = detail
+    ticketReplies.value = replyData.replies || []
+  } catch (e) {
+    // 错误已由 request 拦截器统一提示
+    currentTicketDetail.value = null
+  } finally {
+    ticketDetailLoading.value = false
+  }
+}
+
+async function sendTicketReply() {
+  const content = ticketReplyDraft.value.trim()
+  if (!content || !currentTicketDetail.value) return
+  replySubmitting.value = true
+  try {
+    await addReply(currentTicketDetail.value.id, content)
+    ElMessage.success('回复已发送，用户可在工单详情查看')
+    ticketReplyDraft.value = ''
+    const replyData = await listReplies(currentTicketDetail.value.id)
+    ticketReplies.value = replyData.replies || []
+    // 同步弹窗内状态显示（客服回复 open 工单后端已自动转 in_progress）
+    if (currentTicketDetail.value.status === 'open') {
+      currentTicketDetail.value.status = 'in_progress'
+    }
+    await searchTickets()
+  } catch (e) {
+    console.warn('[Admin] 回复发送失败', e)
+  } finally {
+    replySubmitting.value = false
+  }
+}
+
 async function searchTickets() {
-  const filters = {}
-  if (ticketPriorityFilter.value) filters.priority = ticketPriorityFilter.value
-  if (ticketCustomerFilter.value.trim()) filters.user_id = ticketCustomerFilter.value.trim()
-  const data = await listTickets(ticketStatusFilter.value || null, 50, filters)
-  tickets.value = data.tickets || []
-  ticketTotal.value = data.total != null ? data.total : tickets.value.length
+  try {
+    const filters = {}
+    if (ticketPriorityFilter.value) filters.priority = ticketPriorityFilter.value
+    if (ticketCustomerFilter.value.trim()) filters.user_id = ticketCustomerFilter.value.trim()
+    const data = await listTickets(ticketStatusFilter.value || null, 50, filters)
+    tickets.value = data.tickets || []
+    ticketTotal.value = data.total != null ? data.total : tickets.value.length
+  } catch (e) {
+    console.warn('[Admin] 工单查询失败', e)
+    tickets.value = []
+    ticketTotal.value = 0
+  }
 }
 
 async function loadRefunds() {
-  const data = await listRefunds({ limit: 20, offset: 0 })
-  refunds.value = data.refunds || []
-  refundTotal.value = data.total || 0
+  try {
+    const data = await listRefunds({ limit: 20, offset: 0 })
+    refunds.value = data.refunds || []
+    refundTotal.value = data.total || 0
+  } catch (e) {
+    // 错误提示已由 request 拦截器统一处理；与兄弟加载函数保持一致兜底，
+    // 避免后端宕机时产生 unhandled rejection
+    console.warn('[Admin] 退款列表加载失败', e)
+  }
 }
 
 async function changeRefundStatus(refund, status) {
-  await updateRefundStatus(refund.refund_id, status)
+  try {
+    await updateRefundStatus(refund.refund_id, status)
+    ElMessage.success(`退款单 ${refund.refund_id} 已置为「${status}」`)
+  } catch (e) {
+    console.warn('[Admin] 退款流转失败', e)
+    return
+  }
   await Promise.all([loadRefunds(), loadAdminData()])
 }
 
@@ -594,9 +858,9 @@ async function loadOrders() {
     orders.value = data.orders || []
     orderTotal.value = data.total != null ? data.total : orders.value.length
   } catch (e) {
+    // 后端不可用已由拦截器节流提示（页面横幅提示重试）；此处静默降级为空列表
     orders.value = []
     orderTotal.value = 0
-    ElMessage.error('商城订单加载失败')
   } finally {
     orderLoading.value = false
   }
@@ -632,6 +896,63 @@ async function loadFeedback() {
 function openTrace(row) {
   currentTrace.value = row
   traceDrawer.value = true
+}
+
+// ---------- 运行评估（RQ 任务入队 + 封顶轮询） ----------
+
+const evalRunning = ref(false)
+const evalStatusText = ref('')
+
+const EVAL_POLL_INTERVAL = 5000
+const EVAL_POLL_MAX = 60 // 5 分钟封顶：评估为分钟级子进程，超时后提示稍后自查
+
+async function runEvaluation() {
+  if (evalRunning.value) return
+  evalRunning.value = true
+  try {
+    const data = await triggerEvaluation()
+    const jobId = data.job_id
+    if (!jobId) throw new Error('未返回任务 ID')
+    evalStatusText.value = '评估已入队，运行中…'
+    await pollEvalJob(jobId)
+  } catch (e) {
+    console.warn('[Admin] 评估任务触发失败', e)
+    evalStatusText.value = ''
+  } finally {
+    evalRunning.value = false
+  }
+}
+
+async function pollEvalJob(jobId) {
+  // 组件卸载后停止轮询（evalPollDisposed 由 onUnmounted 置位）：
+  // 不再空转 5 分钟，也不在其他页面弹完成/失败提示
+  for (let i = 0; i < EVAL_POLL_MAX; i++) {
+    await new Promise((resolve) => setTimeout(resolve, EVAL_POLL_INTERVAL))
+    if (evalPollDisposed) return
+    try {
+      const job = await getJobStatus(jobId)
+      if (evalPollDisposed) return // 查询挂起期间组件已卸载：不弹完成/失败提示，不写状态
+      if (job.status === 'finished') {
+        if (job.result?.ok) {
+          evalStatusText.value = '评估完成'
+          ElMessage.success('评估完成，结果已写入评估集目录')
+        } else {
+          evalStatusText.value = '评估失败'
+          ElMessage.error('评估运行失败，请查看 worker 日志')
+        }
+        return
+      }
+      if (job.status === 'failed') {
+        evalStatusText.value = '评估失败'
+        ElMessage.error(`评估失败：${job.error || '未知错误'}`)
+        return
+      }
+      evalStatusText.value = `评估运行中…（已等待 ${((i + 1) * EVAL_POLL_INTERVAL) / 1000}s）`
+    } catch (e) {
+      console.warn('[Admin] 评估状态查询失败', e)
+    }
+  }
+  evalStatusText.value = '评估仍在后台执行，稍后刷新查看结果'
 }
 
 function fmtTime(iso) {
@@ -672,11 +993,20 @@ onMounted(() => {
   loadOrders()
   loadFeedback()
 })
+
+// 卸载置位：进行中的评估任务轮询停止
+let evalPollDisposed = false
+onUnmounted(() => {
+  evalPollDisposed = true
+})
 </script>
 
 <style scoped>
 .admin-page {
   padding: 20px;
+}
+.degraded-banner {
+  margin-bottom: 16px;
 }
 .panel-card {
   margin-bottom: 16px;
@@ -689,20 +1019,140 @@ onMounted(() => {
 .card-title {
   font-weight: 600;
 }
+.detail-body {
+  min-height: 80px;
+}
+.ticket-id-text {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+.reply-section {
+  margin-top: 16px;
+}
+.reply-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--am-text-2);
+  margin-bottom: 8px;
+}
+.reply-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.reply-item {
+  padding: 8px 10px;
+  background: var(--am-paper);
+  border-radius: 6px;
+}
+.reply-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.reply-time {
+  font-size: 12px;
+  color: var(--am-text-3);
+}
+.reply-content {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.reply-empty {
+  margin-bottom: 12px;
+}
+.reply-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
 .muted-text {
   color: var(--am-text-3);
   font-size: 13px;
-}
-.overview-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
 }
 .overview-title {
   font-weight: 600;
   color: var(--am-text-2);
   font-size: 13px;
   margin-bottom: 8px;
+}
+
+/* 指标卡网格（Stripe 式数据呈现） */
+.metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+/* 窄屏：表格容器内横滚，页面本体不溢出（P0-3） */
+.table-scroll {
+  overflow-x: auto;
+}
+.table-scroll .el-table {
+  min-width: 640px;
+}
+@media (max-width: 767px) {
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+  .ticket-filters .el-select,
+  .mall-filters .el-select,
+  .feedback-filters .el-select,
+  .ticket-filters .el-input,
+  .mall-filters .el-input {
+    width: 100% !important;
+  }
+  .mall-pagination {
+    justify-content: center;
+  }
+  .reply-input-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+.metric {
+  padding: 8px 0;
+}
+.metric-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--am-text-3);
+  margin-bottom: 4px;
+}
+.metric-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--am-text);
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+.metric-sub {
+  font-size: 12px;
+  color: var(--am-text-3);
+}
+.metric-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+.mchip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 999px;
+  background: var(--am-blue-50);
+  color: var(--am-text-2);
 }
 
 /* 商城订单 */

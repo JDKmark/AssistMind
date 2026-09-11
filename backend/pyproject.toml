@@ -25,6 +25,9 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "jieba>=0.42",
     "mcp>=1.0.0",
+    "rq>=2.0",
+    # 语音播报 TTS：微软 Edge 云端神经音色（免费无 key），失败降级浏览器 speechSynthesis
+    "edge-tts>=7.0",
     "openai>=1.40.0",
     "httpx>=0.27.0",
     "passlib[bcrypt]>=1.7.4",
@@ -38,6 +41,8 @@ dependencies = [
     # 失败降级（断路器 + 重试）
     "aiobreaker>=1.2.0",
     "tenacity>=8.2.0",
+    # 应用级可观测：/metrics（Prometheus exporter，T5）；未安装/未启用时整体 no-op
+    "prometheus-client>=0.20.0",
 ]
 
 [project.optional-dependencies]
@@ -69,5 +74,6 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "integration: 集成测试，需要 Docker 服务运行",
+    "requests_smoke: 真实 HTTP 接口冒烟测试（requests + uvicorn 子进程），需要 Docker 服务运行，可 -m requests_smoke 显式挑选",
 ]
 addopts = "-q"

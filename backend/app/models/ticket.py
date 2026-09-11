@@ -50,3 +50,20 @@ class Ticket(Base):
     user_id: Mapped[str] = mapped_column(String(36), default="system")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class TicketReply(Base):
+    """工单回复（人工介入线程）：用户补充说明，客服/管理员答复。
+
+    sender_role: user | agent | admin；user 仅可回复自己的工单（API 层校验）。
+    """
+
+    __tablename__ = "ticket_replies"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # TK- + 后缀最长 32 位，String(64) 冗余
+    ticket_id: Mapped[str] = mapped_column(String(64), index=True)
+    sender_role: Mapped[str] = mapped_column(String(16))
+    sender_username: Mapped[str] = mapped_column(String(64))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

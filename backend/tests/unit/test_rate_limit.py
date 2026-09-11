@@ -136,3 +136,30 @@ def test_main_app_mounts_rate_limit_middleware():
     from app.main import app
 
     assert any(m.cls is RateLimitMiddleware for m in app.user_middleware)
+
+
+# ---------- limit<=0 配置异常可观测（一次性告警，不静默停用） ----------
+
+
+async def test_check_fixed_window_nonpositive_limit_warns_once(caplog):
+    """limit=0：放行（边界保护）但首次命中记 warning——限流整体停用必须可观测。"""
+    import logging
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.core.infra import rate_limit as rl
+
+    redis = MagicMock()
+    redis.incr = AsyncMock(return_value=1)
+    rl._warned_disabled_limits.clear()
+    with caplog.at_level(logging.WARNING, logger="app.core.infra.rate_limit"):
+        ok1, c1 = await rl.check_fixed_window(
+            redis, key_prefix="rl", identity="ip1", limit=0, period=60
+        )
+        ok2, c2 = await rl.check_fixed_window(
+            redis, key_prefix="rl", identity="ip1", limit=0, period=60
+        )
+    assert ok1 is True and c1 == 0
+    assert ok2 is True and c2 == 0
+    redis.incr.assert_not_awaited()
+    warns = [r for r in caplog.records if "限流已整体停用" in r.message]
+    assert len(warns) == 1  # 只告警一次，不逐请求刷日志

@@ -144,6 +144,52 @@ async def test_llm_unavailable_fallback():
     assert result["low_confidence"] is True
 
 
+# ---------- 价格类问题规则层直判 faq（补齐「多少钱/价格/报价」关键词回归）----------
+# 背景：价格询问曾落到 LLM 意图分类（商汤波动时解析失败→unclear 话术）；
+# intent_routes.json 增加价格类关键词后应规则层短路，零 LLM、零语义。
+
+
+async def test_rule_match_faq_price_keywords():
+    """价格类关键词（多少钱/价格/报价/价位）规则层命中 faq，不触发语义/LLM 层。"""
+    price_queries = [
+        "华为 Mate 70 Pro 多少钱",
+        "这个手机的价格是多少",
+        "你们的报价是多少",
+        "这款价位怎么样",
+    ]
+    for q in price_queries:
+        with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)), patch(
+            "app.core.router.intent.call_llm",
+            new=AsyncMock(side_effect=AssertionError("规则命中不应调用 LLM: " + q)),
+        ):
+            result = await intent.route(q)
+
+        assert result["intent"] == "faq"
+        assert result["source"] == "rule"
+        assert result["confidence"] == 1.0
+        assert result["low_confidence"] is False
+
+
+# ---------- LLM 意图分类走快速失败模式（fast=True）----------
+# 背景：意图分类失败可降级 unclear，fast 快速失败避免商汤故障时拖住整条流。
+
+
+async def test_llm_classify_uses_fast_mode():
+    """语义未命中落到 LLM 分类：以 fast=True 调用（失败可降级 unclear，不等待重试链）。"""
+    q_vec = [1.0, 0.0, 0.0]
+    sample_vecs = _orthogonal_sample_vecs()
+    mock_call = AsyncMock(return_value='{"intent": "chat", "confidence": 0.9}')
+
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)):
+        with patch("app.core.router.semantic.embed_async", new=AsyncMock(return_value=sample_vecs)):
+            with patch("app.core.router.intent.call_llm", new=mock_call):
+                result = await intent.route("一段不匹配任何规则的闲聊文字")
+
+    assert result["source"] == "llm"
+    assert result["intent"] == "chat"
+    assert mock_call.await_args.kwargs.get("fast") is True
+
+
 def test_low_confidence_flags():
     """低置信度判定：语义/LLM 得分低于阈值时 low_confidence=True；规则始终高置信。"""
     # 语义相似度低于 0.6

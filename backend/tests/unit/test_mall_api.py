@@ -28,11 +28,11 @@ client = TestClient(app)
 
 # 覆盖 get_current_user 依赖
 async def fake_user():
-    return {"username": "user1", "role": "user"}
+    return {"user_id": "uid-user1", "username": "user1", "role": "user"}
 
 
 async def fake_admin():
-    return {"username": "admin", "role": "admin"}
+    return {"user_id": "uid-admin", "username": "admin", "role": "admin"}
 
 
 @pytest.fixture(autouse=True)
@@ -84,12 +84,12 @@ def test_list_orders_admin_returns_list(monkeypatch):
         return_value={
             "orders": [
                 {
-                    "order_sn": "20240801001",
+                    "order_sn": "20260801001",
                     "owner_username": "user1",
                     "status": "已发货",
                     "pay_amount": 6999,
                     "logistics_no": "SF1234567890",
-                    "created_at": "2024-08-01 09:30:00",
+                    "created_at": "2026-08-01 09:30:00",
                 }
             ],
             "total": 1,
@@ -105,7 +105,8 @@ def test_list_orders_admin_returns_list(monkeypatch):
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
-    assert data["orders"][0]["order_sn"] == "20240801001"
+    assert data["orders"][0]["order_sn"] == "20260801001"
+    # API 层透传数据源 dict（掩码由数据源内部完成，此处保持透传契约）
     assert data["orders"][0]["owner_username"] == "user1"
 
 
@@ -172,22 +173,51 @@ def test_list_orders_degraded_source_not_500(monkeypatch):
 # ---------- 6. my-orders 用户订单列表 ----------
 
 
+def test_my_orders_isolates_requester_per_user(monkeypatch):
+    """user1/user2 两个会话：各自只透传当前登录用户身份，归属服务端强制（防越权回归）。
+
+    对应黑盒契约：user2 的 my-orders 结果绝不允许包含 user1 的订单。
+    API 层无法声明他人身份（owner_username 参数被忽略），
+    数据源只收到 requester_username=当前 JWT 用户名——这里锁死这条透传链路。
+    """
+
+    async def _mock_my(requester_user_id="", requester_username="", **kwargs):
+        # 模拟数据源按调用方身份返回各自订单（真实隔离在 mock_source/real_source）
+        return {
+            "orders": [{"order_sn": f"OWN-{requester_username}", "items": []}],
+            "total": 1,
+        }
+
+    monkeypatch.setattr(mall_ds, "my_orders", _mock_my)
+    for username in ("user1", "user2"):
+        app.dependency_overrides[get_current_user] = (
+            lambda u=username: {"user_id": f"uid-{u}", "username": u, "role": "user"}
+        )
+        resp = client.get("/api/v1/mall/my-orders")
+        assert resp.status_code == 200
+        data = resp.json()
+        # 返回的是"当前会话用户"的订单，绝不串用户
+        assert data["orders"][0]["order_sn"] == f"OWN-{username}"
+        assert data["total"] == 1
+    app.dependency_overrides[get_current_user] = fake_user
+
+
 def test_my_orders_user_returns_own_orders(monkeypatch):
     """user JWT：200，requester_username 透传为当前用户名，响应含 items 明细。"""
     mock_my = AsyncMock(
         return_value={
             "orders": [
                 {
-                    "order_sn": "20240801001",
+                    "order_sn": "20260801001",
                     "status": "已发货",
                     "pay_amount": 6999,
                     "logistics_no": "SF1234567890",
-                    "created_at": "2024-08-01 09:30:00",
+                    "created_at": "2026-08-01 09:30:00",
                     "items": [
                         {
                             "product_id": "P001",
-                            "name": "华为 Mate 60 Pro",
-                            "spec": "256G 雅丹黑",
+                            "name": "华为 Mate 70 Pro",
+                            "spec": "256G 曜石黑",
                             "price": 6999,
                             "quantity": 1,
                         }
@@ -203,8 +233,8 @@ def test_my_orders_user_returns_own_orders(monkeypatch):
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
-    assert data["orders"][0]["order_sn"] == "20240801001"
-    assert data["orders"][0]["items"][0]["name"] == "华为 Mate 60 Pro"
+    assert data["orders"][0]["order_sn"] == "20260801001"
+    assert data["orders"][0]["items"][0]["name"] == "华为 Mate 70 Pro"
     mock_my.assert_awaited_once()
     _, kwargs = mock_my.call_args
     assert kwargs["requester_username"] == "user1"

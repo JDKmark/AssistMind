@@ -65,7 +65,7 @@ async def rewrite(query: str) -> dict[str, Any]:
             prompt = _MULTI_QUERY_PROMPT.format(
                 question=query, n=settings.QUERY_REWRITE_NUM_VARIANTS
             )
-            text = await call_llm(prompt, system="你是查询改写助手。")
+            text = await call_llm(prompt, system="你是查询改写助手。", fast=True)
             variants = [v.strip() for v in text.strip().split("\n") if v.strip()]
             variants = [v for v in variants if len(v) > 3 and v != query][: settings.QUERY_REWRITE_NUM_VARIANTS]
             result["variants"] = variants
@@ -80,7 +80,7 @@ async def rewrite(query: str) -> dict[str, Any]:
     # HyDE（可选）
     if strategy in ("hyde", "auto"):
         try:
-            text = await call_llm(_HYDE_PROMPT.format(question=query))
+            text = await call_llm(_HYDE_PROMPT.format(question=query), fast=True)
             result["hyde"] = text.strip()
             if result["hyde"]:
                 result["all_queries"].append(result["hyde"])

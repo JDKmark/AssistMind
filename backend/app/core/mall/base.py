@@ -26,9 +26,18 @@ class MallDataSource(ABC):
 
     @abstractmethod
     async def query_order(
-        self, order_sn: str, *, requester_username: str, requester_role: str
+        self,
+        order_sn: str,
+        *,
+        requester_user_id: str,
+        requester_username: str,
+        requester_role: str,
     ) -> dict | None:
         """查询订单信息。未知 order_sn 返回 None。
+
+        归属授权（普通用户）：优先按 owner_user_id == requester_user_id；
+        仅 owner_user_id 为空的旧行回退 owner_username == requester_username
+        （迁移窗口兼容）。agent/admin 不受归属限制。
 
         返回字段：
         - order_sn: 订单号
@@ -51,6 +60,8 @@ class MallDataSource(ABC):
         """查询订单列表（管理端）。返回 {"orders": [...], "total": int}。
 
         - 列表项字段：order_sn / owner_username / status / pay_amount / logistics_no / created_at
+        - owner_username 过滤先解析为 owner_user_id，再按规范归属字段匹配；
+          未知用户名返回空列表（{"orders": [], "total": 0}）
         - total 为过滤后（分页前）总数；orders 按 created_at 倒序、limit/offset 分页
         - 失败降级语义：real 实现 PostgreSQL 失败时返回
           {"orders": [], "total": 0, "degraded": ["postgres"]} 并 logger.warning，不抛异常
@@ -60,6 +71,7 @@ class MallDataSource(ABC):
     async def my_orders(
         self,
         *,
+        requester_user_id: str,
         requester_username: str,
         status: str | None = None,
         limit: int = 50,
@@ -67,7 +79,8 @@ class MallDataSource(ABC):
     ) -> dict:
         """查询当前用户的订单列表（用户端）。返回 {"orders": [...], "total": int}。
 
-        - 归属由服务端强制：仅返回 owner_username == requester_username 的订单
+        - 归属由服务端强制：优先 owner_user_id == requester_user_id，旧行回退
+          owner_username == requester_username（迁移窗口兼容），客户端无法指定归属
         - 列表项字段：order_sn / status / pay_amount / logistics_no / created_at /
           items（[{product_id, name, spec, price, quantity}]，完整商品明细）
         - total 为过滤后（分页前）总数；orders 按 created_at 倒序、limit/offset 分页
@@ -77,26 +90,44 @@ class MallDataSource(ABC):
 
     @abstractmethod
     async def query_logistics(
-        self, order_sn: str, *, requester_username: str, requester_role: str
+        self,
+        order_sn: str,
+        *,
+        requester_user_id: str,
+        requester_username: str,
+        requester_role: str,
     ) -> list[dict]:
-        """查询物流轨迹 [{ts, content}]，按时间正序。未发货/未知订单返回空列表。"""
+        """查询物流轨迹 [{ts, content}]，按时间正序。未发货/未知订单返回空列表。
+
+        归属授权与 query_order 一致（普通用户按 owner_user_id 优先、旧行 username 回退）。
+        """
 
     @abstractmethod
-    async def query_product(self, product_id: str) -> dict | None:
+    async def query_product(self, product_id: str, *, requester_role: str) -> dict | None:
         """查询商品信息。未知 product_id 返回 None。
+
+        展示按角色最小披露：user/agent 仅返回 stock_status（不含精确 stock），
+        admin 保留精确 stock。
 
         返回字段：
         - id: 商品编码
         - name: 商品名称
         - spec: 规格
         - price: 价格（元）
-        - stock: 库存
+        - stock: 库存（仅 admin）
+        - stock_status: 有货/缺货（user/agent）
         - services: 服务标识列表（中文，如 无忧退货/快速退款/免费包邮）
         """
 
     @abstractmethod
     async def apply_refund(
-        self, order_sn: str, reason: str, *, requester_username: str, requester_role: str
+        self,
+        order_sn: str,
+        reason: str,
+        *,
+        requester_user_id: str,
+        requester_username: str,
+        requester_role: str,
     ) -> dict:
         """创建售后（退款）单。
 
@@ -105,6 +136,8 @@ class MallDataSource(ABC):
         - 待付款 → 拒绝，返回 {refund_id: None, status: "failed", message: 提示原因}
         - 未知订单 → 拒绝，返回 {refund_id: None, status: "failed", message: 提示原因}
         - 同一订单重复申请 → 返回已存在的售后单（幂等，不重复创建）
+
+        归属授权与 query_order 一致（普通用户按 owner_user_id 优先、旧行 username 回退）。
         """
 
     @abstractmethod
@@ -116,7 +149,11 @@ class MallDataSource(ABC):
         limit: int = 50,
         offset: int = 0,
     ) -> dict:
-        """查询退款列表（管理端）。"""
+        """查询退款列表（管理端）。
+
+        owner_username 过滤先解析为 owner_user_id，再按规范归属字段匹配；
+        未知用户名返回空列表（{"refunds": [], "total": 0}）。
+        """
 
     @abstractmethod
     async def update_refund_status(self, refund_id: str, new_status: str) -> dict:

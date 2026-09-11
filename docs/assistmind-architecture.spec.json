@@ -1,0 +1,386 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AssistMind 系统架构",
+    "output": "assistmind-architecture.html",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/JDKmark/AssistMind.git",
+      "revision": "c4d89c3d9ebf1ce1e05ab051781f11d426bd34c5"
+    },
+    "views": [
+      {
+        "id": "request-path",
+        "label": "一次提问的完整链路",
+        "focus": [
+          "frontend",
+          "chat",
+          "router",
+          "rag",
+          "tool_agent"
+        ],
+        "note": "从 SSE 入口经三级意图路由，分流到检索生成或 Agent 工具调用。"
+      },
+      {
+        "id": "data-and-tools",
+        "label": "数据与工具链",
+        "focus": [
+          "rag",
+          "qdrant",
+          "tool_agent",
+          "mcp",
+          "pg"
+        ],
+        "note": "知识检索落在 Qdrant，业务操作经 MCP 工具写入 PostgreSQL。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "frontend",
+      "type": "frontend",
+      "label": "Vue 3 前端",
+      "sublabel": "聊天 · 工单 · 管理后台",
+      "pos": [
+        70,
+        330
+      ],
+      "size": [
+        150,
+        66
+      ],
+      "sources": [
+        {
+          "path": "frontend/src/App.vue",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "chat",
+      "type": "backend",
+      "label": "api/chat 意图分流",
+      "sublabel": "POST /api/v1/chat/ask · SSE",
+      "tag": "FastAPI",
+      "pos": [
+        300,
+        330
+      ],
+      "size": [
+        160,
+        66
+      ],
+      "sources": [
+        {
+          "path": "backend/app/api/chat.py",
+          "line": 75
+        }
+      ]
+    },
+    {
+      "id": "router",
+      "type": "backend",
+      "label": "三级意图路由",
+      "sublabel": "规则 → 语义 → LLM",
+      "pos": [
+        530,
+        330
+      ],
+      "size": [
+        160,
+        66
+      ],
+      "sources": [
+        {
+          "path": "backend/app/core/router/intent.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "rag",
+      "type": "backend",
+      "label": "RAG 检索生成",
+      "sublabel": "retrieve → CRAG 改写 → generate",
+      "pos": [
+        790,
+        165
+      ],
+      "size": [
+        170,
+        66
+      ],
+      "sources": [
+        {
+          "path": "backend/app/core/rag/engine.py",
+          "line": 222
+        }
+      ]
+    },
+    {
+      "id": "tool_agent",
+      "type": "backend",
+      "label": "ToolAgent",
+      "sublabel": "ReAct 循环 + 实体补填",
+      "pos": [
+        790,
+        330
+      ],
+      "size": [
+        170,
+        66
+      ],
+      "sources": [
+        {
+          "path": "backend/app/agents/tool_agent.py",
+          "line": 115
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "MCP 工具服务",
+      "sublabel": "统一业务工具集 · 13 个",
+      "pos": [
+        790,
+        480
+      ],
+      "size": [
+        170,
+        66
+      ],
+      "sources": [
+        {
+          "path": "backend/app/core/mcp/server.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "dialog",
+      "type": "backend",
+      "label": "对话上下文管理",
+      "sublabel": "裁剪 · 提取 · 槽位状态机",
+      "pos": [
+        300,
+        480
+      ],
+      "size": [
+        160,
+        66
+      ],
+      "sources": [
+        {
+          "path": "backend/app/core/dialog/manager.py",
+          "line": 1
+        },
+        {
+          "path": "backend/app/core/dialog/state.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "ops",
+      "type": "backend",
+      "label": "运维诊断 Agent",
+      "sublabel": "计划 → 采集 → 分析 · 独立入口",
+      "pos": [
+        70,
+        100
+      ],
+      "size": [
+        160,
+        66
+      ],
+      "sources": [
+        {
+          "path": "backend/app/agents/ops_supervisor.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "deepseek",
+      "type": "external",
+      "label": "DeepSeek API",
+      "sublabel": "大模型推理（Ollama 备援）",
+      "pos": [
+        790,
+        40
+      ],
+      "size": [
+        170,
+        62
+      ]
+    },
+    {
+      "id": "qdrant",
+      "type": "database",
+      "label": "Qdrant",
+      "sublabel": "向量知识库",
+      "pos": [
+        1080,
+        195
+      ],
+      "size": [
+        150,
+        62
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "订单 / 用户 / 工单",
+      "pos": [
+        1080,
+        480
+      ],
+      "size": [
+        150,
+        62
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "缓存 + RQ 异步队列",
+      "pos": [
+        1080,
+        600
+      ],
+      "size": [
+        150,
+        62
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "AssistMind 后端（FastAPI + LangGraph）",
+      "wraps": [
+        "chat",
+        "router",
+        "rag",
+        "tool_agent",
+        "mcp",
+        "dialog"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "数据存储",
+      "wraps": [
+        "qdrant",
+        "pg"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "缓存与异步任务",
+      "wraps": [
+        "redis"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "frontend",
+      "to": "chat",
+      "label": "SSE 流式调用",
+      "variant": "emphasis"
+    },
+    {
+      "from": "chat",
+      "to": "router",
+      "label": "意图分流"
+    },
+    {
+      "from": "router",
+      "to": "rag",
+      "label": "知识类 faq",
+      "fromSide": "top"
+    },
+    {
+      "from": "router",
+      "to": "tool_agent",
+      "label": "业务类 task"
+    },
+    {
+      "from": "rag",
+      "to": "deepseek",
+      "label": "约束生成"
+    },
+    {
+      "from": "rag",
+      "to": "qdrant",
+      "label": "双路召回 + RRF + Reranker",
+      "labelAt": [
+        1000,
+        285
+      ]
+    },
+    {
+      "from": "tool_agent",
+      "to": "mcp",
+      "label": "MCP 工具调用",
+      "labelDy": 24
+    },
+    {
+      "from": "mcp",
+      "to": "pg",
+      "label": "订单 / 物流 / 售后读写"
+    },
+    {
+      "from": "tool_agent",
+      "to": "dialog",
+      "label": "槽位补填",
+      "fromSide": "left"
+    },
+    {
+      "from": "ops",
+      "to": "rag",
+      "label": "证据检索",
+      "toSide": "left",
+      "labelAt": [
+        700,
+        225
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "一次提问的链路",
+      "items": [
+        "三级意图路由：规则 → 语义 → LLM，零 token 精准分流",
+        "知识类走检索生成（CRAG 查询改写控幻觉），业务类走 Agent 工具调用",
+        "SSE 流式返回，Langfuse 全链路追踪"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "质量与可靠性",
+      "items": [
+        "RAGAS 四指标全部超 0.85（忠实度 0.941）",
+        "全链路失败降级矩阵 + 业务写操作幂等防护",
+        "低分反馈经 RQ 异步回流评估集，Bad Case 闭环"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "源码证据",
+      "items": [
+        "每个组件标注对应源码路径与行号，点击可溯源",
+        "规格锁定 revision c4d89c3，与仓库提交一致",
+        "架构细节见 docs/backend-structure.md"
+      ]
+    }
+  ]
+}

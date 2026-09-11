@@ -1,0 +1,8 @@
+=== qdrant_down round: metrics BEFORE 02:21:18 ===
+assistmind_degradation_total{component="reranker",reason="fault_fail"} 18.0
+assistmind_degradation_total{component="reranker",reason="fallback"} 12.0
+=== qdrant_down round: metrics AFTER 02:21:59 ===
+assistmind_degradation_total{component="reranker",reason="fault_fail"} 18.0
+assistmind_degradation_total{component="reranker",reason="fallback"} 12.0
+assistmind_degradation_total{component="qdrant",reason="fault_down"} 48.0
+assistmind_degradation_total{component="qdrant",reason="fallback"} 9.0

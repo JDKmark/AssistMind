@@ -5,6 +5,7 @@
 - 启用时全部 provider 失败 → span 标记 level=ERROR，异常原样抛出
 - 未启用 → 零开销：不调 get_langfuse、不创建 span，返回值正常
 - 降级场景 metadata（provider=ollama、fallback=True）与 span 创建失败不阻塞
+- 启用时 stream_llm 成功 → llm.stream span，timeout 元数据用流式专属超时
 
 mock 策略：
 - llm_factory 在模块顶部 `from app.core.infra.langfuse import get_langfuse,
@@ -23,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.infra import llm_factory as llm_factory_module
-from app.core.infra.llm_factory import LLMUnavailableError, call_llm
+from app.core.infra.llm_factory import LLMUnavailableError, call_llm, stream_llm
 
 
 class _FakeSpan:
@@ -153,3 +154,45 @@ async def test_call_llm_langfuse_span_create_failure_does_not_block(mock_llm_suc
         with patch.object(llm_factory_module, "get_langfuse", return_value=_BrokenClient()):
             result = await call_llm("你好")
     assert result == "LLM 响应"
+
+
+# ---------- stream_llm（llm.stream span，流式专属超时元数据） ----------
+
+
+async def test_stream_llm_langfuse_span_metadata_uses_stream_timeout(
+    fake_langfuse, monkeypatch
+):
+    """启用时 stream_llm 产生 llm.stream span；timeout 元数据用流式专属超时。
+
+    回归背景：span 创建时写死 LLM_TIMEOUT（非流式值），且 _stream_impl 设置的
+    info["timeout_s"] 从未被最终 metadata 消费——埋点层面的半截修复。
+    """
+    # 钉死 provider=deepseek：本机 .env 可能是 ollama（分支不同、超时值不同）
+    monkeypatch.setattr(llm_factory_module.settings, "LLM_PROVIDER", "deepseek")
+
+    async def _fake_provider(name, prompt, system, *, info=None):
+        yield "流式回答"
+
+    with patch.object(llm_factory_module, "_stream_provider", new=_fake_provider):
+        chunks = []
+        async for d in stream_llm("你好"):
+            chunks.append(d)
+
+    assert "".join(chunks) == "流式回答"
+    assert len(fake_langfuse.spans) == 1
+    span = fake_langfuse.spans[0]
+    assert span.name == "llm.stream"
+
+    # 创建时 metadata：初始 timeout 为流式超时（不是非流式的 LLM_TIMEOUT）
+    _, kwargs = fake_langfuse.observations[0]
+    assert kwargs["metadata"]["timeout_s"] == (
+        llm_factory_module.settings.LLM_STREAM_TIMEOUT
+    )
+
+    # 成功收尾 metadata：timeout_s 来自 info（实际生效 provider 的流式超时）
+    assert len(span.updates) == 1
+    meta = span.updates[0]["metadata"]
+    assert meta["status"] == "ok"
+    assert meta["provider"] == "deepseek"
+    assert meta["timeout_s"] == llm_factory_module.settings.LLM_STREAM_TIMEOUT
+    assert span.ended

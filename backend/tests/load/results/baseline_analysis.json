@@ -1,0 +1,195 @@
+{
+  "total_requests": 5869,
+  "duration_s": 1080.0,
+  "overall": {
+    "p50_ms": 4114.0,
+    "p95_ms": 92094.6,
+    "p99_ms": 104536.0,
+    "ttft_p50_ms": 4719.5,
+    "ttft_p95_ms": 7078.0,
+    "err_rate": 0.4147,
+    "cache_hit_rate": 0.4962,
+    "p95_stdev_ms": 28821.3
+  },
+  "stages": [
+    {
+      "users": 10,
+      "duration_s": 180,
+      "n": 211,
+      "qps": 1.1722222222222223,
+      "p50_ms": 5631.0,
+      "p95_ms": 17403.5,
+      "p99_ms": 19155.200000000004,
+      "ttft_p50_ms": 4705.0,
+      "ttft_p95_ms": 7126.25,
+      "ttft_n": 56,
+      "err_rate": 0.0,
+      "http_429": 0,
+      "http_5xx": 0,
+      "cache_hit_rate": 0.5071090047393365,
+      "degraded_total": 0,
+      "sse_broken": 0,
+      "by_scenario": {
+        "s4_mixed": {
+          "n": 211,
+          "qps": 1.172,
+          "p50_ms": 5631.0,
+          "p95_ms": 17403.5,
+          "ttft_p50_ms": 4705.0,
+          "ttft_p95_ms": 7126.2
+        }
+      }
+    },
+    {
+      "users": 25,
+      "duration_s": 180,
+      "n": 695,
+      "qps": 3.861111111111111,
+      "p50_ms": 2128.0,
+      "p95_ms": 24189.300000000003,
+      "p99_ms": 25807.339999999993,
+      "ttft_p50_ms": 5069.5,
+      "ttft_p95_ms": 5400.4,
+      "ttft_n": 4,
+      "err_rate": 0.0,
+      "http_429": 0,
+      "http_5xx": 0,
+      "cache_hit_rate": 0.814388489208633,
+      "degraded_total": 0,
+      "sse_broken": 0,
+      "by_scenario": {
+        "s4_mixed": {
+          "n": 695,
+          "qps": 3.861,
+          "p50_ms": 2128.0,
+          "p95_ms": 24189.3,
+          "ttft_p50_ms": 5069.5,
+          "ttft_p95_ms": 5400.4
+        }
+      }
+    },
+    {
+      "users": 50,
+      "duration_s": 180,
+      "n": 798,
+      "qps": 4.433333333333334,
+      "p50_ms": 4809.0,
+      "p95_ms": 39985.1,
+      "p99_ms": 44821.26,
+      "ttft_p50_ms": 0.0,
+      "ttft_p95_ms": 0.0,
+      "ttft_n": 0,
+      "err_rate": 0.0,
+      "http_429": 0,
+      "http_5xx": 0,
+      "cache_hit_rate": 0.8120300751879699,
+      "degraded_total": 0,
+      "sse_broken": 0,
+      "by_scenario": {
+        "s4_mixed": {
+          "n": 798,
+          "qps": 4.433,
+          "p50_ms": 4809.0,
+          "p95_ms": 39985.1,
+          "ttft_p50_ms": 0.0,
+          "ttft_p95_ms": 0.0
+        }
+      }
+    },
+    {
+      "users": 100,
+      "duration_s": 180,
+      "n": 841,
+      "qps": 4.6722222222222225,
+      "p50_ms": 8259.0,
+      "p95_ms": 70050.0,
+      "p99_ms": 82133.60000000002,
+      "ttft_p50_ms": 0.0,
+      "ttft_p95_ms": 0.0,
+      "ttft_n": 0,
+      "err_rate": 0.0,
+      "http_429": 0,
+      "http_5xx": 0,
+      "cache_hit_rate": 0.835909631391201,
+      "degraded_total": 0,
+      "sse_broken": 0,
+      "by_scenario": {
+        "s4_mixed": {
+          "n": 841,
+          "qps": 4.672,
+          "p50_ms": 8259.0,
+          "p95_ms": 70050.0,
+          "ttft_p50_ms": 0.0,
+          "ttft_p95_ms": 0.0
+        }
+      }
+    },
+    {
+      "users": 200,
+      "duration_s": 180,
+      "n": 796,
+      "qps": 4.4222222222222225,
+      "p50_ms": 29654.0,
+      "p95_ms": 96104.5,
+      "p99_ms": 101383.7,
+      "ttft_p50_ms": 0.0,
+      "ttft_p95_ms": 0.0,
+      "ttft_n": 0,
+      "err_rate": 0.20854271356783916,
+      "http_429": 0,
+      "http_5xx": 0,
+      "cache_hit_rate": 0.7889447236180904,
+      "degraded_total": 0,
+      "sse_broken": 166,
+      "by_scenario": {
+        "s4_mixed": {
+          "n": 796,
+          "qps": 4.422,
+          "p50_ms": 29654.0,
+          "p95_ms": 96104.5,
+          "ttft_p50_ms": 0.0,
+          "ttft_p95_ms": 0.0
+        }
+      }
+    },
+    {
+      "users": 400,
+      "duration_s": 180,
+      "n": 2528,
+      "qps": 14.044444444444444,
+      "p50_ms": 4099.0,
+      "p95_ms": 94747.25,
+      "p99_ms": 110155.06,
+      "ttft_p50_ms": 0.0,
+      "ttft_p95_ms": 0.0,
+      "ttft_n": 0,
+      "err_rate": 0.8971518987341772,
+      "http_429": 0,
+      "http_5xx": 0,
+      "cache_hit_rate": 0.10284810126582279,
+      "degraded_total": 0,
+      "sse_broken": 2268,
+      "by_scenario": {
+        "s4_mixed": {
+          "n": 2528,
+          "qps": 14.044,
+          "p50_ms": 4099.0,
+          "p95_ms": 94747.2,
+          "ttft_p50_ms": 0.0,
+          "ttft_p95_ms": 0.0
+        }
+      }
+    }
+  ],
+  "knee": {
+    "users": 50,
+    "prev_users": 25,
+    "qps": 3.861,
+    "qps_gain": 0.148,
+    "p95_ms": 39985.1,
+    "p95_gain": 0.653
+  },
+  "degraded_counter": {},
+  "source_csv": "results/load_20260911_001951.csv",
+  "stages_spec": "10:180,25:180,50:180,100:180,200:180,400:180"
+}

@@ -32,7 +32,9 @@ async def login(req: LoginRequest):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="账号已停用",
             )
-        token = create_access_token({"sub": user.username, "role": user.role})
+        token = create_access_token(
+            {"uid": user.id, "sub": user.username, "role": user.role}
+        )
         return TokenResponse(
             access_token=token,
             user=UserInfo(username=user.username, role=user.role),

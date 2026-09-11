@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.core.mcp.server import (
     create_ticket,
     get_ticket_status,
@@ -30,7 +32,7 @@ from app.core.security.auth import create_access_token
 
 def _ctx(username="user1", role="user"):
     """构造携带 JWT 的 MCP Context（与 test_mcp_mall_tools.py 一致）。"""
-    token = create_access_token({"sub": username, "role": role})
+    token = create_access_token({"uid": f"uid-{username}", "sub": username, "role": role})
     ctx = MagicMock()
     ctx.headers = {"authorization": f"Bearer {token}"}
     return ctx
@@ -64,7 +66,7 @@ async def test_search_knowledge_normal(mock_retrieve):
         "degraded": [],
     }
 
-    result = await search_knowledge("AssistMind 是什么")
+    result = await search_knowledge("AssistMind 是什么", ctx=_ctx())
 
     assert isinstance(result, list)
     assert len(result) == 2
@@ -88,10 +90,40 @@ async def test_search_knowledge_degraded_empty(mock_retrieve):
         "degraded": ["qdrant", "bm25"],
     }
 
-    result = await search_knowledge("不存在的问题", role="agent")
+    result = await search_knowledge("不存在的问题", ctx=_ctx(role="agent"))
 
     assert result == []
     mock_retrieve.assert_awaited_once_with("不存在的问题", role="agent")
+
+
+# ---------- 2.1 角色只取自身份，不可伪造 ----------
+
+
+@patch("app.core.mcp.server._retrieve", new_callable=AsyncMock)
+async def test_search_knowledge_role_comes_from_identity(mock_retrieve):
+    """role 只取自 token 身份：user token 以 user 角色检索，不接受调用方 role 参数。"""
+    mock_retrieve.return_value = {
+        "query": "x",
+        "rewrites": {},
+        "contexts": [],
+        "crag": {},
+        "degraded": [],
+    }
+
+    await search_knowledge("问题", ctx=_ctx(role="user"))
+
+    mock_retrieve.assert_awaited_once_with("问题", role="user")
+
+
+@patch("app.core.mcp.server._retrieve", new_callable=AsyncMock)
+async def test_search_knowledge_rejects_role_kwarg(mock_retrieve):
+    """调用方传入 role 参数：签名不再接受，直接 TypeError（防提权）。"""
+    mock_retrieve.return_value = {"query": "x", "rewrites": {}, "contexts": [], "crag": {}, "degraded": []}
+
+    with pytest.raises(TypeError):
+        await search_knowledge("问题", role="admin", ctx=_ctx(role="user"))
+
+    mock_retrieve.assert_not_awaited()
 
 
 # ---------- 3. create_ticket 正常 ----------
@@ -234,12 +266,12 @@ async def test_get_ticket_status_user_can_view_own_ticket(mock_get):
 
 
 @patch("app.core.mcp.server._create_ticket", new_callable=AsyncMock)
-async def test_create_ticket_without_credentials_falls_back_to_system(mock_create):
-    """无 JWT 凭证的内部调用：user_id 回退 system（兼容旧行为）。"""
-    mock_create.return_value = {"ticket_id": "TK-x", "created": True, "ticket": {}}
+async def test_create_ticket_without_credentials_rejected(mock_create):
+    """无 JWT 凭证：拒绝创建工单，不回退 system（phase13 安全收紧）。"""
     ctx = MagicMock()
     ctx.headers = {}
 
-    await create_ticket("内部任务", "描述", ctx=ctx)
+    with pytest.raises(ValueError):
+        await create_ticket("内部任务", "描述", ctx=ctx)
 
-    mock_create.assert_awaited_once_with("内部任务", "描述", priority="normal", user_id="system")
+    mock_create.assert_not_awaited()

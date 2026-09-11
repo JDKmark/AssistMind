@@ -1,4 +1,4 @@
-﻿# AssistMind 演示环境一键启动（Windows PowerShell）
+# AssistMind 演示环境一键启动（Windows PowerShell）
 # 用法：.\start-demo.ps1
 # 演示流程与数据口径见 README「六、知识来源与演示口径」
 # 说明：比 start-dev.ps1 更稳更省事——等依赖健康、自动建库/灌库（集合非空跳过，秒起）、起后端不加 --reload。
@@ -14,7 +14,7 @@ Write-Host ""
 Write-Host "=== AssistMind 演示环境启动 ===" -ForegroundColor Cyan
 
 # ---------- 0. 预检 ----------
-Write-Host "[0/5] 预检环境..." -ForegroundColor Yellow
+Write-Host "[0/6] 预检环境..." -ForegroundColor Yellow
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "[ERR] 未找到 docker，请先安装 Docker Desktop。" -ForegroundColor Red
     exit 1
@@ -39,7 +39,7 @@ if ($dsKeySet) {
 }
 
 # ---------- 1. 启动基础设施 ----------
-Write-Host "[1/5] 启动基础设施容器（qdrant/redis/postgres 等）..." -ForegroundColor Yellow
+Write-Host "[1/6] 启动基础设施容器（qdrant/redis/postgres 等）..." -ForegroundColor Yellow
 docker compose up -d *> $null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERR] docker compose up 失败，请查看 docker compose ps / logs。" -ForegroundColor Red
@@ -65,7 +65,7 @@ Wait-ContainerHealthy "smart-cs-redis"
 Wait-ContainerHealthy "smart-cs-postgres"
 
 # ---------- 2. 初始化数据库 + 知识库 ----------
-Write-Host "[2/5] 初始化数据库与知识库..." -ForegroundColor Yellow
+Write-Host "[2/6] 初始化数据库与知识库..." -ForegroundColor Yellow
 Push-Location (Join-Path $Root "backend")
 try {
     # 确保目标数据库存在（compose 默认建 smart_cs，本项目用 assistmind）
@@ -120,20 +120,24 @@ finally {
 }
 
 # ---------- 3. 启动后端 ----------
-Write-Host "[3/5] 启动后端（端口 8001，不加 --reload 更稳）..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-Command", "cd backend; venv\Scripts\python.exe -m uvicorn app.main:app --port 8001"
+Write-Host "[3/6] 启动后端（端口 8002，不加 --reload 更稳）..." -ForegroundColor Yellow
+Start-Process powershell -ArgumentList "-Command", "cd backend; venv\Scripts\python.exe -m uvicorn app.main:app --port 8002"
 
-# ---------- 4. 启动前端 ----------
-Write-Host "[4/5] 启动前端（端口 5173）..." -ForegroundColor Yellow
+# ---------- 4. 启动 RQ worker（消费异步任务：知识库重建/坏例回流/评估运行） ----------
+Write-Host "[4/6] 启动 RQ worker（异步任务消费者）..." -ForegroundColor Yellow
+Start-Process powershell -ArgumentList "-Command", "cd backend; venv\Scripts\python.exe scripts/run_worker.py"
+
+# ---------- 5. 启动前端 ----------
+Write-Host "[5/6] 启动前端（端口 5173）..." -ForegroundColor Yellow
 Start-Process powershell -ArgumentList "-Command", "cd frontend; npm run dev"
 
-# ---------- 5. 等待就绪并输出 ----------
-Write-Host "[5/5] 等待后端就绪（首次需构建 BM25 索引）..." -ForegroundColor Yellow
+# ---------- 6. 等待就绪并输出 ----------
+Write-Host "[6/6] 等待后端就绪（首次需构建 BM25 索引）..." -ForegroundColor Yellow
 $deadline = (Get-Date).AddSeconds(120)
 $ready = $false
 while ((Get-Date) -lt $deadline) {
     try {
-        $null = Invoke-RestMethod -Uri "http://localhost:8001/api/v1/health" -TimeoutSec 3
+        $null = Invoke-RestMethod -Uri "http://localhost:8002/api/v1/health" -TimeoutSec 3
         $ready = $true
         break
     } catch {
@@ -144,15 +148,15 @@ while ((Get-Date) -lt $deadline) {
 Write-Host ""
 Write-Host "=== 启动完成 ===" -ForegroundColor Green
 Write-Host "前端:        http://localhost:5173" -ForegroundColor Cyan
-Write-Host "后端 API 文档: http://localhost:8001/docs" -ForegroundColor Cyan
+Write-Host "后端 API 文档: http://localhost:8002/docs" -ForegroundColor Cyan
 Write-Host "测试账号:    admin/admin123（演示全程用这个）" -ForegroundColor Cyan
 if (-not $ready) {
     Write-Host "[警告] 后端健康检查未在 120s 内就绪，请稍等浏览器重试；详见后端窗口日志。" -ForegroundColor Yellow
 }
 Write-Host ""
 Write-Host "演示数据速查表：" -ForegroundColor Cyan
-Write-Host "  订单  20240801001 已发货(顺丰 SF1234567890) / 01002 待发货 / 01003 已完成(可退货) / 01004 待付款(退款被拒)"
-Write-Host "  商品  P001 华为Mate60Pro ¥6999 / P003 戴森V12 ¥4990(无忧退货) / P005 联想拯救者 ¥8999"
+Write-Host "  订单  20260801001 已发货(顺丰 SF1234567890) / 01002 待发货 / 01003 已完成(可退货) / 01004 待付款(退款被拒)"
+Write-Host "  商品  P001 华为Mate70Pro ¥6999 / P003 戴森V12 ¥4990(无忧退货) / P005 联想拯救者 ¥8999"
 Write-Host ""
 Write-Host "完整演示流程与数据口径：README「六、知识来源与演示口径」" -ForegroundColor Cyan
 Write-Host ""

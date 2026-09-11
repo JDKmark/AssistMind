@@ -282,3 +282,105 @@ def test_admin_list_tickets_forwards_priority_and_customer_filters(mock_list):
     mock_list.assert_awaited_once_with(
         status="open", user_id="alice", priority="urgent", limit=20, offset=5
     )
+
+
+# ---------- 工单回复（人工介入线程） ----------
+
+
+@patch("app.api.ticket.list_replies", new_callable=AsyncMock)
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_list_replies_owner_ok(mock_get, mock_list):
+    """user 查自己工单的回复线程：200。"""
+    mock_get.return_value = {"id": "TK-1", "user_id": "testuser"}
+    mock_list.return_value = [
+        {"id": 1, "sender_role": "user", "sender_username": "testuser", "content": "补充"}
+    ]
+    resp = client.get("/api/v1/ticket/TK-1/replies")
+    assert resp.status_code == 200
+    assert resp.json()["replies"][0]["content"] == "补充"
+
+
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_list_replies_other_user_404(mock_get):
+    """user 查他人工单回复：404（防枚举）。"""
+    mock_get.return_value = {"id": "TK-1", "user_id": "someone-else"}
+    resp = client.get("/api/v1/ticket/TK-1/replies")
+    assert resp.status_code == 404
+
+
+@patch("app.api.ticket.add_reply", new_callable=AsyncMock)
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_add_reply_user_ok(mock_get, mock_add):
+    """user 回复自己的工单：200，sender 透传身份。"""
+    mock_get.return_value = {"id": "TK-1", "user_id": "testuser"}
+    mock_add.return_value = {
+        "id": 1,
+        "ticket_id": "TK-1",
+        "sender_role": "user",
+        "sender_username": "testuser",
+        "content": "补充订单号",
+    }
+    resp = client.post("/api/v1/ticket/TK-1/replies", json={"content": "补充订单号"})
+    assert resp.status_code == 200
+    mock_add.assert_awaited_once_with(
+        ticket_id="TK-1", sender_role="user", sender_username="testuser", content="补充订单号"
+    )
+
+
+@patch("app.api.ticket.add_reply", new_callable=AsyncMock)
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_add_reply_empty_content_422(mock_get, mock_add):
+    """空内容：422（空白串能过 min_length，由 service strip 兜底；此处测零长度）。"""
+    mock_get.return_value = {"id": "TK-1", "user_id": "testuser"}
+    resp = client.post("/api/v1/ticket/TK-1/replies", json={"content": ""})
+    assert resp.status_code == 422
+    mock_add.assert_not_awaited()
+
+
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_add_reply_missing_ticket_404(mock_get):
+    """工单不存在：404。"""
+    mock_get.return_value = None
+    resp = client.post("/api/v1/ticket/TK-404/replies", json={"content": "hello"})
+    assert resp.status_code == 404
+
+
+# ---------- 客服回复审计（人工介入写操作追责链） ----------
+
+
+async def fake_agent():
+    return {"username": "agent1", "role": "agent"}
+
+
+@patch("app.api.ticket.audit_service.record", new_callable=AsyncMock)
+@patch("app.api.ticket.add_reply", new_callable=AsyncMock)
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_add_reply_agent_writes_audit(mock_get, mock_add, mock_audit):
+    """agent 回复触发人工介入：写审计（action=ticket.reply，含 prev_status）。"""
+    mock_get.return_value = {"id": "TK-1", "user_id": "testuser", "status": "open"}
+    mock_add.return_value = {"id": 1, "ticket_id": "TK-1", "sender_role": "agent"}
+    original = app.dependency_overrides[get_current_user]
+    app.dependency_overrides[get_current_user] = fake_agent
+    try:
+        resp = client.post("/api/v1/ticket/TK-1/replies", json={"content": "已收到，处理中"})
+    finally:
+        app.dependency_overrides[get_current_user] = original
+    assert resp.status_code == 200
+    mock_audit.assert_awaited_once()
+    args = mock_audit.await_args
+    assert args.args[1] == "ticket.reply"
+    assert args.args[2] == "ticket"
+    assert args.args[3] == "TK-1"
+    assert args.args[4]["prev_status"] == "open"
+
+
+@patch("app.api.ticket.audit_service.record", new_callable=AsyncMock)
+@patch("app.api.ticket.add_reply", new_callable=AsyncMock)
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_add_reply_user_does_not_write_audit(mock_get, mock_add, mock_audit):
+    """普通用户回复自己的工单：非客服侧写操作，不写审计。"""
+    mock_get.return_value = {"id": "TK-1", "user_id": "testuser"}
+    mock_add.return_value = {"id": 1, "ticket_id": "TK-1", "sender_role": "user"}
+    resp = client.post("/api/v1/ticket/TK-1/replies", json={"content": "补充信息"})
+    assert resp.status_code == 200
+    mock_audit.assert_not_awaited()

@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+SSE,s1_cache_hit,RuntimeError('http_429'),18,2026-09-11T18:10:46Z,2026-09-11T18:10:58Z

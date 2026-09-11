@@ -1,4 +1,4 @@
-﻿"""ToolAgent 单元测试。
+"""ToolAgent 单元测试。
 
 覆盖 8 个场景：
 1. task 意图触发工具：create_ticket 工具调用，最终答案含工单号
@@ -205,29 +205,29 @@ async def test_max_iterations_degraded(mock_call):
 async def test_multiturn_history_injects_context(mock_call):
     """多轮对话：run(history=...) 把上文注入 messages，Agent 能基于上文订单号调工具。
 
-    场景：第一轮查订单，第二轮「物流到哪了」依赖上文订单号 20240801001。
+    场景：第一轮查订单，第二轮「物流到哪了」依赖上文订单号 20260801001。
     Retrieval Before Agency 使第一轮 think 强制 search_knowledge（不调 LLM），
-    第二轮 LLM 读取上文后应调用 query_logistics(order_sn=20240801001)。
+    第二轮 LLM 读取上文后应调用 query_logistics(order_sn=20260801001)。
     """
     mcp = _make_mcp_mock(
         call_tool_return=[
-            {"ts": "2024-08-01 16:00:00", "content": "已揽收"},
-            {"ts": "2024-08-01 18:30:00", "content": "运输中（预计明天送达）"},
+            {"ts": "2026-08-01 16:00:00", "content": "已揽收"},
+            {"ts": "2026-08-01 18:30:00", "content": "运输中（预计明天送达）"},
         ]
     )
     # 第一轮 think 被 Retrieval Before Agency 接管（不调 LLM），
     # 之后 LLM 先返回工具调用，再返回最终答案
     mock_call.side_effect = [
-        'Action: query_logistics\nAction Input: {"order_sn":"20240801001"}',
-        "Final Answer: 您的订单 20240801001 物流轨迹：已揽收 → 运输中，预计明天送达。",
+        'Action: query_logistics\nAction Input: {"order_sn":"20260801001"}',
+        "Final Answer: 您的订单 20260801001 物流轨迹：已揽收 → 运输中，预计明天送达。",
     ]
     agent = ToolAgent(mcp_client=mcp)
 
     result = await agent.run(
         "物流到哪了？",
         history=[
-            {"role": "user", "content": "查一下订单 20240801001"},
-            {"role": "assistant", "content": "您的订单 20240801001 已发货。"},
+            {"role": "user", "content": "查一下订单 20260801001"},
+            {"role": "assistant", "content": "您的订单 20260801001 已发货。"},
         ],
     )
 
@@ -235,13 +235,13 @@ async def test_multiturn_history_injects_context(mock_call):
     assert any(tc["name"] == "query_logistics" for tc in result["tool_calls"])
     last_name, last_args = mcp.call_tool.await_args_list[-1].args
     assert last_name == "query_logistics"
-    assert last_args["order_sn"] == "20240801001"
+    assert last_args["order_sn"] == "20260801001"
     assert result["degraded"] is False
 
     # 历史上下文确实被注入 LLM 提示（prompt 含上文用户/客服消息与当前问题）
     prompt = mock_call.await_args.args[0]
-    assert "查一下订单 20240801001" in prompt
-    assert "您的订单 20240801001 已发货" in prompt
+    assert "查一下订单 20260801001" in prompt
+    assert "您的订单 20260801001 已发货" in prompt
     assert "物流到哪了" in prompt
 
 
@@ -264,24 +264,24 @@ def test_get_tools_includes_mall_tools():
 async def test_entity_fill_missing_order_sn(mock_call):
     """LLM 决策 query_order 但 input 缺 order_sn：实体补填后调用。
 
-    场景：用户问题含订单号 20240801001，LLM 输出 Action 但参数为空。
+    场景：用户问题含订单号 20260801001，LLM 输出 Action 但参数为空。
     Retrieval Before Agency 首轮检索 → 实体提示注入（空转一轮）→ LLM 决策 → 补填调用。
     """
-    mcp = _make_mcp_mock(call_tool_return={"order_sn": "20240801001", "status": "已发货"})
+    mcp = _make_mcp_mock(call_tool_return={"order_sn": "20260801001", "status": "已发货"})
     mock_call.side_effect = [
         'Action: query_order\nAction Input: {}',
-        "Final Answer: 您的订单 20240801001 已发货。",
+        "Final Answer: 您的订单 20260801001 已发货。",
     ]
     agent = ToolAgent(mcp_client=mcp)
 
-    result = await agent.run("查一下订单 20240801001 到哪了")
+    result = await agent.run("查一下订单 20260801001 到哪了")
 
     # 工具调用参数被实体补填
     order_calls = [
         call for call in mcp.call_tool.await_args_list if call.args[0] == "query_order"
     ]
     assert len(order_calls) == 1
-    assert order_calls[0].args[1]["order_sn"] == "20240801001"
+    assert order_calls[0].args[1]["order_sn"] == "20260801001"
     assert "已发货" in result["answer"]
     assert result["degraded"] is False
 
@@ -289,14 +289,14 @@ async def test_entity_fill_missing_order_sn(mock_call):
 @patch("app.agents.base.call_llm", new_callable=AsyncMock)
 async def test_entity_fill_product_id(mock_call):
     """LLM 决策 query_product 但 input 缺 product_id：实体补填。"""
-    mcp = _make_mcp_mock(call_tool_return={"id": "P001", "name": "华为 Mate 60 Pro"})
+    mcp = _make_mcp_mock(call_tool_return={"id": "P001", "name": "华为 Mate 70 Pro"})
     mock_call.side_effect = [
         'Action: query_product\nAction Input: {}',
-        "Final Answer: 华为 Mate 60 Pro 当前在售。",
+        "Final Answer: 华为 Mate 70 Pro 当前在售。",
     ]
     agent = ToolAgent(mcp_client=mcp)
 
-    result = await agent.run("P001 这个商品还有货吗")
+    await agent.run("P001 这个商品还有货吗")
 
     product_calls = [
         call for call in mcp.call_tool.await_args_list if call.args[0] == "query_product"
@@ -333,8 +333,8 @@ async def test_multiturn_entity_from_history_fills_args(mock_call):
     """
     mcp = _make_mcp_mock(
         call_tool_return=[
-            {"ts": "2024-08-01 16:00:00", "content": "已揽收"},
-            {"ts": "2024-08-01 18:30:00", "content": "运输中"},
+            {"ts": "2026-08-01 16:00:00", "content": "已揽收"},
+            {"ts": "2026-08-01 18:30:00", "content": "运输中"},
         ]
     )
     mock_call.side_effect = [
@@ -346,8 +346,8 @@ async def test_multiturn_entity_from_history_fills_args(mock_call):
     result = await agent.run(
         "物流到哪了？",
         history=[
-            {"role": "user", "content": "查一下订单 20240801001"},
-            {"role": "assistant", "content": "您的订单 20240801001 已发货。"},
+            {"role": "user", "content": "查一下订单 20260801001"},
+            {"role": "assistant", "content": "您的订单 20260801001 已发货。"},
         ],
     )
 
@@ -357,7 +357,7 @@ async def test_multiturn_entity_from_history_fills_args(mock_call):
         if call.args[0] == "query_logistics"
     ]
     assert len(logistics_calls) == 1
-    assert logistics_calls[0].args[1]["order_sn"] == "20240801001"
+    assert logistics_calls[0].args[1]["order_sn"] == "20260801001"
     assert result["degraded"] is False
 
 
@@ -371,17 +371,58 @@ async def test_think_injects_missing_slot_hint(mock_call):
     场景：query 含订单号（实体提示注入分支触发）+ 退货意图缺 reason →
     注入「还缺reason」提示；LLM mock 直接返回 Final Answer，整体 run 正常结束。
     """
-    mcp = _make_mcp_mock(call_tool_return={"order_sn": "20240801001", "status": "已发货"})
-    mock_call.return_value = "Final Answer: 好的，已收到订单号 20240801001，请问退款原因是？"
+    mcp = _make_mcp_mock(call_tool_return={"order_sn": "20260801001", "status": "已发货"})
+    mock_call.return_value = "Final Answer: 好的，已收到订单号 20260801001，请问退款原因是？"
     agent = ToolAgent(mcp_client=mcp)
 
-    result = await agent.run("订单号是 20240801001，我要退货")
+    result = await agent.run("订单号是 20260801001，我要退货")
 
     # LLM 提示（已有对话）中注入了缺失槽位提示：还缺 reason
     prompt = mock_call.await_args.args[0]
     assert "还缺reason" in prompt
     # 不重复索要已有槽位：订单号不在缺失清单中
     assert "还缺order_sn" not in prompt
-    assert "订单号 20240801001" in prompt
+    assert "订单号 20260801001" in prompt
+    assert result["degraded"] is False
+
+
+# ---------- 11. 意图直通工具（业务意图跳过知识库检索）----------
+
+
+def test_should_skip_retrieval_classification():
+    """业务意图（订单/物流/退款/转人工/工单）跳过检索；知识型问题保留检索。"""
+    agent = ToolAgent(mcp_client=_make_mcp_mock())
+    # 明确业务数据操作 → 直通工具（不查知识库）
+    assert agent._should_skip_retrieval("查一下订单 20260801001") is True
+    assert agent._should_skip_retrieval("帮我转人工客服") is True
+    assert agent._should_skip_retrieval("物流到哪了") is True
+    assert agent._should_skip_retrieval("我要退货") is True
+    assert agent._should_skip_retrieval("帮我创建一个工单") is True
+    # 知识型问题 → 保留 Retrieval Before Agency
+    assert agent._should_skip_retrieval("AssistMind 支持哪些检索方式？") is False
+    assert agent._should_skip_retrieval("华为 Mate 70 Pro 多少钱") is False
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_business_intent_skips_retrieval(mock_call):
+    """意图直通：查订单不走 search_knowledge，直接调业务工具。
+
+    对应调研「task 意图路由后不再做知识检索」：订单/物流/退款数据源是实时
+    业务系统而非知识库，前置检索只增加改写/embedding/召回/重排/CRAG 等待时间。
+    """
+    mcp = _make_mcp_mock(call_tool_return={"order_sn": "20260801001", "status": "已发货"})
+    mock_call.side_effect = [
+        'Action: query_order\nAction Input: {"order_sn":"20260801001"}',
+        "Final Answer: 您的订单 20260801001 已发货。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    result = await agent.run("查一下订单 20260801001")
+
+    # 未调用 search_knowledge（直通业务工具）
+    assert not any(tc["name"] == "search_knowledge" for tc in result["tool_calls"])
+    assert any(tc["name"] == "query_order" for tc in result["tool_calls"])
+    called_names = [call.args[0] for call in mcp.call_tool.await_args_list]
+    assert called_names == ["query_order"]
     assert result["degraded"] is False
 

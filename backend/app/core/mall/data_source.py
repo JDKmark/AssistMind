@@ -80,11 +80,18 @@ async def get_source_mode() -> str:
 
 
 async def query_order(
-    order_sn: str, *, requester_username: str, requester_role: str
+    order_sn: str,
+    *,
+    requester_user_id: str,
+    requester_username: str,
+    requester_role: str,
 ) -> dict | None:
     """查询订单信息。未知或无权访问时返回 None。"""
     return await (await _resolve_source()).query_order(
-        order_sn, requester_username=requester_username, requester_role=requester_role
+        order_sn,
+        requester_user_id=requester_user_id,
+        requester_username=requester_username,
+        requester_role=requester_role,
     )
 
 
@@ -106,6 +113,7 @@ async def list_orders(
 
 async def my_orders(
     *,
+    requester_user_id: str,
     requester_username: str,
     status: str | None = None,
     limit: int = 50,
@@ -116,33 +124,53 @@ async def my_orders(
     real 实现 PostgreSQL 失败时返回 {"orders": [], "total": 0, "degraded": ["postgres"]}。
     """
     return await (await _resolve_source()).my_orders(
-        requester_username=requester_username, status=status, limit=limit, offset=offset
+        requester_user_id=requester_user_id,
+        requester_username=requester_username,
+        status=status,
+        limit=limit,
+        offset=offset,
     )
 
 
 async def query_logistics(
-    order_sn: str, *, requester_username: str, requester_role: str
+    order_sn: str,
+    *,
+    requester_user_id: str,
+    requester_username: str,
+    requester_role: str,
 ) -> list[dict]:
     """查询物流轨迹。未发货、未知或无权访问时返回空列表。"""
     return await (await _resolve_source()).query_logistics(
-        order_sn, requester_username=requester_username, requester_role=requester_role
+        order_sn,
+        requester_user_id=requester_user_id,
+        requester_username=requester_username,
+        requester_role=requester_role,
     )
 
 
-async def query_product(product_id: str) -> dict | None:
-    """查询商品信息。未知 product_id 返回 None。"""
-    return await (await _resolve_source()).query_product(product_id)
+async def query_product(product_id: str, *, requester_role: str) -> dict | None:
+    """查询商品信息。未知 product_id 返回 None；展示按角色最小披露。"""
+    return await (await _resolve_source()).query_product(product_id, requester_role=requester_role)
 
 
 async def apply_refund(
-    order_sn: str, reason: str, *, requester_username: str, requester_role: str
+    order_sn: str,
+    reason: str,
+    *,
+    requester_user_id: str,
+    requester_username: str,
+    requester_role: str,
 ) -> dict:
     """创建售后（退款）单，返回 {refund_id, status, message}。
 
     待付款 / 未知订单拒绝（refund_id=None, status=failed）；重复申请幂等返回已存在售后单。
     """
     return await (await _resolve_source()).apply_refund(
-        order_sn, reason, requester_username=requester_username, requester_role=requester_role
+        order_sn,
+        reason,
+        requester_user_id=requester_user_id,
+        requester_username=requester_username,
+        requester_role=requester_role,
     )
 
 

@@ -40,6 +40,22 @@ services:
       start_period: 300s
     restart: unless-stopped
 
+  # ===== RQ worker（消费 assistmind 队列：知识库重建 / 坏例回流 / 评估运行）=====
+  # 复用 backend 镜像；entrypoint 覆盖为 worker 启动（不走 init_db/uvicorn），
+  # 只依赖 Redis（任务内部按需访问 Qdrant/PostgreSQL，经 .env.prod 服务名互通）。
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: smart-cs-worker
+    entrypoint: ["python", "scripts/run_worker.py"]
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ===== 前端（nginx 托管构建产物，/api 反代 backend:8001，SSE 已开 proxy_buffering off）=====
   frontend:
     build:

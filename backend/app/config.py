@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     EMBEDDING_DEVICE: str = "cpu"
     RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3"
     RERANKER_ENABLED: bool = True
+    # local（本机 CrossEncoder，CPU 推理慢）| siliconflow（云端 rerank API，免费档同款模型）
+    RERANKER_PROVIDER: str = "local"
+    SILICONFLOW_API_BASE: str = "https://api.siliconflow.cn/v1"
+    SILICONFLOW_API_KEY: str = ""
 
     # ===== Qdrant =====
     QDRANT_URL: str = "http://localhost:6333"
@@ -50,6 +54,9 @@ class Settings(BaseSettings):
 
     # ===== PostgreSQL =====
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/assistmind"
+    # DDL/回填/GRANT 专用迁移账号（phase13 最小权限）：仅 init_db 使用，Uvicorn 运行时不用。
+    # 空则回退 DATABASE_URL（本地开发单账号）；生产部署必须显式配置独立迁移账号。
+    DATABASE_MIGRATION_URL: str = ""
 
     # ===== RAG 参数 =====
     CHUNK_SIZE: int = 512
@@ -79,6 +86,12 @@ class Settings(BaseSettings):
     # 超时（秒）
     LLM_TIMEOUT: int = 30
     LLM_FALLBACK_TIMEOUT: int = 15
+    # 流式生成通道的快速失败超时（仅 stream_llm 使用）：
+    # 商汤网关间歇故障时，生成阶段会先等满 LLM_TIMEOUT+重试+Ollama 15s ≈ 90s 才出模板兜底。
+    # 流式 TTFT 快（思考模型 content 首 token 通常 <10s），超时压到 10s/6s 后，
+    # DeepSeek→Ollama 全失败感知 ≈16s，用户更快看到兜底而非干等。
+    LLM_STREAM_TIMEOUT: int = 10
+    LLM_STREAM_FALLBACK_TIMEOUT: int = 6
     EMBEDDING_TIMEOUT: int = 10
     QDRANT_TIMEOUT: int = 5
     BM25_TIMEOUT: int = 5
@@ -114,7 +127,9 @@ class Settings(BaseSettings):
 
     # ===== MCP =====
     MCP_SERVER_ENABLED: bool = True
-    MCP_SERVER_URL: str = "http://localhost:8001/mcp"
+    # 尾斜杠必须保留：FastAPI app.mount('/mcp') 对无尾斜杠路径返回 307，
+    # mcp 库 streamable_http_client 不跟随重定向会导致连接失败（「Unexpected content type」）。
+    MCP_SERVER_URL: str = "http://localhost:8001/mcp/"
     MCP_TRANSPORT: str = "streamable_http"
 
     # ===== Langfuse =====
@@ -124,6 +139,40 @@ class Settings(BaseSettings):
 
     # ===== 限流 =====
     RATE_LIMIT_PER_MINUTE: int = 60
+    # 限流兜底（T8）：off（默认，保持现有 fail-open 语义不变）| inproc（Redis 挂掉时
+    # 用进程内固定窗口兜底，仅单实例有效）。默认 off，不得改变现有行为。
+    RATE_LIMIT_FALLBACK: str = "off"
+
+    # ===== 应用级可观测（T5 / Prometheus exporter）=====
+    # /metrics 端点：prometheus_client 单进程模式（多 worker 需 multiprocess，见文档）。
+    # 关闭或未安装 prometheus_client 时整体 no-op，应用能力不受影响。
+    METRICS_ENABLED: bool = True
+    METRICS_PATH: str = "/metrics"
+
+    # ===== 故障注入（T6，压测用；默认全关，env 驱动，运行时可热切换）=====
+    # FAULT_LLM=ok|timeout|error|slow：控制 LLM 层行为
+    # FAULT_RERANKER=ok|timeout|fail：控制重排层行为
+    # FAULT_QDRANT=ok|down：控制向量召回层行为
+    # 实现复用既有 provider / 断路器 / 降级抽象，不在业务路径散落 if。
+    FAULT_LLM: str = "ok"
+    FAULT_RERANKER: str = "ok"
+    FAULT_QDRANT: str = "ok"
+    # 运行时覆盖文件（可选）：指向 JSON（如 {"FAULT_RERANKER": "fail"}），按 mtime 热加载，
+    # 用于压测中不重启进程地开关故障；留空则只用上面的环境变量。
+    FAULT_OVERRIDE_FILE: str = ""
+    # timeout 模式等待时长（应 > LLM_STREAM_TIMEOUT，确保走降级），slow 模式首 token 延迟
+    FAULT_LLM_DELAY_MS: int = 12000
+    FAULT_LLM_SLOW_MS: int = 3000
+
+    # ===== Mock LLM 模式（离线压测，spec 3.5）=====
+    # LLM_PROVIDER=mock 时按固定 token 数与固定间隔流式返回，隔离上游、测纯服务端能力。
+    MOCK_LLM_TOKENS: int = 300
+    MOCK_LLM_INTERVAL_MS: int = 20
+    MOCK_LLM_ANSWER: str = ""
+
+    # ===== 语音播报（TTS）=====
+    # edge-tts 音色：晓晓女声（客服首选）；可切 zh-CN-YunxiNeural（男声）等
+    TTS_VOICE: str = "zh-CN-XiaoxiaoNeural"
 
     # ===== 工单 =====
     TICKET_ID_RANDOM_SUFFIX: int = 7
@@ -181,6 +230,38 @@ class Settings(BaseSettings):
             raise RuntimeError("JWT_SECRET 必须在生产环境设置为强随机字符串")
         if self.LLM_PROVIDER == "deepseek" and not self.DEEPSEEK_API_KEY:
             raise RuntimeError("LLM_PROVIDER=deepseek 时必须设置 DEEPSEEK_API_KEY")
+
+    @staticmethod
+    def db_minimal_privilege_error(runtime_dsn: str, migration_dsn: str) -> str | None:
+        """phase13 最小权限账号校验：通过返回 None，否则返回可读失败原因。
+
+        - runtime 缺用户名 → 拒绝（无法识别账号）
+        - runtime 是 postgres 超级用户：有迁移账号时拒绝（声称分离仍用超管）；
+          无迁移账号时放行（本地单账号开发场景，与 entrypoint/init_db 既有语义一致）
+        - runtime 非 postgres 但缺迁移账号 → 拒绝（DDL/授权无独立账号执行）
+        - runtime 与迁移账号相同 → 拒绝（未真正分离）
+
+        容器入口（docker-entrypoint.sh）使用本函数；deploy.sh 的部署前置校验为
+        独立 bash 实现（生产语义更严：postgres 无条件拒绝），两处修改需同步。
+        """
+        from sqlalchemy.engine import make_url
+
+        runtime = make_url(runtime_dsn)
+        if not runtime.username:
+            return "DATABASE_URL 缺少用户名：生产必须配置非 postgres 的独立 runtime 账号"
+        if runtime.username == "postgres":
+            if migration_dsn:
+                return (
+                    "后端 runtime 账号不能是 postgres 超级用户（DATABASE_URL 仍为默认账号，"
+                    "即使配置了迁移账号也未真正分离）：请改为独立 runtime 账号"
+                )
+            return None  # 本地单账号开发（无迁移账号）放行
+        if not migration_dsn:
+            return "runtime 账号非 postgres 时必须配置独立 DATABASE_MIGRATION_URL（DDL/授权走迁移账号）"
+        migration = make_url(migration_dsn)
+        if not migration.username or migration.username == runtime.username:
+            return "DATABASE_MIGRATION_URL 必须与 runtime 账号（DATABASE_URL）分离，不得复用同一账号"
+        return None
 
 
 @lru_cache

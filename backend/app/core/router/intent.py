@@ -90,7 +90,8 @@ def _parse_llm_response(resp: str) -> dict:
 
 
 async def _llm_classify(query: str) -> dict:
-    resp = await call_llm(_build_llm_prompt(query), _LLM_SYSTEM)
+    # fast=True：意图分类失败可降级 unclear，用流式快速超时避免商汤故障时拖住整条流
+    resp = await call_llm(_build_llm_prompt(query), _LLM_SYSTEM, fast=True)
     return _parse_llm_response(resp)
 
 

@@ -9,6 +9,8 @@ const ticketApi = vi.hoisted(() => ({
   createTicket: vi.fn(),
   updateTicketStatus: vi.fn(),
   getTicket: vi.fn(),
+  listReplies: vi.fn(),
+  addReply: vi.fn(),
 }))
 
 vi.mock('@/api/ticket', () => ticketApi)
@@ -77,6 +79,12 @@ const stubs = {
     props: ['modelValue', 'title'],
     template: '<div class="el-dialog-stub" v-if="modelValue"><slot /></div>',
   },
+  'el-drawer': {
+    props: ['modelValue', 'title', 'size'],
+    emits: ['update:modelValue'],
+    template:
+      '<div v-if="modelValue" class="el-drawer-stub"><div class="el-drawer-title">{{ title }}</div><div class="el-drawer-body"><slot /></div></div>',
+  },
   'el-descriptions': { template: '<div class="el-descriptions-stub"><slot /></div>' },
   'el-descriptions-item': {
     props: ['label'],
@@ -137,6 +145,8 @@ describe('Tickets 组件', () => {
     ticketApi.listTickets.mockResolvedValue({ tickets: TICKETS })
     ticketApi.getTicket.mockResolvedValue(TICKET_DETAIL)
     ticketApi.updateTicketStatus.mockResolvedValue({})
+    ticketApi.listReplies.mockResolvedValue({ replies: [] })
+    ticketApi.addReply.mockResolvedValue({ id: 1 })
     authMock.role = 'user'
   })
 

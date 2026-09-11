@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 import openai
@@ -38,6 +39,7 @@ from tenacity import (
 )
 
 from app.config import get_settings
+from app.core.infra import fault_injection, metrics
 from app.core.infra.circuit_breaker import (
     CircuitBreakerOpenError,
     call_with_breaker,
@@ -47,6 +49,58 @@ from app.core.infra.langfuse import get_langfuse, is_langfuse_enabled
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def _error_status(exc: BaseException) -> str:
+    """把异常归类为低基数状态标签（provider/status 指标用，禁止把异常原文放标签）。"""
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return "timeout"
+    if isinstance(exc, openai.RateLimitError):
+        return "429"
+    if isinstance(exc, openai.InternalServerError):
+        return "5xx"
+    return "error"
+
+
+# ===== Mock LLM（LLM_PROVIDER=mock，spec 3.5 离线压测）=====
+# 按 prompt 形态返回确定性内容，使全链路（改写 / 意图 / CRAG / 生成）都能在不触达
+# 上游的前提下走通；生成阶段按固定 token 数与固定间隔流式返回，用于测纯服务端能力。
+def _mock_payload(prompt: str) -> str:
+    """按 prompt 语义返回 mock 文本（辅助环节返回结构化小响应，生成阶段返回长文本）。"""
+    p = prompt or ""
+    # CRAG 相关性评分：返回可直接解析的分数
+    if "相关性得分" in p or "得分：" in p:
+        return "1.0"
+    # 意图分类：返回合法 JSON
+    if "意图分类器" in p or "分类 JSON" in p:
+        return '{"intent": "faq", "confidence": 0.95}'
+    # 查询改写：返回 N 个变体（每行一个）
+    if "查询改写" in p and "变体" in p:
+        n = max(1, settings.QUERY_REWRITE_NUM_VARIANTS)
+        seed = p.strip().splitlines()[0][:24] if p.strip() else "问题"
+        return "\n".join(f"变体{i + 1}：{seed}" for i in range(n))
+    # 生成阶段：固定长度文本（token 近似按字符计）
+    base = settings.MOCK_LLM_ANSWER or (
+        "这是 AssistMind 智能客服的模拟回答，用于离线压测隔离上游模型，"
+        "以便测量服务端并发槽、连接池、检索重排与 SSE 写出的真实能力。"
+    )
+    tokens = max(1, settings.MOCK_LLM_TOKENS)
+    text = (base * (tokens // max(1, len(base)) + 1))[:tokens]
+    return text
+
+
+async def _mock_stream(prompt: str, *, info: dict[str, Any] | None = None) -> AsyncIterator[str]:
+    """Mock 流式生成：固定 token 数 × 固定间隔（默认 300 × 20ms ≈ 6s）。"""
+    if info is not None:
+        info["provider"] = "mock"
+        info["model"] = "mock-llm"
+        info["timeout_s"] = 0
+    payload = _mock_payload(prompt)
+    interval = max(0, settings.MOCK_LLM_INTERVAL_MS) / 1000.0
+    for ch in payload:
+        yield ch
+        if interval:
+            await asyncio.sleep(interval)
 
 
 def _safe_span_update(span: LangfuseSpan, **kwargs: Any) -> None:
@@ -118,6 +172,60 @@ _ollama_retry = _build_retry_decorator(
 )
 
 
+def _build_chat_model(name: str, *, stream_fast: bool = False) -> ChatOpenAI:
+    """按 provider 名构造 ChatOpenAI（供核心调用与流式共用）。
+
+    stream_fast=True 时使用流式通道专属快速超时（LLM_STREAM_TIMEOUT /
+    LLM_STREAM_FALLBACK_TIMEOUT）——生成阶段失败兜底只需 ~16s，而非
+    LLM_TIMEOUT+重试+Ollama 15s ≈ 90s。
+    """
+    if name == "ollama":
+        timeout = (
+            settings.LLM_STREAM_FALLBACK_TIMEOUT
+            if stream_fast
+            else settings.LLM_FALLBACK_TIMEOUT
+        )
+        return ChatOpenAI(
+            model=settings.OLLAMA_MODEL,
+            api_key="ollama",
+            base_url=settings.OLLAMA_BASE_URL + "/v1",
+            temperature=0.3,
+            max_tokens=2048,
+            timeout=timeout,
+        )
+    timeout = settings.LLM_STREAM_TIMEOUT if stream_fast else settings.LLM_TIMEOUT
+    return ChatOpenAI(
+        model=settings.DEEPSEEK_MODEL,
+        api_key=settings.DEEPSEEK_API_KEY,
+        base_url=settings.DEEPSEEK_BASE_URL,
+        temperature=0.3,
+        max_tokens=2048,
+        timeout=timeout,
+    )
+
+
+def _build_messages(prompt: str, system: str | None) -> list[Any]:
+    messages: list[Any] = []
+    if system:
+        messages.append(("system", system))
+    messages.append(("human", prompt))
+    return messages
+
+
+async def _astream_collect(llm: ChatOpenAI, messages: list[Any]) -> str:
+    """用 astream 收集完整响应文本。
+
+    关键：商汤网关对非流式整答的 TTFT 很高（实测 ~19s），而流式 TTFT 仅 ~2s。
+    内部流式收集可让所有 LLM 调用提速一个数量级，且返回值契约（str）不变。
+    """
+    parts: list[str] = []
+    async for chunk in llm.astream(messages):
+        content = getattr(chunk, "content", "") or ""
+        if content:
+            parts.append(content)
+    return "".join(parts)
+
+
 async def _call_deepseek_core(
     prompt: str, system: str | None, *, info: dict[str, Any] | None = None
 ) -> str:
@@ -128,20 +236,10 @@ async def _call_deepseek_core(
     """
     if info is not None:
         info["deepseek_attempts"] += 1
-    llm = ChatOpenAI(
-        model=settings.DEEPSEEK_MODEL,
-        api_key=settings.DEEPSEEK_API_KEY,
-        base_url=settings.DEEPSEEK_BASE_URL,
-        temperature=0.3,
-        max_tokens=2048,
-        timeout=settings.LLM_TIMEOUT,
-    )
-    messages: list[Any] = []
-    if system:
-        messages.append(("system", system))
-    messages.append(("human", prompt))
-    result = await llm.ainvoke(messages)
-    return result.content if hasattr(result, "content") else str(result)
+    # 故障注入（T6）：在 provider core 层抛出，交由既有重试/断路器/降级链处理
+    await fault_injection.apply_llm_fault("deepseek")
+    llm = _build_chat_model("deepseek")
+    return await _astream_collect(llm, _build_messages(prompt, system))
 
 
 async def _call_ollama_core(
@@ -153,20 +251,10 @@ async def _call_ollama_core(
     """
     if info is not None:
         info["ollama_attempts"] += 1
-    llm = ChatOpenAI(
-        model=settings.OLLAMA_MODEL,
-        api_key="ollama",
-        base_url=settings.OLLAMA_BASE_URL + "/v1",
-        temperature=0.3,
-        max_tokens=2048,
-        timeout=settings.LLM_FALLBACK_TIMEOUT,
-    )
-    messages: list[Any] = []
-    if system:
-        messages.append(("system", system))
-    messages.append(("human", prompt))
-    result = await llm.ainvoke(messages)
-    return result.content if hasattr(result, "content") else str(result)
+    # 故障注入（T6，同 DeepSeek 路径）
+    await fault_injection.apply_llm_fault("ollama")
+    llm = _build_chat_model("ollama")
+    return await _astream_collect(llm, _build_messages(prompt, system))
 
 
 # 通过断路器调用的版本（被 tenacity 重试包裹）
@@ -197,14 +285,44 @@ async def _call_llm_impl(
     *,
     generation: bool = False,
     info: dict[str, Any] | None = None,
+    fast: bool = False,
 ) -> str:
     """原 call_llm 主体：降级链路 DeepSeek（重试+断路器）→ Ollama（重试+断路器）→ 异常。
 
     info: Langfuse 埋点统计容器，None 时行为与改动前完全一致（零额外开销）。
         核心函数在每次真实尝试时递增 attempts；本函数在成败时填写 provider/model/超时与降级标记。
+
+    fast=True 供「失败可降级」的辅助环节使用（查询改写 / CRAG 评估 / 意图分类等）：
+    直接走流式快速链路（LLM_STREAM_TIMEOUT=10s → Ollama 6s，无重试），失败感知 ~16s，
+    避免这些环节在商汤故障时各自等待 90s+（曾让 faq 一轮感知数分钟）。
     """
+    if fast:
+        parts: list[str] = []
+        async for d in _stream_impl(prompt, system, info=info):
+            parts.append(d)
+        return "".join(parts)
+
+    # Mock provider（LLM_PROVIDER=mock）：不触达上游，直接返回确定性内容
+    if settings.LLM_PROVIDER == "mock":
+        parts_m: list[str] = []
+        try:
+            async for d in _stream_provider("mock", prompt, system, info=info):
+                parts_m.append(d)
+        except LLMUnavailableError:
+            raise
+        except Exception as e:
+            # 与流式路径一致：mock 单 provider 失败 → 收敛为不可用，走调用方降级
+            raise LLMUnavailableError("所有 LLM provider 均不可用（mock）") from e
+        return "".join(parts_m)
+
+    # 显式配置主 provider=ollama（如无预算用本地模型）：跳过 DeepSeek（含 429 重试浪费）
+    if settings.LLM_PROVIDER == "ollama":
+        if info is not None:
+            info["fallback"] = True
+        logger.info("[LLM] LLM_PROVIDER=ollama，直接使用本地 Ollama")
+
     # 主 provider：断路器 Open 时跳过，避免无谓重试
-    if not is_open("llm_deepseek"):
+    elif not is_open("llm_deepseek"):
         try:
             result = await _deepseek_with_retry(prompt, system, info=info)
             if info is not None:
@@ -215,10 +333,12 @@ async def _call_llm_impl(
         except CircuitBreakerOpenError:
             if info is not None:
                 info["fallback"] = True
+            metrics.safe(metrics.inc_llm_upstream_error, "deepseek", "breaker_open")
             logger.warning("[LLM] DeepSeek 断路器 Open，跳过直接切 Ollama")
         except Exception as e:
             if info is not None:
                 info["fallback"] = True
+            metrics.safe(metrics.inc_llm_upstream_error, "deepseek", _error_status(e))
             # 检查是否是断路器刚刚 Open（重试过程中触发的）
             if is_open("llm_deepseek"):
                 logger.warning("[LLM] DeepSeek 重试中触发断路器 Open，切 Ollama: %s", e)
@@ -239,8 +359,10 @@ async def _call_llm_impl(
                 info["timeout_s"] = settings.LLM_FALLBACK_TIMEOUT
             return result
         except CircuitBreakerOpenError:
+            metrics.safe(metrics.inc_llm_upstream_error, "ollama", "breaker_open")
             logger.warning("[LLM] Ollama 断路器 Open")
         except Exception as e:
+            metrics.safe(metrics.inc_llm_upstream_error, "ollama", _error_status(e))
             if is_open("llm_ollama"):
                 logger.warning("[LLM] Ollama 重试中触发断路器 Open: %s", e)
             else:
@@ -252,7 +374,7 @@ async def _call_llm_impl(
 
 
 async def call_llm(
-    prompt: str, system: str | None = None, *, generation: bool = False
+    prompt: str, system: str | None = None, *, generation: bool = False, fast: bool = False
 ) -> str:
     """调用 LLM 生成文本。
 
@@ -261,6 +383,9 @@ async def call_llm(
         system: 系统提示（可选）
         generation: 生成场景标记（兼容保留：当前两分支行为一致，均抛
             LLMUnavailableError 由调用方场景化降级；仅用于 Langfuse 埋点区分）
+        fast: 快速失败模式（供 rewrite/CRAG/意图分类等「失败可降级」环节）。
+            流式快速超时（10s→Ollama 6s，无重试），失败感知 ~16s；
+            正常路径行为与未启用时完全一致。
 
     降级链路：DeepSeek（重试+断路器）→ Ollama（重试+断路器）→ LLMUnavailableError
 
@@ -274,12 +399,12 @@ async def call_llm(
     """
     if not is_langfuse_enabled():
         # 未启用：不构造 span、不产生任何额外调用，走与改动前完全一致的路径
-        return await _call_llm_impl(prompt, system, generation=generation)
+        return await _call_llm_impl(prompt, system, generation=generation, fast=fast)
 
     client = get_langfuse()
     if client is None:
         # 防御性兜底（enabled 时理论上不会走到这里）：降级为不埋点
-        return await _call_llm_impl(prompt, system, generation=generation)
+        return await _call_llm_impl(prompt, system, generation=generation, fast=fast)
 
     # ---- 埋点路径：一次 call_llm 对应一个 span，包住整个降级/重试链路 ----
     # 实现方式说明（langfuse 4.14 源码确认）：
@@ -337,7 +462,7 @@ async def call_llm(
 
     try:
         result = await _call_llm_impl(
-            prompt, system, generation=generation, info=info
+            prompt, system, generation=generation, info=info, fast=fast
         )
     except BaseException as exc:
         # 异常路径：span 记 ERROR 后仍须 end，然后原样抛出（不改变异常语义与断路器行为）
@@ -365,6 +490,239 @@ async def call_llm(
         _safe_span_end(span)
 
 
+async def _stream_provider(
+    name: str, prompt: str, system: str | None, *, info: dict[str, Any] | None = None
+) -> AsyncIterator[str]:
+    """单个 provider 的流式生成（逐 chunk yield 文本片段）。
+
+    语义：首 token 之前失败 → 原样上抛（上层据此降级到下一 provider）；
+    已开始产出后再失败 → 记 warning 后同样上抛（SSE 语义：流已开始不重试/不切换）。
+    """
+    if name == "mock":
+        # Mock provider：不触达上游，固定 token 数与间隔流式返回（离线压测）
+        await fault_injection.apply_llm_fault("mock")
+        async for chunk in _mock_stream(prompt, info=info):
+            yield chunk
+        return
+    # 故障注入（T6）：首 token 前抛出，交由上层既有降级链切换到下一 provider
+    await fault_injection.apply_llm_fault(name)
+    if name == "deepseek":
+        if info is not None:
+            info["deepseek_attempts"] += 1
+    else:
+        if info is not None:
+            info["ollama_attempts"] += 1
+    llm = _build_chat_model(name, stream_fast=True)
+    messages = _build_messages(prompt, system)
+    started = False
+    try:
+        async for chunk in llm.astream(messages):
+            content = getattr(chunk, "content", "") or ""
+            if not content:
+                continue
+            started = True
+            yield content
+    except Exception as e:
+        if started:
+            logger.warning("[LLM] %s 流式中途失败: %s", name, e)
+        raise
+
+
+async def _stream_impl(
+    prompt: str, system: str | None, *, info: dict[str, Any] | None = None
+) -> AsyncIterator[str]:
+    """stream_llm 降级链：DeepSeek 流式 → Ollama 流式 → LLMUnavailableError。
+
+    断路器只做「开始前检查」（流式无法安全地在已产出后重试/切换）；
+    provider 首 token 前失败时降级到下一 provider；已产出后失败原样上抛——
+    不切 provider（避免半截话与全文拼接成重复内容）、不转 LLMUnavailableError
+    （那会让下游把 done 覆盖成兜底话术，与已推送的 delta 不一致），由 SSE 层
+    以 error 事件终止流。
+    """
+    # Mock provider：单 provider 直通，不触达上游
+    if settings.LLM_PROVIDER == "mock":
+        produced = False
+        try:
+            async for d in _stream_provider("mock", prompt, system, info=info):
+                produced = True
+                yield d
+        except Exception as e:
+            # mock 模式下没有备用 provider：首 token 前失败统一收敛为"不可用"，
+            # 使调用方走既有的场景化降级（模板兜底/降级话术），保持降级语义一致。
+            if produced:
+                raise
+            raise LLMUnavailableError("所有 LLM provider 均不可用（流式 mock）") from e
+        return
+
+    if settings.LLM_PROVIDER == "ollama":
+        if is_open("llm_ollama"):
+            if info is not None:
+                info["fallback"] = True
+            metrics.safe(metrics.inc_llm_upstream_error, "ollama", "breaker_open")
+            logger.warning("[LLM] Ollama 断路器 Open（流式，单 provider 模式）")
+            raise LLMUnavailableError("所有 LLM provider 均不可用（流式）")
+        produced = False
+        try:
+            async for d in _stream_provider("ollama", prompt, system, info=info):
+                produced = True
+                yield d
+        except Exception as e:
+            if not produced:
+                metrics.safe(metrics.inc_llm_upstream_error, "ollama", _error_status(e))
+                raise LLMUnavailableError("所有 LLM provider 均不可用（流式）") from e
+            raise
+        if info is not None:
+            info["provider"] = "ollama"
+            info["model"] = settings.OLLAMA_MODEL
+            info["timeout_s"] = settings.LLM_STREAM_FALLBACK_TIMEOUT
+        return
+
+    if not is_open("llm_deepseek"):
+        produced = False
+        try:
+            async for d in _stream_provider("deepseek", prompt, system, info=info):
+                produced = True
+                yield d
+            if info is not None:
+                info["provider"] = "deepseek"
+                info["model"] = settings.DEEPSEEK_MODEL
+                info["timeout_s"] = settings.LLM_STREAM_TIMEOUT
+            return
+        except Exception as e:
+            if produced:
+                # 已产出后失败：原样上抛，切 Ollama 会把半截话与全文拼在一起
+                raise
+            if info is not None:
+                info["fallback"] = True
+            metrics.safe(metrics.inc_llm_upstream_error, "deepseek", _error_status(e))
+            logger.warning("[LLM] DeepSeek 流式失败，切 Ollama: %s", e)
+    else:
+        if info is not None:
+            info["fallback"] = True
+        metrics.safe(metrics.inc_llm_upstream_error, "deepseek", "breaker_open")
+        logger.warning("[LLM] DeepSeek 断路器 Open（流式），直接 Ollama")
+
+    if not is_open("llm_ollama"):
+        produced = False
+        try:
+            async for d in _stream_provider("ollama", prompt, system, info=info):
+                produced = True
+                yield d
+            if info is not None:
+                info["provider"] = "ollama"
+                info["model"] = settings.OLLAMA_MODEL
+                info["timeout_s"] = settings.LLM_STREAM_FALLBACK_TIMEOUT
+            return
+        except Exception as e:
+            if produced:
+                # 最后一个 provider 已产出后失败：原样上抛（SSE error 终止），
+                # 不转 LLMUnavailableError——done 兜底话术会覆盖已发 delta
+                raise
+            metrics.safe(metrics.inc_llm_upstream_error, "ollama", _error_status(e))
+            if is_open("llm_ollama"):
+                logger.warning("[LLM] Ollama 流式触发断路器 Open: %s", e)
+            else:
+                logger.warning("[LLM] Ollama 流式失败: %s", e)
+    else:
+        metrics.safe(metrics.inc_llm_upstream_error, "ollama", "breaker_open")
+        logger.warning("[LLM] Ollama 断路器也 Open（流式），无可用 provider")
+
+    raise LLMUnavailableError("所有 LLM provider 均不可用（流式）")
+
+
+async def stream_llm(
+    prompt: str, system: str | None = None, *, generation: bool = False
+) -> AsyncIterator[str]:
+    """流式调用 LLM：逐 chunk yield 文本片段（SSE 打字机效果用）。
+
+    Args:
+        prompt: 用户提示
+        system: 系统提示（可选）
+        generation: 兼容保留（与 call_llm 同语义，仅用于 Langfuse 埋点区分）
+
+    降级链路：DeepSeek（流式，首 token 前失败切备）→ Ollama（流式）→ LLMUnavailableError。
+    与 call_llm 的区别：逐 token 产出（TTFT 快），不在中途重试/切换 provider。
+
+    Langfuse 埋点（一次流式 = 一个 span，name=llm.stream）：
+    正常消费完在 output 记完整文本 + metadata（provider/耗时/长度）；异常记 ERROR。
+    未启用 Langfuse 时零开销直通 _stream_impl。
+    """
+    if not is_langfuse_enabled():
+        async for d in _stream_impl(prompt, system):
+            yield d
+        return
+
+    client = get_langfuse()
+    if client is None:
+        async for d in _stream_impl(prompt, system):
+            yield d
+        return
+
+    try:
+        span = client.start_observation(
+            name="llm.stream",
+            as_type="span",
+            input={"prompt": prompt, "system": system, "generation": generation},
+            metadata={
+                "provider": settings.LLM_PROVIDER,
+                "model": settings.DEEPSEEK_MODEL,
+                "timeout_s": settings.LLM_STREAM_TIMEOUT,
+            },
+        )
+    except Exception as e:
+        logger.warning("[Langfuse] span 创建失败，本次流式不埋点: %s", e)
+        async for d in _stream_impl(prompt, system):
+            yield d
+        return
+
+    info: dict[str, Any] = {
+        "provider": None,
+        "model": None,
+        "timeout_s": None,
+        "deepseek_attempts": 0,
+        "ollama_attempts": 0,
+        "fallback": False,
+    }
+    start = time.perf_counter()
+    parts: list[str] = []
+    try:
+        async for d in _stream_impl(prompt, system, info=info):
+            parts.append(d)
+            yield d
+    except BaseException as exc:
+        _safe_span_update(
+            span,
+            level="ERROR",
+            status_message=f"{type(exc).__name__}: {exc}",
+            metadata={
+                "provider": info["provider"] or "none",
+                "model": info["model"],
+                "fallback": info["fallback"],
+                "timeout_s": info["timeout_s"],
+                "status": "error",
+                "duration_ms": int((time.perf_counter() - start) * 1000),
+            },
+        )
+        raise
+    else:
+        result = "".join(parts)
+        _safe_span_update(
+            span,
+            output=result,
+            metadata={
+                "provider": info["provider"] or "none",
+                "model": info["model"],
+                "fallback": info["fallback"],
+                "timeout_s": info["timeout_s"],
+                "status": "ok",
+                "duration_ms": int((time.perf_counter() - start) * 1000),
+                "content_length": len(result),
+            },
+        )
+    finally:
+        _safe_span_end(span)
+
+
 def get_chat_model() -> BaseChatModel:
     """获取 LangChain ChatModel 实例（用于 LangGraph Agent）。
 
@@ -376,6 +734,15 @@ def get_chat_model() -> BaseChatModel:
         return ChatOpenAI(
             model=settings.OLLAMA_MODEL,
             api_key="ollama",
+            base_url=settings.OLLAMA_BASE_URL + "/v1",
+            temperature=0.3,
+            timeout=settings.LLM_FALLBACK_TIMEOUT,
+        )
+    # mock 模式：当前 Agent 走 call_llm（非本函数），此处仅保证构造不因空 key 崩溃
+    if settings.LLM_PROVIDER == "mock":
+        return ChatOpenAI(
+            model="mock-llm",
+            api_key="mock",
             base_url=settings.OLLAMA_BASE_URL + "/v1",
             temperature=0.3,
             timeout=settings.LLM_FALLBACK_TIMEOUT,

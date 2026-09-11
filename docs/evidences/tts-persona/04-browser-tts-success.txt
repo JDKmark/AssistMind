@@ -1,0 +1,14 @@
+===== 成功路径实测（后端在线 + 有效 JWT）— Chrome CDP =====
+方式：localhost:5174 页面动态 import('/src/utils/speech.js')，调用真实 speak()。
+token：按 app.core.security.auth.create_access_token 铸造并注入 localStorage（uid 存在时 get_current_user 不查库）。
+
+探针结果: speakRet=true, audioCreated=1, audioPlayed=1（edge-tts 云端 MP3 由 <audio> 播放）
+浏览器 speechSynthesis: speaks=0（成功路径不触发浏览器合成）
+
+net: POST /api/v1/tts/speak -> 200（audio/mpeg）
+console: 无 [speech] warn
+
+观察项（非阻塞）: 连续快速播报时，新 speak() 的 stopSpeaking() 会打断上一段尚未 settle 的
+play() promise，触发一次"云端音色播报失败，回落浏览器合成：The play() request was
+interrupted by a call to pause()" warn，并朗读上一段文本——属"新播报打断旧播报"的边界表现，
+真实场景（一次一答）不出现；如介意可把 warn 级别区分"主动打断"与"服务失败"。

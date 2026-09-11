@@ -30,6 +30,7 @@ from aiobreaker.storage import CircuitMemoryStorage
 from redis.asyncio import Redis
 
 from app.config import get_settings
+from app.core.infra import metrics
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -70,6 +71,8 @@ class _StateChangeListener(CircuitBreakerListener):
             getattr(old, "name", old),
             getattr(new, "name", new),
         )
+        # 指标旁路：断路器状态暴露给 /metrics（写入失败不影响断路器本身）
+        metrics.safe(metrics.set_breaker_state, self.name, str(getattr(new, "name", new)))
 
 
 def init_breakers(redis: Redis | None = None) -> None:
@@ -143,6 +146,8 @@ def init_breakers(redis: Redis | None = None) -> None:
     }
     for name, breaker in _BREAKERS.items():
         breaker.add_listener(_StateChangeListener(name))
+        # 初始状态上报（closed=0）：/metrics 未触发过状态变更时也有值
+        metrics.safe(metrics.set_breaker_state, name, "closed")
     logger.info("[CB] 已初始化 %d 个断路器（Redis=%s）", len(_BREAKERS), redis is not None)
 
 

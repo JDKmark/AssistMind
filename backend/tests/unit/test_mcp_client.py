@@ -46,6 +46,28 @@ def _make_list_tools_result(tools):
     return result
 
 
+# ---------- 7. server_url 尾斜杠规范化 ----------
+
+
+def test_server_url_normalized_with_trailing_slash():
+    """无尾斜杠的 server_url 被补全，避免 FastAPI mount 307 重定向。"""
+    client = MCPClient(server_url="http://localhost:8001/mcp")
+    assert client.server_url == "http://localhost:8001/mcp/"
+
+
+def test_server_url_keeps_existing_trailing_slash():
+    """已有尾斜杠的 server_url 保持不变。"""
+    client = MCPClient(server_url="http://localhost:8001/mcp/")
+    assert client.server_url == "http://localhost:8001/mcp/"
+
+
+def test_default_server_url_has_trailing_slash():
+    """默认 MCP_SERVER_URL 配置值以尾斜杠结尾（直接连 /mcp 不触发 307）。"""
+    from app.config import get_settings
+
+    assert get_settings().MCP_SERVER_URL.endswith("/")
+
+
 # ---------- 1. 正常调用 call_tool ----------
 
 

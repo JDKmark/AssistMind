@@ -27,6 +27,29 @@ def reset_breakers() -> AsyncIterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def force_langfuse_disabled(monkeypatch) -> None:
+    """每个测试强制 Langfuse 未启用（keys=None + 重置单例客户端）。
+
+    `Settings` 读本机 .env（spec 复盘「测试环境污染」同款问题）：真实 key 会让
+    chat/ops 链路的埋点在单测里真实创建 Langfuse 客户端并向 LANGFUSE_HOST
+    导出 span（OTEL 网络等待拖慢测试）。需要验证「已启用」行为的用例
+    （test_langfuse_infra / test_llm_langfuse 等）自行 monkeypatch 覆盖，
+    用例内 patch 优先生效。
+    """
+    from app.config import Settings
+    from app.core.infra import langfuse as langfuse_module
+
+    monkeypatch.setattr(
+        langfuse_module,
+        "settings",
+        Settings(LANGFUSE_PUBLIC_KEY=None, LANGFUSE_SECRET_KEY=None),
+    )
+    langfuse_module.reset_langfuse()
+    yield
+    langfuse_module.reset_langfuse()
+
+
+@pytest.fixture(autouse=True)
 def force_mock_ops_source(monkeypatch) -> None:
     """每个测试强制运维数据源为 mock 模式。
 
@@ -77,12 +100,37 @@ def mock_ticket_queries() -> None:
         yield
 
 
+@pytest.fixture(autouse=True)
+def mock_chat_persistence() -> None:
+    """mock 聊天 done 路径的会话持久化（app.api.chat.save_round）。
+
+    phase14 起 chat 各意图 done 路径会写 conversations/chat_messages；
+    PostgreSQL 不在单测范围内，统一 mock 掉（否则既有 chat 用例会真实写库）。
+    需要验证持久化行为的用例自行嵌套 patch 覆盖（用例内 patch 优先生效）。
+    """
+    from unittest.mock import AsyncMock, patch
+
+    with patch("app.api.chat.save_round", new=AsyncMock(return_value=None)):
+        yield
+
+
 @pytest.fixture
 def mock_llm_success() -> Any:
-    """mock call_llm 返回成功结果。"""
-    with patch("app.core.infra.llm_factory._deepseek_with_retry", new=AsyncMock(return_value="LLM 响应")):
-        with patch("app.core.infra.llm_factory._ollama_with_retry", new=AsyncMock(return_value="Ollama 响应")):
-            yield
+    """mock call_llm 返回成功结果。
+
+    钉死 LLM_PROVIDER=deepseek：本机 .env 已切 ollama，若读取环境会导致
+    LLM_PROVIDER=ollama 分支跳过 DeepSeek（spec 复盘「测试环境污染」同款问题）。
+    """
+    from app.core.infra import llm_factory as _lf
+
+    _orig = _lf.settings.LLM_PROVIDER
+    _lf.settings.LLM_PROVIDER = "deepseek"
+    try:
+        with patch("app.core.infra.llm_factory._deepseek_with_retry", new=AsyncMock(return_value="LLM 响应")):
+            with patch("app.core.infra.llm_factory._ollama_with_retry", new=AsyncMock(return_value="Ollama 响应")):
+                yield
+    finally:
+        _lf.settings.LLM_PROVIDER = _orig
 
 
 @pytest.fixture

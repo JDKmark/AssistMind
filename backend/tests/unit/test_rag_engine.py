@@ -193,3 +193,74 @@ def test_dedup_removes_duplicate_chunks_within_same_doc():
     dup = {"doc_id": "doc/a", "text": "同一配置段落重复内容甲乙丙丁戊"}
     result = engine._dedup([doc, dup], threshold=0.8)
     assert len(result) == 1
+
+
+# ---------- generate_stream（流式生成，chat SSE 打字机）----------
+
+
+async def _fake_stream_llm(chunks):
+    """构造 engine.stream_llm 的 mock：逐 chunk yield，调用时记录次数。"""
+    calls = {"n": 0}
+
+    async def _gen(*args, **kwargs):
+        calls["n"] += 1
+        for c in chunks:
+            yield c
+
+    return calls, _gen
+
+
+async def test_generate_stream_yields_deltas_then_final():
+    """generate_stream 逐 chunk yield delta，最后 yield final（含完整 answer/sources）。"""
+    calls, gen = await _fake_stream_llm(["华为", "Mate ", "70 Pro"])
+    with patch("app.core.rag.engine.stream_llm", side_effect=gen):
+        chunks = []
+        async for chunk in engine.generate_stream(
+            "华为 Mate 70 Pro 多少钱",
+            [{"text": "华为 Mate 70 Pro 售价 6999 元", "doc_id": "d1", "title": "t", "source": "s"}],
+        ):
+            chunks.append(chunk)
+
+    deltas = [c["delta"] for c in chunks if "delta" in c]
+    assert "".join(deltas) == "华为Mate 70 Pro"
+    final = chunks[-1]["final"]
+    assert final["answer"] == "华为Mate 70 Pro"
+    assert final["degraded"] is False
+    assert final["sources"][0]["doc_id"] == "d1"
+    # 生成系统提示与人格后缀拼装（复用非流式语义）
+    assert calls["n"] == 1
+
+
+async def test_generate_stream_llm_unavailable_template_fallback():
+    """generate_stream 在 LLM 不可用时：final.degraded=True + 模板兜底（不抛异常）。"""
+    async def _raise(*args, **kwargs):
+        raise LLMUnavailableError("all down")
+        yield  # pragma: no cover
+
+    with patch("app.core.rag.engine.stream_llm", side_effect=_raise):
+        final = None
+        async for chunk in engine.generate_stream("问题", [{"text": "内容"}]):
+            if "final" in chunk:
+                final = chunk["final"]
+
+    assert final is not None
+    assert final["degraded"] is True
+    assert "服务暂时繁忙" in final["answer"]
+
+
+# ---------- query_rewriter 快速失败模式（fast=True）----------
+# 背景：改写失败可降级用原问题（degraded=True），fast 快速失败避免商汤故障时
+# 让 faq 检索被改写单点拖住。
+
+
+async def test_query_rewrite_uses_fast_mode():
+    """查询改写以 fast=True 调用 call_llm（失败可降级原问题，不等待标准重试链）。"""
+    from app.core import query_rewriter
+
+    mock_call = AsyncMock(return_value="华为 Mate70Pro 报价\n这款 6999 元什么时候有货")
+    with patch.object(query_rewriter, "call_llm", mock_call):
+        result = await query_rewriter.rewrite("华为 Mate 70 Pro 多少钱")
+
+    assert len(result["variants"]) >= 1
+    assert result["degraded"] is False
+    assert mock_call.await_args.kwargs.get("fast") is True

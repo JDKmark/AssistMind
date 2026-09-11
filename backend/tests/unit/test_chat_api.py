@@ -30,7 +30,7 @@ from app.main import app
 client = TestClient(app)
 
 # chat 接口需登录：所有用例统一带测试 JWT（admin 角色，覆盖 admin-only 管理操作场景）
-TEST_TOKEN = create_access_token({"sub": "tester", "role": "admin"})
+TEST_TOKEN = create_access_token({"uid": "tester-id", "sub": "tester", "role": "admin"})
 AUTH_HEADERS = {"Authorization": f"Bearer {TEST_TOKEN}"}
 
 
@@ -51,6 +51,60 @@ def _mock_engine() -> MagicMock:
     m.retry_query_for = real_rag_engine.retry_query_for
     m.no_result_answer = real_rag_engine.no_result_answer
     return m
+
+
+class _FakeSpan:
+    """langfuse 4.14：trace_id 是属性（非方法）。"""
+
+    def __init__(self, trace_id: str = "trace-fake-1"):
+        self.trace_id = trace_id
+
+    def set_trace_io(self, **kwargs):
+        pass
+
+    def update(self, **kwargs):
+        pass
+
+
+class _FakeLangfuse:
+    """最小 Langfuse 客户端 mock：start_as_current_observation 返回带 trace_id 的 span。"""
+
+    def __init__(self, trace_id: str = "trace-fake-1"):
+        self._trace_id = trace_id
+
+    def start_as_current_observation(self, **kwargs):
+        from contextlib import contextmanager as _ctx
+
+        @_ctx
+        def _body():
+            yield _FakeSpan(self._trace_id)
+
+        return _body()
+
+
+def _mock_generate_stream(
+    mock_engine: MagicMock,
+    answer: str = "这是 FAQ 答案",
+    sources: list | None = None,
+    degraded: bool = False,
+) -> dict:
+    """把 mock_engine.generate_stream 配成流式 async generator（delta + final）。
+
+    generate_stream 是 async generator：chat SSE 链路 `async for` 逐 chunk 消费。
+    不能 AsyncMock(side_effect=async_gen)（AsyncMock 会包成 coroutine），
+    直接赋普通 async generator 函数，用 calls["count"] 记录调用次数供断言。
+    """
+    calls: dict = {"count": 0}
+
+    async def _gen(*args, **kwargs):
+        calls["count"] += 1
+        if answer:
+            yield {"delta": answer[:4]}
+            yield {"delta": answer[4:]}
+        yield {"final": {"answer": answer, "sources": sources or [], "degraded": degraded}}
+
+    mock_engine.generate_stream = _gen
+    return calls
 
 
 def _parse_sse(text: str) -> list[tuple[str, dict | None]]:
@@ -95,11 +149,8 @@ def test_chat_faq_stream_sequence():
             "degraded": [],
         }
     )
-    mock_engine.generate = AsyncMock(
-        return_value={
-            "answer": "这是 FAQ 答案",
-            "sources": [{"doc_id": "d1", "title": "t"}],
-        }
+    gen_calls = _mock_generate_stream(
+        mock_engine, "这是 FAQ 答案", [{"doc_id": "d1", "title": "t"}]
     )
     with patch(
         "app.api.chat.route",
@@ -118,25 +169,101 @@ def test_chat_faq_stream_sequence():
     events = _parse_sse(resp.text)
     names = [e for e, _ in events]
 
-    # 序列：start → retrieving → generating → done
+    # 序列：start → retrieving → generating → delta... → done
     assert names[0] == "start"
     assert "retrieving" in names
     assert "generating" in names
+    assert "delta" in names
     assert names[-1] == "done"
     assert names.index("retrieving") < names.index("generating")
+    assert names.index("generating") < names.index("delta") < names.index("done")
 
     ed = _events_dict(events)
     assert ed["start"]["query"] == "如何配置系统"
     assert ed["start"]["intent"] == "faq"
+    # delta 累积后与 done.answer 一致（打字机 + 兜底）
+    delta_text = "".join(d["delta"] for e, d in events if e == "delta")
+    assert delta_text == "这是 FAQ 答案"
     assert ed["done"]["answer"] == "这是 FAQ 答案"
     assert ed["done"]["sources"][0]["doc_id"] == "d1"
     # 追溯快照：done 回传 CRAG 决策与降级项（前端随反馈提交入库）
     assert ed["done"]["crag_action"] == "generate"
     assert ed["done"]["degraded"] == []
 
-    # retrieve/generate 调用参数正确；登录角色（admin）透传进 faq 检索
+    # retrieve/generate_stream 调用参数正确；登录角色（admin）透传进 faq 检索
     mock_engine.retrieve.assert_awaited_once_with("如何配置系统", role="admin")
-    mock_engine.generate.assert_awaited_once()
+    assert gen_calls["count"] == 1
+
+
+# ---------- 1c. faq done 诊断字段（管理员定位问题用）----------
+
+
+def test_chat_faq_done_carries_diagnostics():
+    """faq done 携带诊断字段：start.role（RBAC 上下文）、done.crag_score 与 timings 阶段耗时。"""
+    mock_engine = _mock_engine()
+    mock_engine.retrieve = AsyncMock(
+        return_value={
+            "rewrites": {"variants": [], "degraded": True},
+            "contexts": [{"doc_id": "d1", "text": "片段"}],
+            "crag": {"action": "generate", "score": 0.92, "degraded": False},
+            "degraded": [],
+        }
+    )
+    _mock_generate_stream(mock_engine, "这是 FAQ 答案", [{"doc_id": "d1", "title": "t"}])
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "faq",
+                "confidence": 1.0,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.rag_engine", new=mock_engine):
+        resp = client.post("/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "如何配置系统"})
+
+    assert resp.status_code == 200
+    ed = _events_dict(_parse_sse(resp.text))
+
+    # start 事件携带实际用于检索的 RBAC 角色（admin 透传）
+    assert ed["start"]["role"] == "admin"
+
+    # done 携带 CRAG 评估分数与后端计时（检索/生成/总耗时齐全）
+    assert ed["done"]["crag_score"] == 0.92
+    timings = ed["done"]["timings"]
+    assert {"total_ms", "retrieve_ms", "generate_ms"} == set(timings.keys())
+    assert timings["total_ms"] >= timings["retrieve_ms"]
+
+
+def test_chat_faq_no_result_done_carries_timings():
+    """faq 短路路径（no_result）：done 仍携带 total_ms/retrieve_ms，便于定位"未找到"慢在哪。"""
+    mock_engine = _mock_engine()
+    mock_engine.retrieve = AsyncMock(
+        return_value={
+            "rewrites": {"variants": [], "degraded": True},
+            "contexts": [],
+            "crag": {"action": "no_result", "score": 0.1, "degraded": False},
+            "degraded": [],
+        }
+    )
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "faq",
+                "confidence": 1.0,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.rag_engine", new=mock_engine):
+        resp = client.post("/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "如何配置系统"})
+
+    timings = _events_dict(_parse_sse(resp.text))["done"]["timings"]
+    assert "total_ms" in timings
+    assert "retrieve_ms" in timings
+    assert timings["retrieve_ms"] <= timings["total_ms"]
 
 
 # ---------- 1b. faq 空检索：CRAG no_result 门禁（防空检索幻觉）----------
@@ -178,7 +305,7 @@ def test_chat_faq_no_result_returns_fallback():
     assert "如何配置系统" in done_data["answer"]
     assert done_data["sources"] == []
     # 空检索不带着空上下文生成
-    mock_engine.generate.assert_not_called()
+    mock_engine.generate_stream.assert_not_called()
 
 
 def test_chat_faq_rewrite_retry_empty_recheck():
@@ -223,7 +350,7 @@ def test_chat_faq_rewrite_retry_empty_recheck():
     assert "generating" not in names
     assert names[-1] == "done"
     assert "未找到相关文档" in _events_dict(events)["done"]["answer"]
-    mock_engine.generate.assert_not_called()
+    mock_engine.generate_stream.assert_not_called()
     # 二次检索用改写变体
     mock_engine.retrieve.assert_awaited_with("如何配置系统 配置步骤", role="admin")
 
@@ -250,9 +377,7 @@ def test_chat_faq_rewriting_event():
             },
         ]
     )
-    mock_engine.generate = AsyncMock(
-        return_value={"answer": "A", "sources": [{"doc_id": "d1", "title": "t"}]}
-    )
+    _mock_generate_stream(mock_engine, "A", [{"doc_id": "d1", "title": "t"}])
     with patch(
         "app.api.chat.route",
         new=AsyncMock(
@@ -351,12 +476,12 @@ def test_chat_task_passes_history():
     fake_agent = MagicMock()
     fake_agent.run = AsyncMock(
         return_value={
-            "answer": "您的订单 20240801001 物流轨迹：已揽收。",
+            "answer": "您的订单 20260801001 物流轨迹：已揽收。",
             "tool_calls": [
                 {
                     "name": "query_logistics",
-                    "input": {"order_sn": "20240801001"},
-                    "result": [{"ts": "2024-08-01 16:00:00", "content": "已揽收"}],
+                    "input": {"order_sn": "20260801001"},
+                    "result": [{"ts": "2026-08-01 16:00:00", "content": "已揽收"}],
                 },
             ],
             "iterations": 1,
@@ -380,7 +505,7 @@ def test_chat_task_passes_history():
             json={
                 "query": "物流到哪了？",
                 "history": [
-                    {"role": "user", "content": "查一下订单 20240801001"},
+                    {"role": "user", "content": "查一下订单 20260801001"},
                     {"role": "assistant", "content": "您的订单已发货。"},
                 ],
             },
@@ -388,14 +513,14 @@ def test_chat_task_passes_history():
 
     assert resp.status_code == 200
     events = _parse_sse(resp.text)
-    assert _events_dict(events)["done"]["answer"] == "您的订单 20240801001 物流轨迹：已揽收。"
+    assert _events_dict(events)["done"]["answer"] == "您的订单 20260801001 物流轨迹：已揽收。"
 
     # history 完整传入 ToolAgent.run（实体回溯依赖它）
     fake_agent.run.assert_awaited_once()
     call_args = fake_agent.run.await_args
     assert call_args.args[0] == "物流到哪了？"
     assert call_args.kwargs["history"] == [
-        {"role": "user", "content": "查一下订单 20240801001"},
+        {"role": "user", "content": "查一下订单 20260801001"},
         {"role": "assistant", "content": "您的订单已发货。"},
     ]
 
@@ -466,8 +591,26 @@ def test_chat_unclear_returns_clarification():
 # ---------- 5. chat 意图直接 LLM 对话 ----------
 
 
+def _stream_llm_mock(answer: str) -> tuple[list, object]:
+    """构造 stream_llm 的 async generator mock，并记录调用参数。
+
+    stream_llm 是 async generator（逐 chunk yield），调用返回 generator 而非被 await，
+    故用 calls 列表记录 (args, kwargs)，与旧 call_llm 的 await_args 语义等价。
+    """
+    calls: list = []
+
+    async def _gen(*args, **kwargs):
+        calls.append((args, kwargs))
+        # 拆成多个 chunk 模拟打字机
+        for i in range(0, len(answer), 2):
+            yield answer[i : i + 2]
+
+    return calls, _gen
+
+
 def test_chat_chat_intent_direct_llm():
-    """chat 意图：mock call_llm，验证 start → generating → done。"""
+    """chat 意图：mock stream_llm，验证 start → generating → delta → done。"""
+    calls, gen = _stream_llm_mock("你好呀")
     with patch(
         "app.api.chat.route",
         new=AsyncMock(
@@ -478,19 +621,25 @@ def test_chat_chat_intent_direct_llm():
                 "low_confidence": False,
             }
         ),
-    ), patch("app.api.chat.call_llm", new=AsyncMock(return_value="你好呀")):
+    ), patch("app.api.chat.stream_llm", side_effect=gen):
         resp = client.post("/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "你好"})
 
     assert resp.status_code == 200
     events = _parse_sse(resp.text)
     names = [e for e, _ in events]
-    assert names == ["start", "generating", "done"]
+    assert names[0] == "start"
+    assert "generating" in names
+    assert "delta" in names
+    assert names[-1] == "done"
+    # delta 累积等于完整答案
+    delta_text = "".join(d["delta"] for e, d in events if e == "delta")
+    assert delta_text == "你好呀"
     assert _events_dict(events)["done"]["answer"] == "你好呀"
 
 
 def test_chat_chat_intent_history_in_prompt():
     """chat 意图带 history：历史以「用户/客服: 内容」格式拼入 LLM prompt。"""
-    mock_llm = AsyncMock(return_value="记得啦")
+    calls, gen = _stream_llm_mock("记得啦")
     with patch(
         "app.api.chat.route",
         new=AsyncMock(
@@ -501,14 +650,14 @@ def test_chat_chat_intent_history_in_prompt():
                 "low_confidence": False,
             }
         ),
-    ), patch("app.api.chat.call_llm", new=mock_llm):
+    ), patch("app.api.chat.stream_llm", side_effect=gen):
         resp = client.post(
             "/api/v1/chat/ask",
             headers=AUTH_HEADERS,
             json={
                 "query": "那我的订单呢",
                 "history": [
-                    {"role": "user", "content": "查一下订单 20240801001"},
+                    {"role": "user", "content": "查一下订单 20260801001"},
                     {"role": "assistant", "content": "您的订单已发货。"},
                 ],
             },
@@ -518,10 +667,205 @@ def test_chat_chat_intent_history_in_prompt():
     assert _events_dict(_parse_sse(resp.text))["done"]["answer"] == "记得啦"
 
     # prompt 含历史（用户/客服格式）与当前问题
-    prompt = mock_llm.await_args.args[0]
-    assert "用户: 查一下订单 20240801001" in prompt
+    prompt = calls[-1][0][0]
+    assert "用户: 查一下订单 20260801001" in prompt
     assert "客服: 您的订单已发货。" in prompt
     assert "那我的订单呢" in prompt
+
+
+# ---------- 5.1 人格（角色语气定制）----------
+
+
+def test_chat_personas_endpoint_returns_list():
+    """/chat/personas：返回 id/name/description 列表，不含 system_prompt。"""
+    resp = client.get("/api/v1/chat/personas", headers=AUTH_HEADERS)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["personas"]) == 3
+    for item in data["personas"]:
+        assert set(item.keys()) == {"id", "name", "description"}
+
+
+def test_chat_personas_requires_auth():
+    """/chat/personas 未认证：401。"""
+    resp = client.get("/api/v1/chat/personas")
+    assert resp.status_code == 401
+
+
+def test_chat_intent_with_persona_appends_style_to_system():
+    """chat 意图带 persona：人格语气指令拼在 _CHAT_SYSTEM 之后（不覆盖职责）。"""
+    calls, gen = _stream_llm_mock("好嘞，马上帮您看")
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "chat",
+                "confidence": 0.9,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.stream_llm", side_effect=gen):
+        resp = client.post(
+            "/api/v1/chat/ask",
+            headers=AUTH_HEADERS,
+            json={"query": "你好", "persona": "lively"},
+        )
+
+    assert resp.status_code == 200
+    assert _events_dict(_parse_sse(resp.text))["done"]["answer"] == "好嘞，马上帮您看"
+    system = calls[-1][1]["system"]
+    assert system.startswith("你是 AssistMind 智能客服")
+    assert "活泼" in system  # 人格语气指令已追加
+
+
+def test_chat_intent_invalid_persona_falls_back_to_default(caplog):
+    """chat 意图带未知 persona：warning 回落默认语气，不 500。"""
+    calls, gen = _stream_llm_mock("您好")
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "chat",
+                "confidence": 0.9,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.stream_llm", side_effect=gen):
+        resp = client.post(
+            "/api/v1/chat/ask",
+            headers=AUTH_HEADERS,
+            json={"query": "你好", "persona": "ghost"},
+        )
+
+    assert resp.status_code == 200
+    system = calls[-1][1]["system"]
+    assert system == "你是 AssistMind 智能客服，请友好、简洁地与用户对话。"
+    assert any("persona" in r.message for r in caplog.records)
+
+
+# ---------- 5.2 FAQ 语义缓存接线（高频问题秒回；故障仅降级命中率）----------
+
+
+def test_faq_cache_hit_skips_retrieval():
+    """faq 缓存命中：直接 done（带 from_cache），不调用 retrieve/generate_stream。"""
+    mock_engine = _mock_engine()
+    async def _never(*args, **kwargs):
+        raise AssertionError("缓存命中不应触发检索")
+        yield  # pragma: no cover
+
+    mock_engine.retrieve = AsyncMock(side_effect=AssertionError("不应检索"))
+    mock_engine.generate_stream = _never
+    cached = {"answer": "缓存答案", "sources": [{"doc_id": "d1"}], "from_cache": "L1"}
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "faq",
+                "confidence": 1.0,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.rag_engine", new=mock_engine), patch(
+        "app.api.chat.semantic_cache.get", new=AsyncMock(return_value=cached)
+    ):
+        resp = client.post("/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "华为 Mate 70 Pro 多少钱"})
+
+    assert resp.status_code == 200
+    events = _parse_sse(resp.text)
+    names = [e for e, _ in events]
+    # 命中路径：start → retrieving → done（无 generating / delta / 检索）
+    assert names == ["start", "retrieving", "done"]
+    done_data = _events_dict(events)["done"]
+    assert done_data["answer"] == "缓存答案"
+    assert done_data["sources"] == [{"doc_id": "d1"}]
+    assert done_data["from_cache"] == "L1"
+    mock_engine.retrieve.assert_not_called()
+
+
+def test_faq_cache_miss_then_writes():
+    """faq 缓存未命中：正常检索+生成（流式），完成后写入缓存（含 role）。"""
+    mock_engine = _mock_engine()
+    mock_engine.retrieve = AsyncMock(
+        return_value={
+            "rewrites": {"variants": [], "degraded": True},
+            "contexts": [{"doc_id": "d1", "text": "片段"}],
+            "crag": {"action": "generate", "score": 0.9, "degraded": False},
+            "degraded": [],
+        }
+    )
+    _mock_generate_stream(mock_engine, "最新答案", [{"doc_id": "d1", "title": "t"}])
+    mock_set = AsyncMock()
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "faq",
+                "confidence": 1.0,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.rag_engine", new=mock_engine), patch(
+        "app.api.chat.semantic_cache.get", new=AsyncMock(return_value=None)
+    ), patch("app.api.chat.semantic_cache.set", new=mock_set):
+        resp = client.post(
+            "/api/v1/chat/ask",
+            headers=AUTH_HEADERS,
+            json={"query": "华为 Mate 70 Pro 多少钱"},
+        )
+
+    assert resp.status_code == 200
+    ed = _events_dict(_parse_sse(resp.text))
+    assert ed["done"]["answer"] == "最新答案"
+    # 以登录角色（admin）写入缓存（RBAC role 隔离）；无 persona 落 default 桶
+    mock_set.assert_awaited_once_with(
+        "华为 Mate 70 Pro 多少钱", "最新答案", [{"doc_id": "d1", "title": "t"}], role="admin", persona=""
+    )
+
+
+def test_faq_persona_uses_persona_bucket_cache():
+    """faq 带 persona：缓存照常查/写，按 persona 分桶（选人格不再放弃缓存）。"""
+    mock_engine = _mock_engine()
+    mock_engine.retrieve = AsyncMock(
+        return_value={
+            "rewrites": {"variants": [], "degraded": True},
+            "contexts": [{"doc_id": "d1", "text": "片段"}],
+            "crag": {"action": "generate", "score": 0.9, "degraded": False},
+            "degraded": [],
+        }
+    )
+    _mock_generate_stream(mock_engine, "带人格的回答", [])
+    mock_get = AsyncMock(return_value=None)
+    mock_set = AsyncMock()
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "faq",
+                "confidence": 1.0,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.rag_engine", new=mock_engine), patch(
+        "app.api.chat.semantic_cache.get", new=mock_get
+    ), patch("app.api.chat.semantic_cache.set", new=mock_set):
+        resp = client.post(
+            "/api/v1/chat/ask",
+            headers=AUTH_HEADERS,
+            json={"query": "华为 Mate 70 Pro 多少钱", "persona": "lively"},
+        )
+
+    assert resp.status_code == 200
+    assert _events_dict(_parse_sse(resp.text))["done"]["answer"] == "带人格的回答"
+    # 缓存查/写均带原始 persona id（lively 桶），与 default / 其他人格互不串桶
+    mock_get.assert_awaited_once_with("华为 Mate 70 Pro 多少钱", role="admin", persona="lively")
+    mock_set.assert_awaited_once_with(
+        "华为 Mate 70 Pro 多少钱", "带人格的回答", [], role="admin", persona="lively"
+    )
 
 
 # ---------- 6. error 事件（RAGEngine 抛异常，流已开始）----------
@@ -618,7 +962,7 @@ def test_chat_faq_done_carries_conversation_id():
             "degraded": [],
         }
     )
-    mock_engine.generate = AsyncMock(return_value={"answer": "A", "sources": []})
+    _mock_generate_stream(mock_engine, "A", [])
     with patch(
         "app.api.chat.route",
         new=AsyncMock(
@@ -642,24 +986,7 @@ def test_chat_faq_done_carries_conversation_id():
 
 
 def test_chat_faq_enabled_langfuse_passes_trace_id():
-    """Langfuse 启用时：chat_faq 根 trace 创建，done 事件回传 get_trace_id()。"""
-    from contextlib import contextmanager as _ctx
-
-    class _FakeSpan:
-        # langfuse 4.14：trace_id 是属性（非方法）
-        trace_id = "trace-faq-1"
-
-        def set_trace_io(self, **kwargs):
-            pass
-
-        def update(self, **kwargs):
-            pass
-
-    class _FakeLangfuse:
-        @_ctx
-        def start_as_current_observation(self, **kwargs):
-            yield _FakeSpan()
-
+    """Langfuse 启用时：chat_faq 根 trace 创建，done 事件回传 trace_id。"""
     mock_engine = _mock_engine()
     mock_engine.retrieve = AsyncMock(
         return_value={
@@ -669,7 +996,7 @@ def test_chat_faq_enabled_langfuse_passes_trace_id():
             "degraded": [],
         }
     )
-    mock_engine.generate = AsyncMock(return_value={"answer": "A", "sources": []})
+    _mock_generate_stream(mock_engine, "A", [])
     with patch(
         "app.api.chat.route",
         new=AsyncMock(
@@ -681,9 +1008,107 @@ def test_chat_faq_enabled_langfuse_passes_trace_id():
             }
         ),
     ), patch("app.api.chat.rag_engine", new=mock_engine), patch(
-        "app.api.chat.get_langfuse", return_value=_FakeLangfuse()
+        "app.api.chat.get_langfuse", return_value=_FakeLangfuse("trace-faq-1")
     ):
         resp = client.post("/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "如何配置"})
 
     done = _events_dict(_parse_sse(resp.text))["done"]
     assert done["trace_id"] == "trace-faq-1"
+
+
+# ---------- 10b. trace_id 全链路覆盖（缓存命中 / task / chat 均回传）----------
+#
+# 诊断面板上"Trace ID 为空"的根因：缓存命中分支与 task/chat 意图的 done 事件
+# 都不回传 trace_id。以下用例锁定三条路径都必须携带 trace_id（Langfuse 启用时）。
+
+
+def test_faq_cache_hit_done_carries_trace_id():
+    """faq 缓存命中：done 既带 from_cache，也带 trace_id（不再是空 Trace ID）。"""
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "faq",
+                "confidence": 1.0,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch(
+        "app.api.chat.get_langfuse", return_value=_FakeLangfuse("trace-cache-1")
+    ), patch(
+        "app.api.chat.semantic_cache.get",
+        new=AsyncMock(
+            return_value={
+                "answer": "缓存答案",
+                "sources": [{"doc_id": "d1"}],
+                "from_cache": "L1",
+            }
+        ),
+    ):
+        resp = client.post("/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "华为多少钱"})
+
+    done = _events_dict(_parse_sse(resp.text))["done"]
+    assert done["from_cache"] == "L1"
+    assert done["trace_id"] == "trace-cache-1"
+    assert done["crag_action"] == ""
+
+
+def test_chat_task_done_carries_trace_id_when_langfuse_enabled():
+    """task 意图：整条链路包在 chat_task trace 里，done 回传 trace_id 与 conversation_id。"""
+    fake_agent = MagicMock()
+    fake_agent.run = AsyncMock(
+        return_value={
+            "answer": "工单已创建",
+            "tool_calls": [
+                {
+                    "name": "create_ticket",
+                    "input": {"title": "T"},
+                    "result": {"ticket_id": "TK-1"},
+                }
+            ],
+            "iterations": 1,
+            "degraded": False,
+        }
+    )
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "task",
+                "confidence": 1.0,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch(
+        "app.api.chat.get_langfuse", return_value=_FakeLangfuse("trace-task-1")
+    ), patch("app.api.chat.ToolAgent", return_value=fake_agent):
+        resp = client.post("/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "创建工单"})
+
+    ed = _events_dict(_parse_sse(resp.text))
+    done = ed["done"]
+    assert done["answer"] == "工单已创建"
+    assert done["trace_id"] == "trace-task-1"
+    assert done["conversation_id"] == ed["start"]["conversation_id"]
+
+
+def test_chat_chat_intent_done_carries_trace_id_without_langfuse_keeps_empty():
+    """chat 意图：Langfuse 未启用（默认 fixture）时 done.trace_id 为空串（no-op 不埋点）。"""
+    calls, gen = _stream_llm_mock("你好呀")
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "chat",
+                "confidence": 0.9,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.stream_llm", side_effect=gen):
+        resp = client.post("/api/v1/chat/ask", headers=AUTH_HEADERS, json={"query": "你好"})
+
+    done = _events_dict(_parse_sse(resp.text))["done"]
+    assert done["answer"] == "你好呀"
+    assert done["trace_id"] == ""

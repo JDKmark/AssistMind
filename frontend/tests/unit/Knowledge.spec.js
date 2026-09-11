@@ -7,6 +7,7 @@ const knowledgeApi = vi.hoisted(() => ({
   listDocs: vi.fn(),
   deleteDoc: vi.fn(),
   rebuildIndex: vi.fn(),
+  getJobStatus: vi.fn(),
 }))
 
 vi.mock('@/api/knowledge', () => knowledgeApi)
@@ -152,15 +153,72 @@ describe('Knowledge 组件', () => {
     expect(wrapper.vm.deletingDocId).toBe('')
   })
 
-  it('重建索引调用 rebuildIndex 并提示 chunk 数', async () => {
-    knowledgeApi.rebuildIndex.mockResolvedValue({ rebuilt: true, chunks: 3 })
+  it('重建索引入队并轮询到完成，提示 chunk 数', async () => {
+    knowledgeApi.rebuildIndex.mockResolvedValue({ job_id: 'job-1', status: 'queued' })
+    knowledgeApi.getJobStatus.mockResolvedValue({
+      job_id: 'job-1',
+      status: 'finished',
+      result: { rebuilt: true, chunks: 3 },
+    })
     const wrapper = mountKnowledge()
     await flushPromises()
 
     await wrapper.vm.handleRebuild()
 
     expect(knowledgeApi.rebuildIndex).toHaveBeenCalledTimes(1)
+    expect(knowledgeApi.getJobStatus).toHaveBeenCalledWith('job-1')
     expect(ElMessageMock.success).toHaveBeenCalledWith(expect.stringContaining('3'))
+    expect(wrapper.vm.rebuilding).toBe(false)
+  })
+
+  it('重建任务失败时提示错误并复位按钮状态', async () => {
+    knowledgeApi.rebuildIndex.mockResolvedValue({ job_id: 'job-2', status: 'queued' })
+    knowledgeApi.getJobStatus.mockResolvedValue({
+      job_id: 'job-2',
+      status: 'failed',
+      error: 'Qdrant 不可用',
+    })
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    await wrapper.vm.handleRebuild()
+
+    expect(ElMessageMock.error).toHaveBeenCalledWith(expect.stringContaining('Qdrant 不可用'))
+    expect(wrapper.vm.rebuilding).toBe(false)
+  })
+
+  it('入队响应缺 job_id 时终止且不轮询', async () => {
+    knowledgeApi.rebuildIndex.mockResolvedValue({ status: 'queued' })
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    await wrapper.vm.handleRebuild()
+
+    expect(knowledgeApi.getJobStatus).not.toHaveBeenCalled()
+    expect(wrapper.vm.rebuilding).toBe(false)
+  })
+
+  it('轮询超过上限时提示超时并复位按钮状态', async () => {
+    knowledgeApi.listDocs.mockResolvedValue({ docs: [], total: 0 })
+    knowledgeApi.rebuildIndex.mockResolvedValue({ job_id: 'job-3', status: 'queued' })
+    // 任务一直停在 queued（模拟 worker 失联/任务滞留队列）
+    knowledgeApi.getJobStatus.mockResolvedValue({ job_id: 'job-3', status: 'queued' })
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    vi.useFakeTimers()
+    try {
+      // 上限传小值便于测试：3 次轮询后应超时终止而非无限转圈
+      const polling = wrapper.vm.handleRebuild(3)
+      await vi.advanceTimersByTimeAsync(2000 * 4)
+      await polling
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(knowledgeApi.getJobStatus).toHaveBeenCalledTimes(3)
+    expect(ElMessageMock.error).toHaveBeenCalledWith(expect.stringContaining('轮询超时'))
+    expect(wrapper.vm.rebuilding).toBe(false)
   })
 
   it('重建按钮存在且带加载态', async () => {

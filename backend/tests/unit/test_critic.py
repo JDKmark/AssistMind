@@ -117,3 +117,21 @@ async def test_evaluate_score_clamped_to_range():
     with patch("app.core.rag.critic.call_llm", new=AsyncMock(return_value="1.5")):
         result = await evaluate("问题", contexts)
     assert result["score"] == 1.0
+
+
+async def test_evaluate_calls_llm_in_fast_mode():
+    """CRAG 评估走快速失败模式（fast=True）：失败可降级 generate，避免商汤故障时拖住 faq。
+
+    回归背景：CRAG 曾用标准 call_llm（30s×重试 + Ollama 60s），商汤故障时 faq
+    一轮被 CRAG 单点拖住数分钟；now fast → ~16s 内失败并降级走 generate。
+    """
+    contexts = [{"text": "相关内容"}]
+    mock_call = AsyncMock(return_value="0.9")
+    with patch("app.core.rag.critic.call_llm", new=mock_call):
+        result = await evaluate("问题", contexts)
+
+    assert result["action"] == "generate"
+    assert not result["degraded"]
+    kwargs = mock_call.await_args.kwargs
+    assert kwargs.get("fast") is True
+    assert kwargs.get("system") == "你是相关性评估助手。"

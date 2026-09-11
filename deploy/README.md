@@ -10,7 +10,7 @@
 ### 方案 A（主推）：单台轻量云服务器 + Docker Compose（约 ¥70-120/月）
 
 - **选型**：腾讯云 / 阿里云「轻量应用服务器」，**2 核 4G，磁盘 40-60G**，Ubuntu 22.04/Debian 12。
-  - 为什么 4G：本项目有 Qdrant + Redis + PostgreSQL + Langfuse(可选) + Prometheus 共 7 个容器 + 2 个应用容器，外加 torch（sentence-transformers）常驻内存，2G 会很紧。
+  - 为什么 4G：本项目有 Qdrant + Redis + PostgreSQL + Langfuse(可选) + Prometheus 等基础设施容器 + **3 个应用容器**（backend / frontend / RQ worker），外加 torch（sentence-transformers）常驻内存，2G 会很紧。
   - 为什么 40G+：后端镜像含 torch 约 2-3G，知识库向量与 PG 数据另占空间。
   - 新用户 / 学生认证通常有 3-12 个月更低价格，用完可退。
 - **DeepSeek 走在线 API**：全程无 GPU 需求，按量计费很便宜（演示一天成本通常不足 1 元）。
@@ -79,7 +79,7 @@ bash deploy/deploy.sh
 ### 5. 访问验证
 
 - 浏览器打开 `http://<服务器IP>/`，用 `admin / admin123` 登录。
-- 按 README「六、知识来源与演示口径」的演示说明走查一遍（FAQ 问答 → 订单物流 → 退货闭环 → 运维诊断 → Admin）。
+- 按 README「六、知识来源与演示口径」的演示说明走查一遍（FAQ 问答 → 订单物流 → 退货闭环 → 运维诊断 → Admin/异步重建 → 语音+人格）。
 - 后端文档 `http://<服务器IP>:8001/docs`。
 
 ### 6.（可选）HTTPS
@@ -96,8 +96,9 @@ bash deploy/deploy.sh
 | 操作 | 命令 |
 |---|---|
 | 查看全部日志（跟随后端） | `docker compose -f docker-compose.yml -f docker-compose.app.yml logs -f backend` |
+| 查看 RQ worker 日志 | `docker compose -f docker-compose.yml -f docker-compose.app.yml logs -f worker` |
 | 停止全部 | `docker compose -f docker-compose.yml -f docker-compose.app.yml down` |
-| 重启应用 | `docker compose -f docker-compose.yml -f docker-compose.app.yml restart backend frontend` |
+| 重启应用 | `docker compose -f docker-compose.yml -f docker-compose.app.yml restart backend frontend worker` |
 | 更新代码后重部署 | 重新上传代码 → `docker compose -f docker-compose.yml -f docker-compose.app.yml up -d --build` |
 | 重灌电商/运维知识库 | `docker compose -f docker-compose.yml -f docker-compose.app.yml exec backend python scripts/seed_mall_kb.py --reset`（运维库同法换 seed_ops_kb.py） |
 | 主动检查后端健康 | `curl http://localhost:8001/api/v1/health` |
@@ -108,6 +109,7 @@ bash deploy/deploy.sh
 ## 四、上线注意事项
 
 - **API Key 安全**：`.env.prod` 已被 `.gitignore` 忽略**不要提交**；泄露后到 DeepSeek 平台重置。
+- **Worker 必须常驻**：知识库重建 / 坏例回流 / 评估运行入队后由 worker 进程消费（`docker-compose.app.yml` 的 `worker` 服务，`deploy.sh` 已包含）；worker 崩溃会让任务滞留队列（`Retry=2` 后转 failed），排查用 `logs -f worker`。
 - **公开演示口径（演示前必读）**：业务数据是演示清单（取材自 macrozheng/mall 官方文档 + 自建规则），运维诊断是受控场景——被问到时主动声明，口径见 README「六、知识来源与演示口径」。
 - **限流默认开启**：`RATE_LIMIT_PER_MINUTE=60`（按客户端 IP 固定窗口，Redis 不可用自动放行），防止分享链接后被刷爆 token；需要临时放开可在 `.env.prod` 调高后 `restart backend`。
 - **Langfuse / Prometheus 端口默认也映射到宿主机**（3001/9090），如非必要可在安全组不对外放行。
@@ -122,6 +124,6 @@ bash deploy/deploy.sh
 |---|---|
 | `deploy/deploy.sh` | 一键部署（环境检查 / 生成 .env.prod / 构建启动 / 等待就绪） |
 | `.env.prod.example` | 生产环境变量模板（复制为 `.env.prod` 填写） |
-| `docker-compose.app.yml` | 应用层 overlay：backend + frontend 服务（与根 `docker-compose.yml` 叠加） |
+| `docker-compose.app.yml` | 应用层 overlay：backend + frontend + **worker**（RQ 队列消费者，与根 `docker-compose.yml` 叠加） |
 | `backend/Dockerfile` | 后端镜像（含 entrypoint 自动 init/灌库） |
 | `backend/docker-entrypoint.sh` | 容器启动入口：init_db → 幂等灌库 → uvicorn |

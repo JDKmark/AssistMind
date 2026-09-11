@@ -9,6 +9,7 @@
 6. 重建：scroll_all → get_bm25().build
 7. 未认证访问拒绝
 8. 列表角色限制（user 403 / agent、admin 200）
+9. 坏例回流/评估：入队 RQ 任务秒回 job_id（与 rebuild 同模式，仅管理员）
 
 mock 策略：mock app.api.knowledge 中的 get_qdrant / get_bm25 引用，
 Qdrant 用 MagicMock 设置 is_connected + scroll_all/delete_by_doc 返回值，
@@ -150,21 +151,21 @@ def test_delete_doc_delete_failed_503():
 # ---------- 3. 重建索引 ----------
 
 
-def test_rebuild_index_builds_bm25():
-    """重建：scroll_all 全量结果重建 BM25，返回 chunk 数。"""
+def test_rebuild_index_enqueues_rq_job():
+    """重建：入队 RQ 任务秒回 job_id（耗时操作异步化，不再同步 build）。"""
     qdrant = _mock_qdrant(CHUNKS)
-    bm25 = MagicMock()
-    with patch("app.api.knowledge.get_qdrant", return_value=qdrant), patch(
-        "app.api.knowledge.get_bm25", return_value=bm25
+    job = MagicMock()
+    job.id = "job-abc"
+    with (
+        patch("app.api.knowledge.get_qdrant", return_value=qdrant),
+        patch("app.api.knowledge.enqueue_task", return_value=job) as mock_enqueue,
     ):
         resp = client.post("/api/v1/knowledge/rebuild")
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["rebuilt"] is True
-    assert data["chunks"] == len(CHUNKS)
-    qdrant.scroll_all.assert_awaited_once()
-    bm25.build.assert_called_once()
-    assert bm25.build.call_args[0][0] == CHUNKS
+    assert resp.json() == {"job_id": "job-abc", "status": "queued"}
+    mock_enqueue.assert_called_once()
+    # 入队前不做耗时 scroll/build（秒回的关键）
+    qdrant.scroll_all.assert_not_awaited()
 
 
 def test_rebuild_index_qdrant_unavailable_503():
@@ -174,6 +175,59 @@ def test_rebuild_index_qdrant_unavailable_503():
         resp = client.post("/api/v1/knowledge/rebuild")
     assert resp.status_code == 503
     assert "Qdrant" in resp.json()["detail"]
+
+
+def test_rebuild_index_enqueue_redis_down_503():
+    """重建：任务队列入队失败（Redis 不可用）→ 503 而非 500（降级路径明确）。"""
+    qdrant = _mock_qdrant(CHUNKS)
+    with (
+        patch("app.api.knowledge.get_qdrant", return_value=qdrant),
+        patch(
+            "app.api.knowledge.enqueue_task", side_effect=ConnectionError("redis down")
+        ),
+    ):
+        resp = client.post("/api/v1/knowledge/rebuild")
+    assert resp.status_code == 503
+    assert resp.json()["detail"]
+
+
+# ---------- 3b. 坏例回流 / 评估入队（RQ 异步任务） ----------
+
+
+def test_badcase_export_enqueues_rq_job():
+    """坏例回流：入队 RQ 任务秒回 job_id（与 rebuild 同模式）。"""
+    job = MagicMock()
+    job.id = "job-badcase"
+    with patch("app.api.knowledge.enqueue_task", return_value=job) as mock_enqueue:
+        resp = client.post("/api/v1/knowledge/badcases/export")
+    assert resp.status_code == 200
+    assert resp.json() == {"job_id": "job-badcase", "status": "queued"}
+    mock_enqueue.assert_called_once()
+
+
+def test_evaluate_enqueues_rq_job():
+    """评估运行：入队 RQ 任务秒回 job_id（子进程隔离执行）。"""
+    job = MagicMock()
+    job.id = "job-eval"
+    with patch("app.api.knowledge.enqueue_task", return_value=job) as mock_enqueue:
+        resp = client.post("/api/v1/knowledge/evaluate")
+    assert resp.status_code == 200
+    assert resp.json() == {"job_id": "job-eval", "status": "queued"}
+    mock_enqueue.assert_called_once()
+
+
+async def _agent_user():
+    return {"username": "agent1", "role": "agent"}
+
+
+def test_badcase_export_agent_role_403():
+    """坏例回流：仅管理员可入队，agent 返回 403。"""
+    app.dependency_overrides[get_current_user] = _agent_user
+    try:
+        resp = client.post("/api/v1/knowledge/badcases/export")
+    finally:
+        app.dependency_overrides[get_current_user] = fake_user
+    assert resp.status_code == 403
 
 
 # ---------- 4. 认证 ----------

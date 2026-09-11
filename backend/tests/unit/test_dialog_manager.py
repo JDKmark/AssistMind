@@ -39,14 +39,14 @@ def test_trim_history_truncates_to_window(monkeypatch):
 
 def test_extract_query_single_turn():
     """单轮：唯一 HumanMessage 即当前问题。"""
-    messages = [HumanMessage(content="查一下订单 20240801001")]
-    assert extract_query(messages) == "查一下订单 20240801001"
+    messages = [HumanMessage(content="查一下订单 20260801001")]
+    assert extract_query(messages) == "查一下订单 20260801001"
 
 
 def test_extract_query_multiturn_takes_last():
     """多轮：取最后一条 HumanMessage（当前轮输入）。"""
     messages = [
-        HumanMessage(content="查一下订单 20240801001"),
+        HumanMessage(content="查一下订单 20260801001"),
         AIMessage(content="您的订单已发货。"),
         HumanMessage(content="物流到哪了？"),
     ]

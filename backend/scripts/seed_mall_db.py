@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from app.core.infra.postgres import async_session, engine
 from app.core.mall.mock_source import LOGISTICS, ORDERS, PRODUCTS
 from app.models.mall import MallLogistics, MallOrder, MallOrderItem, MallProduct
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,25 @@ async def seed_mall_data() -> bool:
                 )
             )
 
+        # username → user_id 映射：owner_user_id 由 users 表权威解析（单一数据来源）
+        user_rows = (await session.execute(select(User.id, User.username))).all()
+        uid_by_username = {username: user_id for user_id, username in user_rows}
+
+        unresolved = sorted(
+            {order["owner_username"] for order in ORDERS.values() if order.get("owner_username")}
+            - uid_by_username.keys()
+        )
+        if unresolved:
+            logger.warning(
+                "seed 订单归属用户不存在，owner_user_id 将保持为空：%s", "/".join(unresolved)
+            )
+
         for order in ORDERS.values():
             session.add(
                 MallOrder(
                     order_sn=order["order_sn"],
                     owner_username=order["owner_username"],
+                    owner_user_id=uid_by_username.get(order["owner_username"]),
                     status=order["status"],
                     pay_amount=order["pay_amount"],
                     logistics_no=order["logistics_no"],

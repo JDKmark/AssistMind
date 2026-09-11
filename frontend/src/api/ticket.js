@@ -18,3 +18,19 @@ export function createTicket(data) {
 export function updateTicketStatus(ticketId, newStatus) {
   return request.patch(`/ticket/${ticketId}/status`, { status: newStatus })
 }
+
+export function listReplies(ticketId) {
+  return request.get(`/ticket/${ticketId}/replies`)
+}
+
+export function addReply(ticketId, content) {
+  return request.post(`/ticket/${ticketId}/replies`, { content })
+}
+
+// 工单更新轮询：silent=true 走 request.js 静默通道（失败不弹窗、不置后端不可用状态），
+// 由 ticketPolling 捕获后 console.warn 静默降级
+export function getTicketUpdates(sinceIso) {
+  const params = {}
+  if (sinceIso) params.since = sinceIso
+  return request.get('/ticket/updates', { params, silent: true })
+}

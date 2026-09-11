@@ -1,0 +1,18 @@
+===== 降级实测（后端进程已停止）— Chrome CDP console/net 证据 =====
+行为：后端 uvicorn 进程终止、8001 无监听 → vite 代理返回 500 → speakViaBackend 捕获 → warn → 回落浏览器 speechSynthesis
+
+console（关键行）:
+[warning] [speech] 云端音色播报失败，回落浏览器合成： 语音合成失败（500）
+（其余 [log:error] Failed to load resource ... 500 为聊天页后台轮询在 PG 不可用期间的环境性噪音，非语音链路）
+
+net（filter=tts/speak）:
+POST  http://localhost:5174/api/v1/tts/speak  ->  500
+
+浏览器合成证据（speechSynthesis 实例列表）:
+browserUtterances = ["后端已停止，这是浏览器合成降级路径的验证播报。"]
+（页面同一 speech.js 模块实例：fetch 失败 → console.warn → speakViaBrowser → 中文音色朗读）
+
+===== 恢复实测（后端重新启动）— 同一页面同一模块 =====
+net（filter=tts/speak）:
+POST  http://localhost:5174/api/v1/tts/speak  ->  200
+console: 无任何 [speech] warn（云端 edge-tts 路径恢复，Audio 播放）

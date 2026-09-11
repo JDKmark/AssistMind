@@ -1,0 +1,18 @@
+===== ASR 接线实测（Chrome, Web Speech API 桩注入 — 只验证前端接线，不碰业务代码）=====
+方式：运行时替换 window.webkitSpeechRecognition 为桩（start() 后 100ms 派发
+onresult[{transcript:"查一下我的订单"}] + onend），随后点击「麦克风」按钮。
+
+结果（CDP 读取真实 DOM）:
+- inputValue = "查一下我的订单"            ✔ 识别文字进入输入框
+- placeholder 恢复"请输入您的问题，Enter 发送..."  ✔ listening 状态复位
+- 麦克风按钮文案回到「麦克风」              ✔ onend 握手正常
+- recognizer: constructed → start → result+end fired
+
+互斥实测（ASR/TTS 互斥）:
+- 播报中（云端音频播放中）点击麦克风 → toggleMic() 先执行 stopSpeaking()
+- 探针: pauseCount 0→1（云端 <audio> 被暂停）, cancelCount +1（speechSynthesis.cancel）
+  ✔ 说话前先打断播报，防麦克风收到 TTS 自循环
+
+受限说明（待人工补测）: 真人语音→云端识别（google speech 服务）无法在本自动化环境录制/播放
+真实人声；本环境亦无麦克风设备。上述桩测试覆盖了从按钮到输入框的完整应用侧接线；
+真实语音识别需人工在 Chrome/Edge 中授权麦克风补测（见报告"风险与前置条件"）。

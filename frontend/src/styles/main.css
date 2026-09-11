@@ -6,6 +6,23 @@
    - 点阵蓝图纹理，工程控制台气质
    ============================================================ */
 
+/* 自托管字体（P2-3）：latin 子集可变字体，font-display: swap 防 FOUT 阻塞；
+   中文回落苹方/雅黑，不加载中文字形包 */
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/sora-latin-var.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-var.woff2') format('woff2');
+}
+
 :root {
   /* 品牌色阶（墨蓝 → 钴蓝 → 浅蓝） */
   --am-ink-950: #081426;
@@ -15,18 +32,35 @@
   --am-blue-600: #2352c5;
   --am-blue-500: #3565d9;
   --am-blue-400: #5b84e6;
+  --am-blue-300: #8ca6e5;
   --am-blue-200: #c2d0f2;
   --am-blue-100: #d9e4f8;
   --am-blue-50: #edf2fc;
 
-  /* 中性色（蓝灰调，非纯灰） */
+  /* 语义色（Chat 工具结果色条 / 诊断 chip，P1-2 令牌化：硬编码 hex 统一收口） */
+  --am-teal-600: #0d9488;
+  --am-indigo-600: #4f46e5;
+  --am-rose-600: #e11d48;
+  --am-green-700: #047857;
+  --am-violet-700: #6d28d9;
+  --am-amber-700: #b45309;
+  --am-red-600: #dc2626;
+  --am-red-700: #b91c1c;
+
+  /* 中性色（蓝灰调，非纯灰）；text-3 调深至 #f5f7fb 底上 ≥ 4.5:1（WCAG AA，P1-1） */
   --am-paper: #f5f7fb;
   --am-card: #ffffff;
   --am-line: #e2e8f2;
   --am-line-weak: #edf1f8;
   --am-text: #1b2a41;
   --am-text-2: #51607a;
-  --am-text-3: #8896ac;
+  --am-text-3: #6b7a90;
+
+  /* 商用质感扩展令牌 */
+  --am-radius-lg: 12px;
+  --am-shadow-card: 0 1px 2px rgba(14, 33, 64, 0.04), 0 4px 16px rgba(14, 33, 64, 0.06);
+  --am-hover-blue: rgba(35, 82, 197, 0.06);
+  --am-glow-ring: rgba(35, 82, 197, 0.1);
 
   /* 字体 */
   --am-font-sans: 'Sora', -apple-system, BlinkMacSystemFont, 'PingFang SC',
@@ -69,6 +103,13 @@ a {
   color: inherit;
 }
 
+/* 键盘焦点环：仅键盘导航（focus-visible）可见，不干扰鼠标点击（P1-3） */
+:focus-visible {
+  outline: 2px solid var(--am-blue-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 ::selection {
   background: var(--am-blue-600);
   color: #fff;
@@ -90,20 +131,20 @@ a {
   background: transparent;
 }
 
-/* 蓝图点阵纹理：内容区/品牌面板底纹 */
+/* 蓝图点阵纹理：内容区/品牌面板底纹（商用质感：降噪到 0.06） */
 .am-grid-bg {
   background-image: radial-gradient(
     circle,
-    rgba(35, 82, 197, 0.09) 1px,
+    rgba(35, 82, 197, 0.06) 1px,
     transparent 1px
   );
   background-size: 22px 22px;
 }
 
-/* 全局卡片质感：平面白卡 + 细描边，去默认阴影 */
+/* 全局卡片质感：平面白卡 + 细描边，去默认阴影；圆角统一 12px */
 .el-card {
   border: 1px solid var(--am-line);
-  border-radius: 10px;
+  border-radius: var(--am-radius-lg);
   box-shadow: none !important;
 }
 .el-card__header {
@@ -112,6 +153,15 @@ a {
 }
 .el-card__body {
   padding: 20px;
+}
+
+/* 商用 hover：卡片边框过渡到浅蓝，无位移（Linear 式克制反馈） */
+.panel-card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.panel-card:hover {
+  border-color: var(--am-blue-200);
+  box-shadow: var(--am-shadow-card);
 }
 
 /* 表格：去重斑马纹的模板感，行悬浮用浅蓝 */
@@ -132,4 +182,66 @@ a {
   font-family: var(--am-font-mono);
   font-size: 0.92em;
   letter-spacing: -0.01em;
+}
+
+/* ============================================================
+   商用质感组件工具类（跨页面复用）
+   ============================================================ */
+
+/* 半透明胶囊标签：色点 + 文字（状态/优先级/分类列），颜色随 el-tag type 决定 */
+.am-tag-pill.el-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  background: color-mix(in srgb, currentColor 9%, #ffffff);
+}
+.am-tag-pill.el-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* 表格容器：白卡包裹工具条与表格（订单/工单等无卡片页统一质感） */
+.am-table-wrap {
+  background: #fff;
+  border: 1px solid var(--am-line);
+  border-radius: var(--am-radius-lg);
+  padding: 16px;
+}
+
+/* 页面切换动效（MainLayout router-view 包一层 <transition>） */
+.am-fade-enter-active {
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.am-fade-leave-active {
+  transition: opacity 0.08s ease;
+}
+.am-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.am-fade-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .am-fade-enter-active,
+  .am-fade-leave-active {
+    transition: none;
+  }
+  .am-fade-enter-from,
+  .am-fade-leave-to {
+    opacity: 1;
+    transform: none;
+  }
 }
