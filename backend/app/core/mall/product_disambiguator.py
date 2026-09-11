@@ -37,8 +37,10 @@ from app.core.mall import data_source as mall_ds
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# app/core/mall/product_disambiguator.py → app/data/product_models.json
-_MODELS_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "product_models.json")
+# app/core/mall/product_disambiguator.py → app/data/product_models.json（两层 ..）
+_MODELS_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "product_models.json"
+)
 
 # 模块级缓存：按 json mtime 热加载（与 personas.json / intent_routes.json 同模式）
 _models_cache: dict = {"mtime": None, "data": None}

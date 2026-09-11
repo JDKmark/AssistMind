@@ -376,16 +376,30 @@ async def test_missing_config_file_behaves_as_empty(monkeypatch, tmp_path, caplo
     assert fake.orders_calls == []
 
 
-async def test_repo_product_models_config_is_valid():
-    """仓库随附 product_models.json 契约守护：S1 Pro → P006/P007，字段校验通过。"""
+async def test_repo_product_models_config_is_valid(monkeypatch):
+    """仓库随附 product_models.json 契约守护：S1 Pro → P006/P007，字段校验通过。
+
+    注意：绕过 autouse fixture 的 tmp 配置——按模块内同款相对规则还原真实路径，
+    防止「仓库随附配置非法/路径错误」被 fixture 掩盖（e2e 曾暴露此盲区）。
+    """
     import os
 
-    with open(disamb._MODELS_PATH, encoding="utf-8") as f:
-        raw = json.load(f)
-    aliases = disamb._validate_models(raw)
-    assert aliases is not None
-    s1pro = next(a for a in aliases if a["alias"] == "S1 Pro")
-    assert {p["product_id"] for p in s1pro["products"]} == {"P006", "P007"}
+    real_path = os.path.normpath(
+        os.path.join(os.path.dirname(disamb.__file__), "..", "..", "data", "product_models.json")
+    )
+    monkeypatch.setattr(disamb, "_MODELS_PATH", real_path)
+    disamb._models_cache["mtime"] = None
+    disamb._models_cache["data"] = None
+    try:
+        with open(real_path, encoding="utf-8") as f:
+            raw = json.load(f)
+        aliases = disamb._validate_models(raw)
+        assert aliases is not None
+        s1pro = next(a for a in aliases if a["alias"] == "S1 Pro")
+        assert {p["product_id"] for p in s1pro["products"]} == {"P006", "P007"}
+    finally:
+        disamb._models_cache["mtime"] = None
+        disamb._models_cache["data"] = None
 
 
 # ---------- LLM 兜底（可选启用） ----------
