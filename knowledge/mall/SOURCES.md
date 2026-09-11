@@ -30,3 +30,6 @@
    `oms_order_return_apply.status`、`pms_product.service_ids/promotion_type`、
    `ums_member_level.priviledge_*` 等），非 macrozheng/mall 官方内容；其中演示商品/订单数据
    为电商客服演示固定清单，数值口径属本项目演示配置。
+5. **`s1-pro-breast-pump.md` / `s1-pro-robot-vacuum.md` 为项目自建**：演示商品
+   「贝亲 S1 Pro 电动吸奶器（P006）」与「追觅 S1 Pro 扫地机器人（P007）」（跨品类同型号，
+   用于产品消歧场景演示）的排障知识文档，非真实品牌官方文档。

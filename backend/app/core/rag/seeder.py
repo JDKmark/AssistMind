@@ -14,6 +14,7 @@ from collections.abc import Callable
 from typing import Any
 
 from app.core.infra.qdrant import get_qdrant
+from app.core.cache.semantic_cache import invalidate as cache_invalidate
 from app.core.rag.bm25 import get_bm25
 from app.core.rag.chunking import chunk_text
 from app.core.rag.embedding import embed_sync
@@ -66,6 +67,16 @@ async def seed_docs(
         bm25_docs.extend(chunks)
     if bm25_docs:
         get_bm25().build(bm25_docs)
+
+    # 语义缓存失效（版本号 O(1)）：知识库已更新，旧缓存答案与新知识不一致会串答；
+    # 有实际写入才失效（nothing written 时缓存仍一致）。旁路逻辑：Redis 故障只 warning，
+    # 不影响灌库结果（与「埋点/持久化失败不阻塞主流程」同一降级哲学）。
+    if total_chunks:
+        try:
+            await cache_invalidate()
+            logger.info("[%s] 已失效语义缓存（版本号 +1）", log_prefix)
+        except Exception as e:
+            logger.warning("[%s] 语义缓存失效失败（不影响灌库）: %s", log_prefix, e)
 
     await qdrant.close()
     return {

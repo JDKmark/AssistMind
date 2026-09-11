@@ -199,3 +199,70 @@ async def test_qdrant_upsert_deterministic_uuid5(monkeypatch):
     # 同 chunk 两次 seed 的 id 完全一致（幂等覆盖）；不同 chunk 的 id 不同
     assert [p.id for p in first_points] == [p.id for p in second_points]
     assert first_points[0].id != first_points[1].id
+
+
+# ---------- phase15：灌库成功后失效语义缓存（版本号 O(1) 失效） ----------
+
+
+async def test_seed_docs_invalidates_semantic_cache_after_upsert(monkeypatch):
+    """upsert 成功（chunks>0）后调用语义缓存失效：防知识库更新后旧缓存串答。"""
+    from unittest.mock import AsyncMock
+
+    from app.core.rag import seeder as seeder_module
+
+    invalidate_mock = AsyncMock()
+    monkeypatch.setattr(seeder_module, "cache_invalidate", invalidate_mock)
+    qdrant = FakeQdrant()
+    monkeypatch.setattr("app.core.rag.seeder.get_qdrant", lambda: qdrant)
+    monkeypatch.setattr("app.core.rag.seeder.embed_sync", _fake_embeddings)
+    monkeypatch.setattr("app.core.rag.seeder.get_bm25", lambda: MagicMock())
+
+    result = await seed_docs(DOCS, _metadata_fn, log_prefix="Test")
+
+    assert result["chunks"] > 0
+    invalidate_mock.assert_awaited_once()
+
+
+async def test_seed_docs_skips_cache_invalidate_when_nothing_written(monkeypatch):
+    """无 chunk 写入（如 embedding 全失败）时不失效缓存：缓存仍与知识库一致。"""
+    from unittest.mock import AsyncMock
+
+    from app.core.rag import seeder as seeder_module
+
+    invalidate_mock = AsyncMock()
+    monkeypatch.setattr(seeder_module, "cache_invalidate", invalidate_mock)
+    qdrant = FakeQdrant()
+    monkeypatch.setattr("app.core.rag.seeder.get_qdrant", lambda: qdrant)
+
+    def _broken_embeddings(texts):
+        return None
+
+    monkeypatch.setattr("app.core.rag.seeder.embed_sync", _broken_embeddings)
+    monkeypatch.setattr("app.core.rag.seeder.get_bm25", lambda: MagicMock())
+
+    await seed_docs(DOCS, _metadata_fn, log_prefix="Test")
+    invalidate_mock.assert_not_awaited()
+
+
+async def test_seed_docs_cache_invalidate_failure_does_not_break_seeding(monkeypatch, caplog):
+    """缓存失效异常不中断灌库（旁路逻辑，logger.warning 后继续）。"""
+    import logging as _logging
+
+    from unittest.mock import AsyncMock
+
+    from app.core.rag import seeder as seeder_module
+
+    invalidate_mock = AsyncMock(side_effect=RuntimeError("redis down"))
+    monkeypatch.setattr(seeder_module, "cache_invalidate", invalidate_mock)
+    qdrant = FakeQdrant()
+    monkeypatch.setattr("app.core.rag.seeder.get_qdrant", lambda: qdrant)
+    monkeypatch.setattr("app.core.rag.seeder.embed_sync", _fake_embeddings)
+    monkeypatch.setattr("app.core.rag.seeder.get_bm25", lambda: MagicMock())
+
+    with caplog.at_level(_logging.WARNING, logger="app.core.rag.seeder"):
+        result = await seed_docs(DOCS, _metadata_fn, log_prefix="Test")
+
+    assert result["qdrant_ok"] is True
+    assert result["chunks"] > 0
+    invalidate_mock.assert_awaited_once()
+    assert any("缓存失效" in r.message for r in caplog.records)
