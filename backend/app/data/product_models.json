@@ -1,0 +1,17 @@
+{
+  "aliases": [
+    {
+      "alias": "S1 Pro",
+      "products": [
+        {
+          "product_id": "P006",
+          "symptom_keywords": ["吸奶器", "吸奶", "吸不出", "奶水", "奶阵", "涨奶"]
+        },
+        {
+          "product_id": "P007",
+          "symptom_keywords": ["扫地机器人", "扫地", "拖地", "尘盒", "基站", "边刷"]
+        }
+      ]
+    }
+  ]
+}

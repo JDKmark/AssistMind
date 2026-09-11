@@ -188,6 +188,11 @@ class Settings(BaseSettings):
     # （一次结构化抽取；失败/超时/解析失败 → 空实体 + logger.warning，不阻塞主链路）
     ENTITY_LLM_FALLBACK: bool = False
 
+    # ===== 产品消歧（跨品类同型号，phase15）=====
+    # 规则管道（别名召回→信号打分→订单交集）零 LLM；开启后仅在落入反问分支前
+    # 走一次 LLM 兜底（fast=True 快速失败；失败/非法输出回落反问 + logger.warning）
+    DISAMBIG_LLM_FALLBACK: bool = False
+
     # ===== 运维数据源（Prometheus / ELK）=====
     # auto: 配置了 PROMETHEUS_URL 用真实数据源，未配置或整体不可用降级 mock
     # mock: 恒用预置故障场景模拟数据
