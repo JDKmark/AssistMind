@@ -1193,4 +1193,148 @@ describe('Chat 组件', () => {
       await flushPromises()
     })
   })
+
+  // ---------- phase15：产品消歧展示 ----------
+
+  const CLARIFY_CANDIDATES = [
+    { product_id: 'P006', name: '贝亲 S1 Pro 电动吸奶器', spec: '双边电动 静音款' },
+    { product_id: 'P007', name: '追觅 S1 Pro 扫地机器人', spec: '自集尘 拖扫一体' },
+  ]
+
+  const CLARIFY_ANSWER =
+    'S1 Pro 有两款产品：贝亲 S1 Pro 电动吸奶器（双边电动 静音款）和' +
+    '追觅 S1 Pro 扫地机器人（自集尘 拖扫一体）。请问您说的是哪一款？'
+
+  it('快捷提问含「产品排障」入口（文案「我的 S1 Pro 不吸了」）', () => {
+    const wrapper = mountChat()
+    const text = wrapper.text()
+    expect(text).toContain('产品排障')
+    expect(text).toContain('我的 S1 Pro 不吸了')
+    expect(wrapper.vm.quickQuestions.find((q) => q.text === '我的 S1 Pro 不吸了')).toBeTruthy()
+  })
+
+  it('消歧阶段文案：disambiguation 事件后处理中状态显示「正在识别产品…」', async () => {
+    let emit = null
+    chatApi.chatStream.mockImplementation((q, opts) => {
+      emit = opts.onEvent
+      return new Promise(() => {}) // 流保持进行中，断言中间态
+    })
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '我的 S1 Pro 不吸了')
+
+    emit('start', { query: '我的 S1 Pro 不吸了', intent: 'faq' })
+    await nextTick()
+    emit('disambiguation', {
+      status: 'resolved',
+      method: 'orders',
+      product_id: 'P006',
+      product_name: '贝亲 S1 Pro 电动吸奶器',
+    })
+    await nextTick()
+
+    expect(wrapper.text()).toContain('正在识别产品…')
+  })
+
+  it('resolved 消歧：staff 诊断面板显示 status/method 与定向商品', async () => {
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'faq' })
+      onEvent('disambiguation', {
+        status: 'resolved',
+        method: 'orders',
+        product_id: 'P006',
+        product_name: '贝亲 S1 Pro 电动吸奶器',
+      })
+      onEvent('retrieving', {})
+      onEvent('generating', {})
+      onEvent('done', { answer: '您说的是贝亲 S1 Pro 电动吸奶器吧。' })
+      onDone({ answer: '您说的是贝亲 S1 Pro 电动吸奶器吧。' })
+      return Promise.resolve()
+    })
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '我的 S1 Pro 不吸了')
+
+    expect(wrapper.text()).toContain('产品消歧')
+    expect(wrapper.text()).toContain('orders')
+    expect(wrapper.text()).toContain('P006 贝亲 S1 Pro 电动吸奶器')
+  })
+
+  it('clarify 反问：普通用户视图渲染助手消息 + 两张候选卡片（name+spec），无调试明细', async () => {
+    authMock.role = 'user' // 普通用户：诊断面板与调试明细不可见
+    try {
+      chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+        onEvent('start', { query: q, intent: 'faq' })
+        onEvent('disambiguation', { status: 'clarify', candidates: CLARIFY_CANDIDATES })
+        onEvent('done', {
+          answer: CLARIFY_ANSWER,
+          conversation_id: 'conv-disamb-1',
+          disambiguation: { status: 'clarify', candidates: CLARIFY_CANDIDATES },
+        })
+        onDone({ answer: CLARIFY_ANSWER })
+        return Promise.resolve()
+      })
+      const wrapper = mountChat()
+      await typeAndSend(wrapper, '我的 S1 Pro 不吸了')
+
+      // 反问文案以普通助手消息渲染
+      expect(wrapper.text()).toContain('请问您说的是哪一款')
+      // 两张候选卡片：name + spec
+      const cards = wrapper.findAll('.disambig-card')
+      expect(cards.length).toBe(2)
+      expect(cards[0].text()).toContain('贝亲 S1 Pro 电动吸奶器')
+      expect(cards[0].text()).toContain('双边电动 静音款')
+      expect(cards[1].text()).toContain('追觅 S1 Pro 扫地机器人')
+      expect(cards[1].text()).toContain('自集尘 拖扫一体')
+      // 普通用户不见消歧决策明细（staff 诊断面板内容）
+      expect(wrapper.text()).not.toContain('产品消歧')
+      expect(wrapper.text()).not.toContain('in_orders')
+    } finally {
+      authMock.role = 'admin'
+    }
+  })
+
+  it('点击候选卡片：以商品名称走既有发送链路发出，输入框清空', async () => {
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'faq' })
+      onEvent('disambiguation', { status: 'clarify', candidates: CLARIFY_CANDIDATES })
+      onEvent('done', {
+        answer: CLARIFY_ANSWER,
+        conversation_id: 'conv-disamb-1',
+        disambiguation: { status: 'clarify', candidates: CLARIFY_CANDIDATES },
+      })
+      onDone({ answer: CLARIFY_ANSWER })
+      return Promise.resolve()
+    })
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '我的 S1 Pro 不吸了')
+
+    const cards = wrapper.findAll('.disambig-card')
+    await cards[1].trigger('click')
+    await flushPromises()
+
+    // 以商品名作为用户消息走既有发送链路（chatStream 首参 = 消息文本）
+    expect(chatApi.chatStream).toHaveBeenLastCalledWith(
+      '追觅 S1 Pro 扫地机器人',
+      expect.objectContaining({ history: expect.anything() })
+    )
+    // 用户气泡展示了该商品名（既有链路渲染；取最后一条用户消息）
+    const userBubbles = wrapper.findAll('.bubble.user')
+    expect(userBubbles[userBubbles.length - 1].text()).toContain('追觅 S1 Pro 扫地机器人')
+    // 输入框清空
+    expect(wrapper.find('.el-input-stub').element.value).toBe('')
+  })
+
+  it('未知 SSE 事件不破坏既有渲染', async () => {
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'faq' })
+      onEvent('future_event', { foo: 'bar' })
+      onEvent('done', { answer: '正常回答' })
+      onDone({ answer: '正常回答' })
+      return Promise.resolve()
+    })
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '华为 Mate 70 Pro 多少钱')
+
+    expect(wrapper.text()).toContain('正常回答')
+    expect(wrapper.find('.bubble.user').exists()).toBe(true)
+  })
 })

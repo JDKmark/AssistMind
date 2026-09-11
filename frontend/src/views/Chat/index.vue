@@ -180,6 +180,26 @@
                 （暂无回答，可尝试转人工客服）
               </div>
 
+              <!-- 产品消歧候选卡片（phase15，clarify 反问回合）：点击以该商品名
+                   走既有发送链路发出，下一轮经别名召回/信号词自动定向 -->
+              <div
+                v-if="m.disambiguation && m.disambiguation.status === 'clarify' && (m.disambiguation.candidates || []).length"
+                class="disambig-cards"
+              >
+                <el-button
+                  v-for="c in m.disambiguation.candidates"
+                  :key="c.product_id"
+                  class="disambig-card"
+                  @click="sendDisambigChoice(c)"
+                >
+                  <span class="disambig-card-body">
+                    <span class="disambig-card-name">{{ c.name }}</span>
+                    <span class="disambig-card-spec">{{ c.spec }}</span>
+                    <span class="disambig-card-hint">点击咨询这款 →</span>
+                  </span>
+                </el-button>
+              </div>
+
               <!-- 诊断信息（仅 admin/agent 可见）：流式中实时展示阶段/耗时，完成后含
                    来源明细 + 事件时间线 + 阶段耗时 + 完整诊断 JSON 复制（便于定位问题） -->
               <div v-if="isStaff && (m.started || m.status === 'done')" class="diag-section">
@@ -206,6 +226,9 @@
                     </span>
                     <span v-if="m.degraded.length" class="diag-chip chip-degraded">
                       降级：{{ m.degraded.join('、') }}
+                    </span>
+                    <span v-if="m.disambiguation" class="diag-chip chip-disambig">
+                      消歧 {{ m.disambiguation.status }}<template v-if="m.disambiguation.method"> · {{ m.disambiguation.method }}</template>
                     </span>
                   </span>
                   <span class="diag-toggle-text">{{ m.diagOpen ? '收起' : '展开' }}</span>
@@ -242,6 +265,32 @@
                     <div v-for="(r, i) in m.rewrites" :key="i" class="diag-line">
                       <span class="diag-line-idx">{{ i + 1 }}</span>
                       <span class="diag-line-text">{{ r }}</span>
+                    </div>
+                  </div>
+
+                  <!-- 产品消歧决策（phase15）：status/method 与定向商品或候选明细 -->
+                  <div v-if="m.disambiguation" class="diag-block">
+                    <div class="diag-caption">产品消歧决策</div>
+                    <div class="diag-line">
+                      <span class="diag-line-name">决策</span>
+                      <span class="diag-line-text">
+                        {{ m.disambiguation.status }}<template v-if="m.disambiguation.method"> · {{ m.disambiguation.method }}</template>
+                      </span>
+                    </div>
+                    <div
+                      v-if="m.disambiguation.product_id || m.disambiguation.product_name"
+                      class="diag-line"
+                    >
+                      <span class="diag-line-name">定向</span>
+                      <span class="diag-line-text">{{ m.disambiguation.product_id }} {{ m.disambiguation.product_name }}</span>
+                    </div>
+                    <div
+                      v-for="c in m.disambiguation.candidates || []"
+                      :key="c.product_id"
+                      class="diag-line"
+                    >
+                      <span class="diag-line-name">{{ c.product_id }}</span>
+                      <span class="diag-line-text">{{ c.name }}（{{ c.spec }}）</span>
                     </div>
                   </div>
 
@@ -477,8 +526,8 @@ async function loadPersonas() {
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
 
-// 快捷提问引导（商品咨询 / 查订单 / 物流查询；退货与转人工走常驻按钮，不占建议位）
-// 演示订单归属：20260801001/002 → user1，003/004 → user2；订单号跟随登录用户，
+// 快捷提问引导（商品咨询 / 查订单 / 物流查询 / 产品排障；退货与转人工走常驻按钮，不占建议位）
+// 演示订单归属：20260801001/002/005 → user1，003/004/006 → user2；订单号跟随登录用户，
 // 否则 user2 点"查订单"会因越权被拒，演示阻断
 const DEMO_ORDER_BY_USER = { user2: '20260801003' }
 const quickQuestions = computed(() => {
@@ -487,12 +536,15 @@ const quickQuestions = computed(() => {
     { label: '商品咨询', text: '华为 Mate 70 Pro 多少钱', tone: 'buy' },
     { label: '查订单', text: `查一下订单 ${orderNo}`, tone: 'order' },
     { label: '物流查询', text: '物流到哪了', tone: 'logistics' },
+    // 产品消歧演示入口（phase15）：同型号跨品类「S1 Pro」歧义咨询
+    { label: '产品排障', text: '我的 S1 Pro 不吸了', tone: 'fix' },
   ]
 })
 
 // 流式阶段 → 展示文案（对齐后端 SSE 事件；tool 为业务工具处理中，普通用户友好提示）
 const STAGE_TEXT = {
   start: '正在思考…',
+  disambiguation: '正在识别产品…',
   retrieving: '正在检索知识库…',
   tool: '正在为您处理，请稍候…',
   generating: '正在生成回答…',
@@ -576,6 +628,9 @@ function newMessage(role, content) {
     elapsedMs: 0,
     routeSource: '',
     fromCache: '',
+    // 产品消歧决策（phase15）：disambiguation 事件与 done.disambiguation 写入，
+    // staff 诊断面板展示决策；clarify 时候选卡片渲染数据源
+    disambiguation: null,
     // 事件时间线：start 事件已到（流式实时展示诊断），SSE 事件快照与阶段时刻
     started: false,
     eventLog: [],
@@ -810,6 +865,7 @@ function displayEvents(m) {
 
 const EVENT_LABELS = {
   start: '开始',
+  disambiguation: '消歧',
   retrieving: '检索',
   rewriting: '改写',
   generating: '生成中',
@@ -1045,6 +1101,12 @@ function handleEvent(msg, name, data) {
     case 'generating':
       msg.stage = 'generating'
       break
+    case 'disambiguation':
+      // 产品消歧决策（phase15）：阶段切换为「正在识别产品…」，
+      // 同时作为 staff 诊断面板与 clarify 候选卡片的数据源
+      msg.stage = 'disambiguation'
+      msg.disambiguation = { ...(data || {}) }
+      break
     case 'delta':
       // 流式生成：逐 chunk 累积文本（打字机效果）；done 事件会带完整 answer 兜底
       msg.stage = 'generating'
@@ -1088,6 +1150,8 @@ function handleEvent(msg, name, data) {
       msg.cragScore = data.crag_score != null && data.crag_score !== '' ? data.crag_score : ''
       msg.timings = data.timings && typeof data.timings === 'object' ? data.timings : {}
       msg.degraded = Array.isArray(data.degraded) ? data.degraded : []
+      // 消歧反问回合：done 携带 disambiguation（clarify 候选卡片数据源）
+      if (data.disambiguation) msg.disambiguation = data.disambiguation
       if (data.ticket_id) msg.ticketId = data.ticket_id
       // 语音播报：开启开关时朗读最终答案（纯文本，markdown 源串朗读）
       if (speakEnabled.value && msg.content) speak(msg.content)
@@ -1143,6 +1207,14 @@ async function submitMessageFeedback(m) {
 function handleTransferHuman() {
   if (streaming.value) return
   inputText.value = '帮我转人工客服'
+  onSend()
+}
+
+// 点击消歧候选卡片（phase15）：以该商品名称作为用户消息走既有发送链路
+// （等价于用户手打该文案，下一轮经别名召回/信号词自动定向）；输入框清空由 onSend 处理
+function sendDisambigChoice(candidate) {
+  if (streaming.value) return
+  inputText.value = candidate.name || ''
   onSend()
 }
 
@@ -1944,6 +2016,49 @@ onMounted(() => {
 }
 .quick-btn.tone-logistics {
   --qc: var(--am-teal-600);
+}
+.quick-btn.tone-fix {
+  --qc: var(--am-amber-700);
+}
+
+/* 产品消歧候选卡片（phase15，clarify 反问消息下方） */
+.disambig-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.disambig-card.el-button {
+  height: auto;
+  padding: 8px 12px;
+  border: 1px solid var(--am-line);
+  background: var(--am-paper);
+  text-align: left;
+}
+.disambig-card.el-button:hover {
+  border-color: var(--am-blue-600);
+  background: var(--am-blue-50);
+}
+.disambig-card-body {
+  display: block;
+}
+.disambig-card-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--am-text);
+}
+.disambig-card-spec {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--am-text-3);
+}
+.disambig-card-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--am-blue-600);
 }
 
 /* 历史会话抽屉 */
