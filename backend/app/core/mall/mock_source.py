@@ -1,8 +1,9 @@
 """模拟电商业务数据源：预置演示数据（固定清单，Agent 客服演示用）。
 
 数据与固定演示清单完全一致：
-- 商品 5 个（P001-P005）
-- 订单 4 个（20260801001-20260801004；001/002 归属 user1，003/004 归属 user2）
+- 商品 7 个（P001-P007；P006/P007 为跨品类同型号商品，共用型号别名 S1 Pro）
+- 订单 6 个（20260801001-20260801006；001/002/005 归属 user1，003/004/006 归属 user2；
+  005 仅含 P006、006 同时含 P006+P007——供「仅持有其中一款 / 同时持有两款」消歧演示）
 - 物流轨迹仅 20260801001（已揽收 → 运输中）
 
 售后单（apply_refund）进程内内存记录；未知单号/商品返回 None 不抛异常。
@@ -106,6 +107,24 @@ PRODUCTS: dict[str, dict[str, Any]] = {
         "stock": 50,
         "services": [],
     },
+    # P006/P007：跨品类同型号商品（共用型号别名 S1 Pro），产品消歧演示数据源。
+    # symptom_keywords 不在此维护（外置 app/data/product_models.json，热加载）
+    "P006": {
+        "id": "P006",
+        "name": "贝亲 S1 Pro 电动吸奶器",
+        "spec": "双边电动 静音款",
+        "price": 1299,
+        "stock": 150,
+        "services": [],
+    },
+    "P007": {
+        "id": "P007",
+        "name": "追觅 S1 Pro 扫地机器人",
+        "spec": "自集尘 拖扫一体",
+        "price": 2999,
+        "stock": 120,
+        "services": [],
+    },
 }
 
 # ---- 订单（固定清单） ----
@@ -189,6 +208,51 @@ ORDERS: dict[str, dict[str, Any]] = {
         "pay_amount": 8999,
         "logistics_no": None,
         "created_at": "2026-08-01 12:00:00",
+    },
+    # phase15 消歧演示订单：005 user1 仅持 P006（订单交集唯一）；
+    # 006 user2 同时持 P006+P007（交集歧义 → 反问/信号/LLM 兜底分流）
+    "20260801005": {
+        "order_sn": "20260801005",
+        "owner_username": "user1",
+        "owner_user_id": _DEMO_USER_IDS["user1"],
+        "status": "已完成",
+        "items": [
+            {
+                "product_id": "P006",
+                "name": "贝亲 S1 Pro 电动吸奶器",
+                "spec": "双边电动 静音款",
+                "price": 1299,
+                "quantity": 1,
+            }
+        ],
+        "pay_amount": 1299,
+        "logistics_no": None,
+        "created_at": "2026-08-02 09:00:00",
+    },
+    "20260801006": {
+        "order_sn": "20260801006",
+        "owner_username": "user2",
+        "owner_user_id": _DEMO_USER_IDS["user2"],
+        "status": "已完成",
+        "items": [
+            {
+                "product_id": "P006",
+                "name": "贝亲 S1 Pro 电动吸奶器",
+                "spec": "双边电动 静音款",
+                "price": 1299,
+                "quantity": 1,
+            },
+            {
+                "product_id": "P007",
+                "name": "追觅 S1 Pro 扫地机器人",
+                "spec": "自集尘 拖扫一体",
+                "price": 2999,
+                "quantity": 1,
+            },
+        ],
+        "pay_amount": 4298,
+        "logistics_no": None,
+        "created_at": "2026-08-02 10:00:00",
     },
 }
 

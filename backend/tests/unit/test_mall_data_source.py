@@ -9,7 +9,7 @@
 - 门面转发与 reset_source 隔离
 - MALL_DATA_SOURCE 配置切换（mock/real/auto 与健康探测降级）
 
-演示账号归属：20260801001/002 → user1；20260801003/004 → user2。
+演示账号归属：20260801001/002/005 → user1；20260801003/004/006 → user2。
 """
 
 from __future__ import annotations
@@ -206,10 +206,12 @@ async def test_apply_refund_unknown_order():
 
 
 async def test_list_orders_all():
-    """全量列表：total=4，按 created_at 倒序。"""
+    """全量列表：total=6，按 created_at 倒序。"""
     result = await ds.list_orders()
-    assert result["total"] == 4
+    assert result["total"] == 6
     assert [o["order_sn"] for o in result["orders"]] == [
+        "20260801006",
+        "20260801005",
         "20260801004",
         "20260801003",
         "20260801002",
@@ -218,10 +220,14 @@ async def test_list_orders_all():
 
 
 async def test_list_orders_filter_by_owner():
-    """owner 过滤：user1 → 001/002 两笔。"""
+    """owner 过滤：user1 → 001/002/005 三笔。"""
     result = await ds.list_orders(owner_username="user1")
-    assert result["total"] == 2
-    assert {o["order_sn"] for o in result["orders"]} == {"20260801001", "20260801002"}
+    assert result["total"] == 3
+    assert {o["order_sn"] for o in result["orders"]} == {
+        "20260801001",
+        "20260801002",
+        "20260801005",
+    }
 
 
 async def test_list_orders_filter_by_status():
@@ -234,12 +240,12 @@ async def test_list_orders_filter_by_status():
 async def test_list_orders_pagination():
     """分页：total 为过滤后总数（与分页无关），orders 按倒序切片。"""
     page1 = await ds.list_orders(limit=2, offset=0)
-    assert page1["total"] == 4
-    assert [o["order_sn"] for o in page1["orders"]] == ["20260801004", "20260801003"]
+    assert page1["total"] == 6
+    assert [o["order_sn"] for o in page1["orders"]] == ["20260801006", "20260801005"]
 
     page2 = await ds.list_orders(limit=2, offset=2)
-    assert page2["total"] == 4
-    assert [o["order_sn"] for o in page2["orders"]] == ["20260801002", "20260801001"]
+    assert page2["total"] == 6
+    assert [o["order_sn"] for o in page2["orders"]] == ["20260801004", "20260801003"]
 
 
 async def test_list_orders_item_shape():
@@ -260,28 +266,36 @@ async def test_list_orders_item_shape():
 # ---- my_orders 用户订单列表 ----
 
 
-async def test_my_orders_user1_two_orders_with_items():
-    """user1：2 单（001/002），首单 items 含 product_id/name/spec/price/quantity。"""
+async def test_my_orders_user1_orders_with_items():
+    """user1：3 单（005/002/001，created_at 倒序），items 含 product_id/name/spec/price/quantity。"""
     result = await ds.my_orders(requester_user_id="uid-user1", requester_username="user1")
-    assert result["total"] == 2
-    assert [o["order_sn"] for o in result["orders"]] == ["20260801002", "20260801001"]
+    assert result["total"] == 3
+    assert [o["order_sn"] for o in result["orders"]] == [
+        "20260801005",
+        "20260801002",
+        "20260801001",
+    ]
     first = result["orders"][0]
-    assert first["status"] == "待发货"
+    assert first["status"] == "已完成"
     item = first["items"][0]
     assert item == {
-        "product_id": "P002",
-        "name": "小米电视 65 英寸",
-        "spec": "65英寸",
-        "price": 3499,
+        "product_id": "P006",
+        "name": "贝亲 S1 Pro 电动吸奶器",
+        "spec": "双边电动 静音款",
+        "price": 1299,
         "quantity": 1,
     }
 
 
-async def test_my_orders_user2_two_orders():
-    """user2：2 单（003/004），created_at 倒序。"""
+async def test_my_orders_user2_orders():
+    """user2：3 单（006/004/003），created_at 倒序。"""
     result = await ds.my_orders(requester_user_id="uid-user2", requester_username="user2")
-    assert result["total"] == 2
-    assert [o["order_sn"] for o in result["orders"]] == ["20260801004", "20260801003"]
+    assert result["total"] == 3
+    assert [o["order_sn"] for o in result["orders"]] == [
+        "20260801006",
+        "20260801004",
+        "20260801003",
+    ]
 
 
 async def test_my_orders_filter_by_status():
@@ -294,8 +308,8 @@ async def test_my_orders_filter_by_status():
 async def test_my_orders_pagination():
     """分页：total 为过滤后总数（与分页无关），orders 按倒序切片。"""
     page = await ds.my_orders(requester_user_id="uid-user1", requester_username="user1", limit=1, offset=1)
-    assert page["total"] == 2
-    assert [o["order_sn"] for o in page["orders"]] == ["20260801001"]
+    assert page["total"] == 3
+    assert [o["order_sn"] for o in page["orders"]] == ["20260801002"]
 
 
 async def test_my_orders_unknown_requester_empty():
@@ -545,3 +559,47 @@ async def test_list_refunds_unknown_owner_returns_empty():
     )
     result = await ds.list_refunds(owner_username="ghost-user")
     assert result == {"refunds": [], "total": 0}
+
+
+# ---- phase15：跨品类同型号商品（S1 Pro）与演示订单 ----
+
+
+async def test_query_product_p006_breast_pump():
+    """P006 贝亲 S1 Pro 电动吸奶器可查（user 视图：stock_status，无精确 stock）。"""
+    product = await ds.query_product("P006", requester_role="user")
+    assert product == {
+        "id": "P006",
+        "name": "贝亲 S1 Pro 电动吸奶器",
+        "spec": "双边电动 静音款",
+        "price": 1299,
+        "stock_status": "有货",
+        "services": [],
+    }
+
+
+async def test_query_product_p007_robot_vacuum():
+    """P007 追觅 S1 Pro 扫地机器人可查（user 视图：stock_status，无精确 stock）。"""
+    product = await ds.query_product("P007", requester_role="user")
+    assert product == {
+        "id": "P007",
+        "name": "追觅 S1 Pro 扫地机器人",
+        "spec": "自集尘 拖扫一体",
+        "price": 2999,
+        "stock_status": "有货",
+        "services": [],
+    }
+
+
+async def test_user1_orders_hold_only_p006_of_s1_pro():
+    """user1 仅持有 P006：订单商品含 P006 且不含 P007（订单交集唯一）。"""
+    result = await ds.my_orders(requester_user_id="uid-user1", requester_username="user1")
+    pids = {i["product_id"] for o in result["orders"] for i in o["items"]}
+    assert "P006" in pids
+    assert "P007" not in pids
+
+
+async def test_user2_orders_hold_both_s1_pro():
+    """user2 同时持有两款：订单商品同时含 P006 与 P007（订单交集歧义）。"""
+    result = await ds.my_orders(requester_user_id="uid-user2", requester_username="user2")
+    pids = {i["product_id"] for o in result["orders"] for i in o["items"]}
+    assert {"P006", "P007"} <= pids
