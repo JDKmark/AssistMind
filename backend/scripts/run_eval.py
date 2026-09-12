@@ -26,6 +26,7 @@
   2  LLM 不可用（未配置 API Key 或 DeepSeek/Ollama 均失败）
   3  知识来源完全不可用（Qdrant 不可达且本地 knowledge/ops 无文档）
   4  评估未产生任何有效得分（评分调用全部失败）
+  5  ragas 不可导入（评估依赖缺失，如环境未按锁安装 pillow）
 
 注意：ragas 0.4.3 硬依赖 langchain_community.chat_models.vertexai，
 而 langchain-community 0.4.x 已移除该模块，import ragas 前必须安装兼容垫片（见 _install_vertexai_shim）。
@@ -70,21 +71,46 @@ os.environ.setdefault("RAGAS_DO_NOT_TRACK", "true")
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 import openai  # noqa: E402
-from ragas import aevaluate  # noqa: E402
-from ragas.dataset_schema import EvaluationDataset, SingleTurnSample  # noqa: E402
-from ragas.embeddings.base import BaseRagasEmbedding, BaseRagasEmbeddings  # noqa: E402
-from ragas.llms import llm_factory  # noqa: E402
-from ragas.metrics import (  # noqa: E402
-    context_precision,
-    context_recall,
-    faithfulness,
-)
-from ragas.metrics.collections import AnswerRelevancy as CollectionsAnswerRelevancy  # noqa: E402
-from ragas.metrics.collections.answer_relevancy.util import (  # noqa: E402
-    AnswerRelevanceInput,
-    AnswerRelevanceOutput,
-    AnswerRelevancePrompt,
-)
+
+try:
+    from ragas import aevaluate  # noqa: E402
+    from ragas.dataset_schema import EvaluationDataset, SingleTurnSample  # noqa: E402
+    from ragas.embeddings.base import BaseRagasEmbedding, BaseRagasEmbeddings  # noqa: E402
+    from ragas.llms import llm_factory  # noqa: E402
+    from ragas.metrics import (  # noqa: E402
+        context_precision,
+        context_recall,
+        faithfulness,
+    )
+    from ragas.metrics.collections import (
+        AnswerRelevancy as CollectionsAnswerRelevancy,  # noqa: E402
+    )
+    from ragas.metrics.collections.answer_relevancy.util import (  # noqa: E402
+        AnswerRelevanceInput,
+        AnswerRelevanceOutput,
+        AnswerRelevancePrompt,
+    )
+    RAGAS_AVAILABLE = True
+    RAGAS_IMPORT_ERROR: BaseException | None = None
+except ImportError as e:
+    # ragas 缺失或其传递依赖不可用时降级：本模块仍可正常导入（帮助函数单测
+    # /纯逻辑用例不被连坐——CI 曾因 ragas→PIL 导入失败在 pytest 收集阶段
+    # 整体 ERROR），评估入口（main/run_evaluation）显式报错退出，不裸抛栈
+    aevaluate = None
+    EvaluationDataset = None  # type: ignore[assignment,misc]
+    SingleTurnSample = None  # type: ignore[assignment,misc]
+    BaseRagasEmbedding = None  # type: ignore[assignment,misc]
+    BaseRagasEmbeddings = None  # type: ignore[assignment,misc]
+    llm_factory = None  # type: ignore[assignment]
+    context_precision = None  # type: ignore[assignment,misc]
+    context_recall = None  # type: ignore[assignment,misc]
+    faithfulness = None  # type: ignore[assignment,misc]
+    CollectionsAnswerRelevancy = None  # type: ignore[assignment,misc]
+    AnswerRelevanceInput = None  # type: ignore[assignment,misc]
+    AnswerRelevanceOutput = None  # type: ignore[assignment,misc]
+    AnswerRelevancePrompt = None  # type: ignore[assignment,misc]
+    RAGAS_AVAILABLE = False
+    RAGAS_IMPORT_ERROR = e
 
 from app.config import get_settings  # noqa: E402
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm  # noqa: E402
@@ -104,8 +130,11 @@ KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "knowledge",
 
 # RAGAS 指标（aevaluate 批处理部分）。answer_relevancy 单独走 collections 新版
 # （循环采样 3 个反向问题取均值，不依赖 LLM 的 n 参数；旧版在 Instructor LLM 下
-# 会退化为单点采样，见 run_evaluation 注释）
-EVAL_METRICS = [faithfulness, context_precision, context_recall]
+# 会退化为单点采样，见 run_evaluation 注释）。
+# ragas 不可导入时为空列表（_select_metrics 返回空，评估入口在 main 显式报错退出）
+EVAL_METRICS = [
+    m for m in (faithfulness, context_precision, context_recall) if m is not None
+]
 
 
 def load_dataset(path: str) -> list[dict]:
@@ -267,44 +296,50 @@ async def run_rag(item: dict) -> dict:
     }
 
 
-class ProjectEmbeddings(BaseRagasEmbeddings, BaseRagasEmbedding):
-    """ragas 评估用 embedding：复用项目 embedding（BAAI/bge-base-zh-v1.5）。
+if RAGAS_AVAILABLE:
 
-    同时继承新旧两套基类：
-    - 旧版指标（aevaluate 批处理）用 embed_query/embed_documents
-    - collections 新版指标用 embed_text/aembed_text，且构造时做
-      isinstance(BaseRagasEmbedding) 校验，因此必须继承新版基类
-    两套接口转发到同一实现（embed_sync）。
-    embedding 失败时抛出异常，由 ragas 记为该行 NaN（不会静默给出错误分数）。
-    """
+    class ProjectEmbeddings(BaseRagasEmbeddings, BaseRagasEmbedding):
+        """ragas 评估用 embedding：复用项目 embedding（BAAI/bge-base-zh-v1.5）。
 
-    def embed_query(self, text: str) -> list[float]:
-        vecs = embed_sync([text])
-        if not vecs:
-            raise RuntimeError("项目 embedding 不可用（embed_sync 返回 None）")
-        return vecs[0]
+        同时继承新旧两套基类：
+        - 旧版指标（aevaluate 批处理）用 embed_query/embed_documents
+        - collections 新版指标用 embed_text/aembed_text，且构造时做
+          isinstance(BaseRagasEmbedding) 校验，因此必须继承新版基类
+        两套接口转发到同一实现（embed_sync）。
+        embedding 失败时抛出异常，由 ragas 记为该行 NaN（不会静默给出错误分数）。
+        """
 
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        vecs = embed_sync(list(texts))
-        if vecs is None:
-            raise RuntimeError("项目 embedding 不可用（embed_sync 返回 None）")
-        return vecs
+        def embed_query(self, text: str) -> list[float]:
+            vecs = embed_sync([text])
+            if not vecs:
+                raise RuntimeError("项目 embedding 不可用（embed_sync 返回 None）")
+            return vecs[0]
 
-    async def aembed_query(self, text: str) -> list[float]:
-        return self.embed_query(text)
+        def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            vecs = embed_sync(list(texts))
+            if vecs is None:
+                raise RuntimeError("项目 embedding 不可用（embed_sync 返回 None）")
+            return vecs
 
-    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        return self.embed_documents(texts)
+        async def aembed_query(self, text: str) -> list[float]:
+            return self.embed_query(text)
 
-    # ---- collections 新版指标接口（ragas.metrics.collections）----
-    def embed_text(self, text: str, **kwargs) -> list[float]:
-        return self.embed_query(text)
+        async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+            return self.embed_documents(texts)
 
-    async def aembed_text(self, text: str, **kwargs) -> list[float]:
-        return self.embed_query(text)
+        # ---- collections 新版指标接口（ragas.metrics.collections）----
+        def embed_text(self, text: str, **kwargs) -> list[float]:
+            return self.embed_query(text)
 
-    async def aembed_texts(self, texts: list[str], **kwargs) -> list[list[float]]:
-        return self.embed_documents(list(texts))
+        async def aembed_text(self, text: str, **kwargs) -> list[float]:
+            return self.embed_query(text)
+
+        async def aembed_texts(self, texts: list[str], **kwargs) -> list[list[float]]:
+            return self.embed_documents(list(texts))
+
+else:
+    # ragas 不可导入时的占位绑定：仅 run_evaluation（已前置拦截）会引用
+    ProjectEmbeddings = None  # type: ignore[assignment,misc]
 
 
 def build_ragas_llm(async_client: bool = False):
@@ -344,40 +379,46 @@ def build_ragas_llm(async_client: bool = False):
     )
 
 
-class ZhAnswerRelevancePrompt(AnswerRelevancePrompt):
-    """反向问题生成 prompt：强制与回答同语言（中文）。
+if RAGAS_AVAILABLE:
 
-    默认英文指令在 DeepSeek 下会随机生成英文反向问题，跨语言 embedding
-    相似度极低 → answer_relevancy 被随机拉低（0-3 个英文问题，样本级
-    ±0.2-0.7 波动，甚至 noncommittal 判定后的 0.000 极端值）。中文答案
-    必须生成中文问题，跨语言对比无意义。
-    """
+    class ZhAnswerRelevancePrompt(AnswerRelevancePrompt):
+        """反向问题生成 prompt：强制与回答同语言（中文）。
 
-    instruction = """Generate a question for the given answer and identify if the answer is noncommittal.
+        默认英文指令在 DeepSeek 下会随机生成英文反向问题，跨语言 embedding
+        相似度极低 → answer_relevancy 被随机拉低（0-3 个英文问题，样本级
+        ±0.2-0.7 波动，甚至 noncommittal 判定后的 0.000 极端值）。中文答案
+        必须生成中文问题，跨语言对比无意义。
+        """
+
+        instruction = """Generate a question for the given answer and identify if the answer is noncommittal.
 The question MUST be written in the SAME LANGUAGE as the answer (if the answer is Chinese, write the question in Chinese).
 Give noncommittal as 1 if the answer is noncommittal (evasive, vague, or ambiguous) and 0 if the answer is substantive.
 Examples of noncommittal answers: "I don't know", "I'm not sure", "It depends"."""
 
-    examples = [
-        (
-            AnswerRelevanceInput(response="华为 Mate 70 Pro 售价 6999 元。"),
-            AnswerRelevanceOutput(question="华为 Mate 70 Pro 多少钱？", noncommittal=0),
-        ),
-        (
-            AnswerRelevanceInput(
-                response="我无法回答这个问题，因为我没有相关信息。"
+        examples = [
+            (
+                AnswerRelevanceInput(response="华为 Mate 70 Pro 售价 6999 元。"),
+                AnswerRelevanceOutput(question="华为 Mate 70 Pro 多少钱？", noncommittal=0),
             ),
-            AnswerRelevanceOutput(question="这个问题有答案吗？", noncommittal=1),
-        ),
-    ]
+            (
+                AnswerRelevanceInput(
+                    response="我无法回答这个问题，因为我没有相关信息。"
+                ),
+                AnswerRelevanceOutput(question="这个问题有答案吗？", noncommittal=1),
+            ),
+        ]
 
+    class ZhAnswerRelevancy(CollectionsAnswerRelevancy):
+        """collections AnswerRelevancy + 中文反向问题约束（见 ZhAnswerRelevancePrompt）。"""
 
-class ZhAnswerRelevancy(CollectionsAnswerRelevancy):
-    """collections AnswerRelevancy + 中文反向问题约束（见 ZhAnswerRelevancePrompt）。"""
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.prompt = ZhAnswerRelevancePrompt()
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.prompt = ZhAnswerRelevancePrompt()
+else:
+    # ragas 不可导入时的占位绑定：仅 run_evaluation（已前置拦截）会引用
+    ZhAnswerRelevancePrompt = None  # type: ignore[assignment,misc]
+    ZhAnswerRelevancy = None  # type: ignore[assignment,misc]
 
 
 async def run_evaluation(rows: list[dict]):
@@ -393,6 +434,10 @@ async def run_evaluation(rows: list[dict]):
     失败行（raise_exceptions=False）由 ragas 记为 NaN，逐条明细中显示为 "-"，
     平均分按有效行计算，不静默掩盖。
     """
+    if not RAGAS_AVAILABLE:  # pragma: no cover - main 已前置拦截，防御性兜底
+        raise RuntimeError(
+            f"ragas 不可导入，无法执行评估（RAGAS_IMPORT_ERROR: {RAGAS_IMPORT_ERROR}）"
+        )
     metrics = _select_metrics(rows)
     samples = [
         SingleTurnSample(
@@ -544,6 +589,15 @@ def print_report(rows: list[dict], scores: list[dict]) -> int:
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    # 0. ragas 就绪检查：依赖缺失时明确退出码 5，不裸抛 ImportError 栈
+    if not RAGAS_AVAILABLE:
+        logger.error(
+            "[Eval] ragas 不可导入，评估终止（RAGAS_IMPORT_ERROR: %s）。"
+            "请按锁重装依赖：uv sync --frozen --extra dev（锁内已含 pillow）",
+            RAGAS_IMPORT_ERROR,
+        )
+        sys.exit(5)
 
     # 1. 数据集（支持自定义路径，便于部分样本冒烟验证）
     dataset_path = sys.argv[1] if len(sys.argv) > 1 else DATASET_PATH

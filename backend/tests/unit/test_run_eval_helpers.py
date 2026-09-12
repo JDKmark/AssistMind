@@ -4,6 +4,10 @@
 1. 全量样本含 ground_truth → 保留 context_recall
 2. 存在无 ground_truth 样本（bad case 回流）→ 剔除 context_recall、保留其余
 3. load_dataset：question 为空跳过、ground_truth 为空保留
+
+依赖说明：run_eval 模块对 ragas 做 try/except 降级导入（RAGAS_AVAILABLE 标记），
+本测试文件的导入永不失败；涉及 ragas 指标对象的用例在 ragas 不可导入时 skipif
+跳过（纯逻辑用例无条件运行）——单测收集不再被评估工具链的依赖问题拖垮。
 """
 
 from __future__ import annotations
@@ -12,14 +16,19 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 # scripts/run_eval.py 与 tests 不同目录，手动把 scripts 加入 import 路径
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from run_eval import _select_metrics, context_recall, load_dataset  # noqa: E402
+from run_eval import RAGAS_AVAILABLE, _select_metrics, context_recall, load_dataset  # noqa: E402
+
+_RAGAS_SKIP_REASON = "ragas 不可导入（评估依赖缺失），涉及 ragas 指标对象的用例跳过"
 
 
+@pytest.mark.skipif(not RAGAS_AVAILABLE, reason=_RAGAS_SKIP_REASON)
 def test_select_metrics_keeps_context_recall_when_all_ground_truth():
     """全部样本有标准答案：context_recall 保留。"""
     rows = [{"ground_truth": "答案1"}, {"ground_truth": "答案2"}]
@@ -28,6 +37,7 @@ def test_select_metrics_keeps_context_recall_when_all_ground_truth():
     assert "faithfulness" in names
 
 
+@pytest.mark.skipif(not RAGAS_AVAILABLE, reason=_RAGAS_SKIP_REASON)
 def test_select_metrics_drops_context_recall_for_badcase_rows():
     """存在无 ground_truth 样本（bad case 回流）：剔除 context_recall，保留其余。"""
     rows = [{"ground_truth": ""}, {"ground_truth": "有答案"}]
