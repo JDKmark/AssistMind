@@ -151,7 +151,13 @@ class QdrantClient:
                     collection_name=settings.QDRANT_COLLECTION,
                     query=query_vector,
                     limit=top_k,
-                    query_filter=models.Filter(must=[flt]),
+                    query_filter=models.Filter(
+                        must=[flt],
+                        # must_not 只匹配字段值等于 False 的点：存量数据缺 enabled 字段不被过滤（视为启用）
+                        must_not=[
+                            models.FieldCondition(key="enabled", match=models.MatchValue(value=False))
+                        ],
+                    ),
                     with_payload=True,
                 )
                 results = response.points
@@ -201,6 +207,35 @@ class QdrantClient:
             logger.warning("[Qdrant] delete_by_doc 失败: %s", e)
             return False
 
+    async def set_payload_by_doc(self, doc_id: str, payload: dict) -> bool:
+        """按 doc_id 批量写入 payload（文档启停切换底层）。
+
+        降级契约与 delete_by_doc 一致：
+        未连接 / 断路器 Open / 调用失败均返回 False，不抛异常。
+        """
+        if not self._client:
+            return False
+        if is_open("qdrant"):
+            return False
+        try:
+            await call_with_breaker(
+                "qdrant",
+                self._client.set_payload,
+                collection_name=settings.QDRANT_COLLECTION,
+                payload=payload,
+                points_selector=models.FilterSelector(
+                    filter=models.Filter(
+                        must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
+                    )
+                ),
+            )
+            return True
+        except CircuitBreakerOpenError:
+            return False
+        except Exception as e:
+            logger.warning("[Qdrant] set_payload_by_doc 失败: %s", e)
+            return False
+
     async def scroll_all(self) -> list[dict[str, Any]]:
         """全量拉取所有 chunk（含 payload）。用于服务启动时构建 BM25 内存索引。"""
         if not self._client:
@@ -235,6 +270,7 @@ class QdrantClient:
                                 ),
                                 "section_title": payload.get("section_title", ""),
                                 "table_comment": payload.get("table_comment", ""),
+                                "enabled": payload.get("enabled", True),
                             }
                         )
                     if next_offset is None:
@@ -293,6 +329,7 @@ class QdrantClient:
                                 "section_title": payload.get("section_title", ""),
                                 "table_comment": payload.get("table_comment", ""),
                                 "text": payload.get("text", ""),
+                                "enabled": payload.get("enabled", True),
                             }
                         )
                     if next_offset is None:

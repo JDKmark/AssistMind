@@ -167,3 +167,28 @@ async def test_bm25_reload_qdrant_unavailable_keeps_version(fake_redis):
     assert index._seen_version == 0
     old = index._search_sync("连接池", top_k=5, role="user")
     assert [r["doc_id"] for r in old] == ["old"]
+
+
+async def test_bm25_skips_disabled_docs(fake_redis):
+    """停用文档（enabled=False）不参与 BM25 打分，search 只返回启用篇。"""
+    enabled_doc = _doc("on", "退货规则支持七天无理由退货")
+    disabled_doc = _doc("off", "退货规则支持七天无理由退货")
+    disabled_doc["enabled"] = False
+
+    index = BM25Index()
+    index.build([enabled_doc, disabled_doc])
+
+    results = await index.search("退货规则", top_k=5)
+    assert [r["doc_id"] for r in results] == ["on"]
+
+
+async def test_bm25_missing_enabled_treated_as_enabled(fake_redis):
+    """存量文档 payload 缺 enabled 字段视为启用，正常命中不被过滤。"""
+    legacy_doc = _doc("legacy", "连接池耗尽需要调大最大连接数")
+    assert "enabled" not in legacy_doc  # P0 之前灌库的 chunk 无该字段
+
+    index = BM25Index()
+    index.build([legacy_doc])
+
+    results = await index.search("连接池", top_k=5)
+    assert [r["doc_id"] for r in results] == ["legacy"]

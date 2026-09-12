@@ -25,11 +25,13 @@ from rq.exceptions import NoSuchJobError
 from rq.job import Job
 
 from app.config import get_settings
+from app.core.cache.semantic_cache import invalidate as cache_invalidate
 from app.core.feedback_service import list_feedback, mark_exported
 from app.core.infra.qdrant import get_qdrant
 from app.core.rag import parsers
 from app.core.rag.bm25 import get_bm25
-from app.core.rag.seeder import seed_docs
+from app.core.rag.chunking import chunk_text
+from app.core.rag.embedding import embed_sync
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -41,6 +43,12 @@ OUT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "eval_fee
 _BACKEND_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
+
+# backend/ → 仓库根 knowledge/（上传与 seed 灌库的源文件都在这里）
+KB_ROOT = os.path.join(os.path.dirname(_BACKEND_ROOT), "knowledge")
+
+# 重灌可定位的源文件扩展名（与上传允许列表一致，外加 seed 库涉及的 .sql/.yml/.yaml）
+_ALLOWED_EXTS = (".md", ".txt", ".pdf", ".docx", ".sql", ".yml", ".yaml")
 
 BAD_SCORE_MAX = 2  # 差评阈值：score<=2 视为 bad case（与 export_feedback_badcases.py 一致）
 
@@ -108,19 +116,33 @@ async def rebuild_knowledge_base() -> dict:
     return {"rebuilt": True, "chunks": len(chunks)}
 
 
-async def ingest_uploaded_document(file_path: str, filename: str, category: str = "") -> dict:
-    """上传文档入库任务（POST /knowledge/upload 校验通过后入队）。
+async def _ingest_from_file(
+    file_path: str,
+    filename: str,
+    doc_id: str,
+    title: str | None = None,
+    category: str = "",
+    security_group: list[str] | None = None,
+    source: str | None = None,
+    enabled: bool | None = None,
+) -> dict:
+    """单文档入库共用核心（上传 ingest 与 reingest 复用）。
 
-    worker 无 lifespan，任务内按需 qdrant.connect()（幂等）；解析按扩展名分流
-    （pdf/docx 走 parsers，其余 utf-8 直读），构造单文档走 seed_docs(reset=True)
-    ——reset 语义保证重复上传同名文件幂等覆盖（旧 chunks 先删后建，不新旧混合）。
-    seed_docs 的 BM25 build 只含本批 docs，不可依赖——写入成功后按 scroll_all
-    全量重建并 mark_changed 广播版本（web 进程惰性重载可见新文档）。
-    任一步失败返回含 error 的 dict（worker 内不抛栈、不静默，失败必 logger）。
+    流程：读文件按扩展名提取文本 → 构造 metadata（chunk_text 透传进每个
+    chunk payload）→ chunk_text → **先 embed_sync 全部 chunks 成功** →
+    connect（幂等）→ delete_by_doc → upsert → BM25 全量重建 + mark_changed
+    + 语义缓存失效。embedding 失败发生在删除之前，旧版本完整保留。
+
+    Args:
+        title: 文档标题（缺省用 filename；reingest 复用存量 chunk 的 title）
+        category: 分类（缺省 "upload"）
+        security_group: RBAC 角色列表（缺省全角色）
+        source: 来源路径（缺省 knowledge/uploads/{filename}）
+        enabled: 非 None 时写入 metadata，chunk payload 携带启停状态
     """
     try:
         if not os.path.exists(file_path):
-            logger.warning("[Task] ingest_uploaded_document：文件不存在 %s", file_path)
+            logger.warning("[Task] ingest：文件不存在 %s", file_path)
             return {"ingested": False, "error": f"文件不存在: {file_path}"}
 
         ext = os.path.splitext(file_path)[1].lower()
@@ -132,57 +154,171 @@ async def ingest_uploaded_document(file_path: str, filename: str, category: str 
                 with open(file_path, encoding="utf-8") as f:
                     text = f.read()
         except Exception as e:
-            logger.warning("[Task] ingest_uploaded_document：解析失败 %s: %s", filename, e)
+            logger.warning("[Task] ingest：解析失败 %s: %s", filename, e)
             return {"ingested": False, "error": f"文档解析失败或内容为空: {filename}"}
         if not text or not text.strip():
-            logger.warning("[Task] ingest_uploaded_document：内容为空 %s", filename)
+            logger.warning("[Task] ingest：内容为空 %s", filename)
             return {"ingested": False, "error": f"文档解析失败或内容为空: {filename}"}
 
-        stem = os.path.splitext(os.path.basename(filename))[0]
-        doc_id = f"uploads/{stem}"
         # PDF/DOCX 无 Markdown 结构：文件名注入首位标题（与 seed 脚本一致，
         # 结构感知切块把标题并入首个 chunk，保留文档归属语义）
         if ext in (".pdf", ".docx"):
             text = f"# {filename}\n\n{text}"
 
-        def metadata_fn(doc: dict) -> dict:
-            return {
-                "doc_id": doc["doc_id"],
-                "title": doc["title"],
-                "source": f"knowledge/uploads/{filename}",
-                "category": category or "upload",
-                "security_group": ["user", "agent", "admin"],
-            }
+        metadata = {
+            "doc_id": doc_id,
+            "title": title or filename,
+            "source": source or f"knowledge/uploads/{filename}",
+            "category": category or "upload",
+            "security_group": security_group or ["user", "agent", "admin"],
+        }
+        if enabled is not None:
+            metadata["enabled"] = enabled
+
+        # chunk_text 把 metadata 展开进每个 chunk dict（**metadata），
+        # enabled 无需 upsert 前另行注入
+        chunks = chunk_text(text, metadata=metadata)
+        if not chunks:
+            logger.warning("[Task] ingest：切块为空 %s", filename)
+            return {"ingested": False, "error": f"文档解析失败或内容为空: {filename}"}
+
+        # 先 embedding 后删旧点：embedding 失败时旧版本完整保留（重灌安全契约）
+        embeddings = embed_sync([c["text"] for c in chunks])
+        if embeddings is None:
+            logger.warning("[Task] ingest：embedding 失败，已保留旧版本 %s", doc_id)
+            return {"ingested": False, "error": "embedding 失败，文档未更新（旧版本已保留）"}
 
         qdrant = get_qdrant()
         if not qdrant.is_connected:
             await qdrant.connect()  # worker 无 lifespan，按需建立连接
-        result = await seed_docs(
-            [{"doc_id": doc_id, "title": filename, "text": text}],
-            metadata_fn,
-            reset=True,
-            log_prefix="IngestUpload",
-        )
-        if not result.get("qdrant_ok"):
-            logger.warning("[Task] ingest_uploaded_document：Qdrant 不可用，%s 入库失败", filename)
+        if not qdrant.is_connected:
+            logger.warning("[Task] ingest：Qdrant 不可用，%s 入库失败", filename)
             return {"ingested": False, "error": "Qdrant 不可用，文档入库失败"}
 
-        written = result.get("vector_written", 0)
-        if written > 0:
-            # seed_docs 结束时会 close 连接，按需重连后再全量重建 BM25
-            qdrant = get_qdrant()
-            if not qdrant.is_connected:
-                await qdrant.connect()
-            chunks_all = await qdrant.scroll_all()
-            get_bm25().build(chunks_all)
+        await qdrant.delete_by_doc(doc_id)
+        ok = await qdrant.upsert(chunks, embeddings)
+        if not ok:
+            logger.warning("[Task] ingest：upsert 失败 %s", doc_id)
+            return {"ingested": False, "error": "Qdrant 写入失败，文档未更新"}
+
+        # BM25 全量重建（seed_docs 的 build 只含本批 docs，不可依赖）；
+        # 版本广播与语义缓存失效为旁路步骤，失败仅 warning 不回滚写入
+        chunks_all = await qdrant.scroll_all()
+        get_bm25().build(chunks_all)
+        try:
             get_bm25().mark_changed()
-        logger.info(
-            "[Task] ingest_uploaded_document 完成：%s → %s（%s chunks）", filename, doc_id, written
-        )
-        return {"ingested": True, "doc_id": doc_id, "chunks": written}
+        except Exception as e:
+            logger.warning("[Task] ingest：BM25 版本广播失败（不影响入库）: %s", e)
+        try:
+            await cache_invalidate()
+        except Exception as e:
+            logger.warning("[Task] ingest：语义缓存失效失败（不影响入库）: %s", e)
+
+        logger.info("[Task] ingest 完成：%s → %s（%s chunks）", filename, doc_id, len(chunks))
+        return {"ingested": True, "doc_id": doc_id, "chunks": len(chunks)}
     except Exception as e:
-        logger.exception("[Task] ingest_uploaded_document 异常：%s", e)
+        logger.exception("[Task] ingest 异常：%s", e)
         return {"ingested": False, "error": f"文档入库异常: {e}"}
+
+
+async def ingest_uploaded_document(file_path: str, filename: str, category: str = "") -> dict:
+    """上传文档入库任务（POST /knowledge/upload 校验通过后入队）。
+
+    薄壳：校验文件存在 → 定 doc_id=uploads/<stem> → 共用核心 _ingest_from_file
+    （解析/切块/embedding/先删后写/BM25 重建，详见其 docstring）。
+    任一步失败返回含 error 的 dict（worker 内不抛栈、不静默，失败必 logger）。
+    """
+    if not os.path.exists(file_path):
+        logger.warning("[Task] ingest_uploaded_document：文件不存在 %s", file_path)
+        return {"ingested": False, "error": f"文件不存在: {file_path}"}
+    doc_id = f"uploads/{os.path.splitext(os.path.basename(filename))[0]}"
+    return await _ingest_from_file(file_path, filename, doc_id, category=category)
+
+
+def resolve_source_path(doc_id: str) -> str | None:
+    """按 doc_id 定位源文件（重灌用）。
+
+    - uploads/ 前缀 → KB_ROOT/uploads/<stem>.{允许扩展名}
+    - 其余 → KB_ROOT/mall 与 KB_ROOT/ops 递归匹配：文件名 stem 相等，
+      或相对路径去扩展名相等（mall 的 doc_id 含子路径，如 business/xxx）
+    - 多扩展名命中取 mtime 最新；无命中返回 None（不抛栈）
+    """
+    doc_id = (doc_id or "").strip().strip("/")
+    if not doc_id:
+        return None
+    candidates: list[str] = []
+    if doc_id.startswith("uploads/"):
+        stem = doc_id[len("uploads/"):]
+        updir = os.path.join(KB_ROOT, "uploads")
+        if os.path.isdir(updir):
+            for name in os.listdir(updir):
+                base, ext = os.path.splitext(name)
+                if ext.lower() in _ALLOWED_EXTS and base == stem:
+                    candidates.append(os.path.join(updir, name))
+    else:
+        for sub in ("mall", "ops"):
+            root = os.path.join(KB_ROOT, sub)
+            if not os.path.isdir(root):
+                continue
+            for dirpath, _dirs, files in os.walk(root):
+                for name in files:
+                    base, ext = os.path.splitext(name)
+                    if ext.lower() not in _ALLOWED_EXTS:
+                        continue
+                    if base != doc_id:
+                        rel = os.path.relpath(os.path.join(dirpath, name), root)
+                        rel_stem = os.path.splitext(rel)[0].replace("\\", "/")
+                        if rel_stem != doc_id:
+                            continue
+                    candidates.append(os.path.join(dirpath, name))
+    if not candidates:
+        return None
+    return max(candidates, key=os.path.getmtime)
+
+
+async def reingest_document(doc_id: str) -> dict:
+    """单文档增量重灌任务（POST /knowledge/{doc_id}/reingest 入队）。
+
+    解析 doc_id 定位源文件 → 从 Qdrant 存量首个 chunk 复用元数据
+    （title/source/category/security_group/enabled；无存量时用默认值，
+    enabled 缺省视为启用）→ 共用核心 _ingest_from_file（先 embed 后删写，
+    embedding 失败保留旧版本）。源文件不存在/失败返回含 error 的 dict
+    （worker 内不抛栈、不静默，失败必 logger）。
+    """
+    try:
+        path = resolve_source_path(doc_id)
+        if path is None:
+            logger.warning("[Task] reingest_document：未找到源文件 %s", doc_id)
+            return {"ingested": False, "error": f"未找到源文件: {doc_id}"}
+
+        qdrant = get_qdrant()
+        if not qdrant.is_connected:
+            await qdrant.connect()  # worker 无 lifespan，按需建立连接
+        if not qdrant.is_connected:
+            logger.warning("[Task] reingest_document：Qdrant 不可用，%s 重灌失败", doc_id)
+            return {"ingested": False, "error": "Qdrant 不可用，文档重灌失败"}
+
+        existing = await qdrant.scroll_by_doc(doc_id)
+        first = existing[0] if existing else {}
+        filename = os.path.basename(path)
+        stem = os.path.splitext(filename)[0]
+        logger.info(
+            "[Task] reingest_document：%s → %s（存量 chunks=%d，复用元数据）",
+            doc_id, path, len(existing),
+        )
+        return await _ingest_from_file(
+            path,
+            filename,
+            doc_id,
+            title=first.get("title") or stem,
+            category=first.get("category") or "",
+            security_group=first.get("security_group") or None,
+            source=first.get("source") or None,
+            enabled=first.get("enabled", True),
+        )
+    except Exception as e:
+        logger.exception("[Task] reingest_document 异常：%s", e)
+        return {"ingested": False, "error": f"文档重灌异常: {e}"}
 
 
 def _load_existing_questions(out_path: str) -> set[str]:

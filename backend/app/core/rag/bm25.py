@@ -212,6 +212,10 @@ class BM25Index:
         scores = self._bm25.get_scores(tokens)
         filtered: list[tuple[int, float]] = []
         for i, doc in enumerate(self._docs):
+            # kb-management-p1：停用文档不参与打分也不返回（缺 enabled 字段视为启用，
+            # 兼容 P0 之前灌库的存量 chunk；启停经版本重载自然生效，无需独立机制）
+            if doc.get("enabled", True) is False:
+                continue
             sg = doc.get("security_group", ["user", "agent", "admin"])
             if role in sg:
                 filtered.append((i, float(scores[i])))

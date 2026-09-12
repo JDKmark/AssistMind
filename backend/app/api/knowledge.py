@@ -23,6 +23,7 @@ from app.core.tasks import (
     export_badcases,
     ingest_uploaded_document,
     rebuild_knowledge_base,
+    reingest_document,
     run_evaluation,
 )
 
@@ -54,6 +55,12 @@ class DeleteDocRequest(BaseModel):
     """删除文档请求。"""
 
     doc_id: str = Field(..., min_length=1, description="文档 ID")
+
+
+class ToggleRequest(BaseModel):
+    """文档启停切换请求。"""
+
+    enabled: bool = Field(..., description="是否参与检索")
 
 
 class SearchTestRequest(BaseModel):
@@ -261,6 +268,81 @@ async def get_doc_chunks(doc_id: str, user: Annotated[dict, Depends(require_staf
                 detail=f"文档不存在: {doc_id}",
             )
     return {"doc_id": doc_id, "chunks": chunks}
+
+
+@router.post("/{doc_id:path}/toggle")
+async def toggle_doc(
+    doc_id: str,
+    req: ToggleRequest,
+    user: Annotated[dict, Depends(require_admin)],
+):
+    """文档启停切换（仅管理员）：按 doc_id 批量写 payload enabled 字段。
+
+    停用的文档不参与检索（Qdrant filter must_not enabled=false、BM25 跳过
+    enabled=False），随时可恢复——比删除轻量的临时下线手段。切换后必须触发
+    BM25 版本重载（mark_changed）与语义缓存失效，否则已缓存答案仍引用停用
+    文档；两者为旁路步骤，失败仅 warning 不回滚切换。
+    """
+    qdrant = get_qdrant()
+    if not qdrant.is_connected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=QDRANT_UNAVAILABLE_MSG,
+        )
+    await _ensure_doc_exists(qdrant, doc_id)
+    ok = await qdrant.set_payload_by_doc(doc_id, {"enabled": req.enabled})
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="启停切换失败：Qdrant 断路器 Open 或写入异常",
+        )
+    try:
+        get_bm25().mark_changed()
+    except Exception as e:
+        logger.warning("[Knowledge] BM25 版本广播失败（不影响启停切换）: %s", e)
+    try:
+        await cache_invalidate()
+    except Exception as e:
+        logger.warning("[Knowledge] 语义缓存失效失败（不影响启停切换）: %s", e)
+    return {"doc_id": doc_id, "enabled": req.enabled}
+
+
+@router.post("/{doc_id:path}/reingest")
+async def reingest_doc(
+    doc_id: str,
+    user: Annotated[dict, Depends(require_admin)],
+):
+    """入队单文档增量重灌任务（仅管理员），秒回 job_id。
+
+    源文件变更后只重灌该文档（定位源文件 → 复用存量元数据 → 先 embed 后
+    删写），与 rebuild 同模式走 RQ 队列，状态经 GET /api/v1/jobs/{job_id}
+    轮询；结果形如 {"ingested": true, "doc_id", "chunks": n}。文档存在性
+    在入队前快速校验（任务内源文件定位失败的 error 仅能在 job 结果透出）。
+    """
+    qdrant = get_qdrant()
+    if not qdrant.is_connected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=QDRANT_UNAVAILABLE_MSG,
+        )
+    await _ensure_doc_exists(qdrant, doc_id)
+    job = _enqueue_or_503(reingest_document, doc_id=doc_id, owner=user.get("username", ""))
+    return {"job_id": job.id, "status": "queued"}
+
+
+async def _ensure_doc_exists(qdrant, doc_id: str) -> None:
+    """文档存在性校验（toggle/reingest 前置）：scroll_by_doc 空时回查聚合列表。
+
+    与 chunks 端点同模式：区分「存在但无 chunk」（放行）与「文档不存在」（404）。
+    """
+    chunks = await qdrant.scroll_by_doc(doc_id)
+    if not chunks:
+        aggregated = await qdrant.scroll_all()
+        if not any(d["doc_id"] == doc_id for d in _aggregate_docs(aggregated)):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"文档不存在: {doc_id}",
+            )
 
 
 @router.post("/search-test")

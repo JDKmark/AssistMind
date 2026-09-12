@@ -11,6 +11,8 @@
 8. chunk 明细：scroll_by_doc / 404 / Qdrant 不可用 503
 9. 召回测试：透传 retrieve_raw / 空白 query 422 / top_k 越界 422
 10. 未认证访问拒绝、角色限制（user 403 / agent、admin 200；admin-only 端点 agent 403）
+11. 启停切换：toggle 写 enabled + BM25 mark_changed + 缓存失效 / 404 / 503 / 旁路失败不回滚
+12. 单文档重灌：reingest 入队（透传 doc_id/owner）/ 404 / 503
 
 mock 策略：mock app.api.knowledge 中的 get_qdrant / get_bm25 / cache_invalidate /
 enqueue_task / retrieve_raw 引用，Qdrant 用 MagicMock 设置 is_connected +
@@ -543,6 +545,165 @@ def test_search_test_user_role_403():
     app.dependency_overrides[get_current_user] = user_only
     try:
         resp = client.post("/api/v1/knowledge/search-test", json={"query": "q"})
+    finally:
+        app.dependency_overrides[get_current_user] = original
+    assert resp.status_code == 403
+
+
+# ---------- 9. 文档启停切换（POST /{doc_id}/toggle，仅 admin） ----------
+
+
+def _toggle_qdrant(chunks=None, connected=True, payload_set=True):
+    qdrant = _mock_qdrant(chunks, connected=connected)
+    qdrant.scroll_by_doc = AsyncMock(return_value=DOC_CHUNKS if chunks is None else chunks)
+    qdrant.set_payload_by_doc = AsyncMock(return_value=payload_set)
+    return qdrant
+
+
+def test_toggle_doc_success():
+    """启停切换：set_payload_by_doc 写 enabled → BM25 mark_changed + 语义缓存失效，返回 {doc_id, enabled}。"""
+    qdrant = _toggle_qdrant()
+    bm25 = MagicMock()
+    with (
+        patch("app.api.knowledge.get_qdrant", return_value=qdrant),
+        patch("app.api.knowledge.get_bm25", return_value=bm25),
+        patch("app.api.knowledge.cache_invalidate", new=AsyncMock()) as mock_invalidate,
+    ):
+        resp = client.post("/api/v1/knowledge/ops-1/toggle", json={"enabled": False})
+    assert resp.status_code == 200
+    assert resp.json() == {"doc_id": "ops-1", "enabled": False}
+    qdrant.set_payload_by_doc.assert_awaited_once_with("ops-1", {"enabled": False})
+    # toggle 后 BM25 索引必须重载，停用文档才不会继续被打分
+    bm25.mark_changed.assert_called_once()
+    # 语义缓存可能引用该文档，必须失效
+    mock_invalidate.assert_awaited_once()
+
+
+def test_toggle_doc_not_found_404():
+    """启停切换：scroll_by_doc 空且聚合列表无该 doc_id → 404。"""
+    qdrant = _toggle_qdrant(chunks=[])  # scroll_all 返回 CHUNKS，无 ghost
+    with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
+        resp = client.post("/api/v1/knowledge/ghost/toggle", json={"enabled": False})
+    assert resp.status_code == 404
+    assert "不存在" in resp.json()["detail"]
+    qdrant.set_payload_by_doc.assert_not_awaited()
+
+
+def test_toggle_doc_qdrant_unavailable_503():
+    """启停切换：Qdrant 不可用 → 503 明确错误。"""
+    qdrant = _toggle_qdrant(connected=False)
+    with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
+        resp = client.post("/api/v1/knowledge/ops-1/toggle", json={"enabled": True})
+    assert resp.status_code == 503
+    assert "Qdrant" in resp.json()["detail"]
+
+
+def test_toggle_doc_set_payload_failed_503():
+    """启停切换：set_payload_by_doc 返回 False（断路器 Open/写入异常）→ 503。"""
+    qdrant = _toggle_qdrant(payload_set=False)
+    with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
+        resp = client.post("/api/v1/knowledge/ops-1/toggle", json={"enabled": False})
+    assert resp.status_code == 503
+    assert "启停" in resp.json()["detail"]
+
+
+def test_toggle_doc_bypass_failure_still_200(caplog):
+    """启停切换：旁路步骤（mark_changed / 缓存失效）失败只 warning，不回滚切换。"""
+    qdrant = _toggle_qdrant()
+    bm25 = MagicMock()
+    bm25.mark_changed = MagicMock(side_effect=ConnectionError("redis down"))
+    with (
+        patch("app.api.knowledge.get_qdrant", return_value=qdrant),
+        patch("app.api.knowledge.get_bm25", return_value=bm25),
+        patch(
+            "app.api.knowledge.cache_invalidate",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+    ):
+        resp = client.post("/api/v1/knowledge/ops-1/toggle", json={"enabled": True})
+    assert resp.status_code == 200
+    assert resp.json() == {"doc_id": "ops-1", "enabled": True}
+    qdrant.set_payload_by_doc.assert_awaited_once_with("ops-1", {"enabled": True})
+    assert caplog.records
+
+
+def test_toggle_doc_agent_role_403():
+    """启停切换：仅管理员可操作，agent（staff）返回 403。"""
+    async def agent_user():
+        return {"username": "agent1", "role": "agent"}
+
+    original = app.dependency_overrides[get_current_user]
+    app.dependency_overrides[get_current_user] = agent_user
+    try:
+        resp = client.post("/api/v1/knowledge/ops-1/toggle", json={"enabled": False})
+    finally:
+        app.dependency_overrides[get_current_user] = original
+    assert resp.status_code == 403
+
+
+# ---------- 10. 单文档增量重灌（POST /{doc_id}/reingest，仅 admin） ----------
+
+
+def _reingest_job_mock():
+    job = MagicMock()
+    job.id = "job-reingest"
+    return job
+
+
+def test_reingest_doc_enqueues_job():
+    """重灌：文档存在 → 入队 reingest_document 任务（透传 doc_id/owner），秒回 job_id。"""
+    from app.core.tasks import reingest_document
+
+    qdrant = _toggle_qdrant()  # scroll_by_doc 返回 DOC_CHUNKS（存在）
+    job = _reingest_job_mock()
+    with (
+        patch("app.api.knowledge.get_qdrant", return_value=qdrant),
+        patch("app.api.knowledge.enqueue_task", return_value=job) as mock_enqueue,
+    ):
+        resp = client.post("/api/v1/knowledge/ops-1/reingest")
+    assert resp.status_code == 200
+    assert resp.json() == {"job_id": "job-reingest", "status": "queued"}
+    mock_enqueue.assert_called_once()
+    assert mock_enqueue.call_args[0][0] is reingest_document
+    kwargs = mock_enqueue.call_args[1]
+    assert kwargs["doc_id"] == "ops-1"
+    assert kwargs["owner"] == "testuser"
+    # 入队前不做耗时重灌动作
+    qdrant.set_payload_by_doc.assert_not_awaited()
+
+
+def test_reingest_doc_not_found_404():
+    """重灌：scroll_by_doc 空且聚合列表无该 doc_id → 404，不入队。"""
+    qdrant = _toggle_qdrant(chunks=[])
+    job = _reingest_job_mock()
+    with (
+        patch("app.api.knowledge.get_qdrant", return_value=qdrant),
+        patch("app.api.knowledge.enqueue_task", return_value=job) as mock_enqueue,
+    ):
+        resp = client.post("/api/v1/knowledge/ghost/reingest")
+    assert resp.status_code == 404
+    assert "不存在" in resp.json()["detail"]
+    mock_enqueue.assert_not_called()
+
+
+def test_reingest_doc_qdrant_unavailable_503():
+    """重灌：Qdrant 不可用 → 503 明确错误（存在性校验无法进行）。"""
+    qdrant = _toggle_qdrant(connected=False)
+    with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
+        resp = client.post("/api/v1/knowledge/ops-1/reingest")
+    assert resp.status_code == 503
+    assert "Qdrant" in resp.json()["detail"]
+
+
+def test_reingest_doc_agent_role_403():
+    """重灌：仅管理员可触发，agent（staff）返回 403。"""
+    async def agent_user():
+        return {"username": "agent1", "role": "agent"}
+
+    original = app.dependency_overrides[get_current_user]
+    app.dependency_overrides[get_current_user] = agent_user
+    try:
+        resp = client.post("/api/v1/knowledge/ops-1/reingest")
     finally:
         app.dependency_overrides[get_current_user] = original
     assert resp.status_code == 403
