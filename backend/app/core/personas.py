@@ -5,7 +5,9 @@ personas.json 外置于 app/data/（与 intent_routes.json 同风格），mtime 
 之后，不覆盖客服职责与 RAG 事实性约束。
 
 「客服语气定制」的提示词层落地：语气一致性可用提示词稳定达成，
-知识问答准确性靠 RAG——「何时该微调 vs 提示词」的判断依据：语气属表层生成风格，提示词即可稳定约束。
+知识问答准确性靠 RAG——「何时该微调 vs 提示词」的判断依据：
+语气属表层生成风格，提示词即可稳定约束（详见下方 _assemble_prompt），
+LoRA 微调仅在出现领域知识/格式强对齐需求时才考虑。
 """
 
 from __future__ import annotations

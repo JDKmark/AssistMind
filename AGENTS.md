@@ -58,6 +58,8 @@ docker-compose up -d
 
 - **异步优先**：所有数据库 / Redis / Qdrant / LLM 调用必须用 async/await
 
+- **LLM 多供应商配置**：每个供应商一组 `<前缀>_API_KEY/_BASE_URL/_MODEL` 字段（前缀 = 供应商名大写、连字符转下划线，如 `SENSENOVA_*`），`.env` 切换供应商只改 `LLM_PROVIDER` 一行；解析收口在 `config.py::llm_profile()`（专属组缺项回落 `DEEPSEEK_*` 主配置并 warning 一次），`llm_factory` 一律经 `llm_profile()` 取三元组，**禁止直接引用 `settings.DEEPSEEK_*`**；新增供应商 = config.py 加一组字段 + .env 加三行，不要在 llm_factory 里散落 if
+
 - **aiosqlite 不适用**：本项目用 PostgreSQL + asyncpg，不用 SQLite
 
 - **Redis 连接状态**：`connect()` 失败时必须清空 `self._pool = None`，否则 `is_connected` 误报
@@ -276,6 +278,7 @@ cd frontend; npm run test:unit
 
 ## 提交规范（Commit Message）
 
+- **私人资料不入库（硬规则）**：`.env`、面试 / 考试 / 简历等私人备料、个人身份信息（本机路径中的个人目录名、真实密钥等）一律不进仓库；此类文件放 `private-notes/`（已 gitignore，本地保留）。新增 / 提交任何文件（含 `.trae` 文档、代码注释、脚本示例、截图说明）前自查文件名与内容，不得携带内部意图词（面试 / 求职 / 简历 / JD / 个人目录名等）与真实密钥；`.env.example` 只允许占位符
 - **以维护开源项目 / 对公众读者的话术写 commit**：像给真实开源仓库写变更说明一样——客观描述「改了什么 + 为什么改（可验证的技术原因）」，面向任何人可读，不写内部动机
 - **禁止内部/包装词汇**：commit message（title/body）与 README 等对外文本中不得出现暴露内部意图的词，如「产品化」「AI 化」「包装」「为演示/面试/求职准备」等；对外就写客观事实（如「演示方式与数据口径说明」可写，「产品化改写」不可写）
 - **Conventional Commits**：类型 `feat/fix/docs/chore/refactor/test` + 中文摘要；body 用列表描述具体改动
