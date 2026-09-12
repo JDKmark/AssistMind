@@ -34,6 +34,10 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0",
     "langfuse>=2.0.0",
     "ragas>=0.1.0",
+    # ragas 0.3.x 打包缺陷：pillow 在其可选 extra，但 ragas.prompt 在模块级
+    # from PIL import Image——不补则 uv sync（严格按锁安装）后 import ragas 即失败
+    # （CI 曾因此收集错误：ModuleNotFoundError: No module named 'PIL'）
+    "pillow>=10.0.0",
     "beautifulsoup4>=4.12.0",
     "structlog>=24.1.0",
     # 文档 ETL：二进制文档（PDF 等）解析入库
