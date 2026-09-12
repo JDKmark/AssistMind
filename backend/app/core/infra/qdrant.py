@@ -102,6 +102,7 @@ class QdrantClient:
                         "security_group": c.get("security_group", ["user", "agent", "admin"]),
                         "section_title": c.get("section_title", ""),
                         "table_comment": c.get("table_comment", ""),
+                        "chunk_index": c.get("chunk_index", idx),
                     },
                 )
                 for idx, (c, emb) in enumerate(zip(chunks, embeddings))
@@ -247,6 +248,66 @@ class QdrantClient:
             return []
         except Exception as e:
             logger.warning("[Qdrant] scroll_all 失败: %s", e)
+            return []
+
+    async def scroll_by_doc(self, doc_id: str) -> list[dict[str, Any]]:
+        """按 doc_id 拉取该文档全部 chunk（含 payload），按 chunk_index 升序。
+
+        供文档 chunk 明细端点消费；降级契约与 scroll_all 一致：
+        未连接 / 断路器 Open / 调用失败均返回 []，不抛异常。
+        """
+        if not self._client:
+            return []
+        if is_open("qdrant"):
+            logger.warning("[Qdrant] 断路器 Open，跳过 scroll_by_doc")
+            return []
+        try:
+
+            async def _do_scroll() -> list[dict[str, Any]]:
+                points = []
+                offset = None
+                while True:
+                    resp_points, next_offset = await self._client.scroll(  # type: ignore[union-attr]
+                        collection_name=settings.QDRANT_COLLECTION,
+                        limit=1000,
+                        offset=offset,
+                        scroll_filter=models.Filter(
+                            must=[
+                                models.FieldCondition(
+                                    key="doc_id", match=models.MatchValue(value=doc_id)
+                                )
+                            ]
+                        ),
+                        with_payload=True,
+                        with_vectors=False,
+                    )
+                    for p in resp_points:
+                        payload = p.payload or {}
+                        points.append(
+                            {
+                                "chunk_index": payload.get("chunk_index", -1),
+                                "doc_id": payload.get("doc_id", ""),
+                                "title": payload.get("title", ""),
+                                "source": payload.get("source", ""),
+                                "category": payload.get("category", ""),
+                                "section_title": payload.get("section_title", ""),
+                                "table_comment": payload.get("table_comment", ""),
+                                "text": payload.get("text", ""),
+                            }
+                        )
+                    if next_offset is None:
+                        break
+                    offset = next_offset
+                # chunk_index 升序；存量数据缺失补的 -1 排最后（-1 组 key 恒定，稳定排序）
+                points.sort(key=lambda x: (x["chunk_index"] < 0, x["chunk_index"]))
+                return points
+
+            return await call_with_breaker("qdrant", _do_scroll)
+        except CircuitBreakerOpenError:
+            logger.warning("[Qdrant] scroll_by_doc 断路器 Open")
+            return []
+        except Exception as e:
+            logger.warning("[Qdrant] scroll_by_doc 失败: %s", e)
             return []
 
     async def count(self) -> int:

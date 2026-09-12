@@ -27,7 +27,9 @@ from rq.job import Job
 from app.config import get_settings
 from app.core.feedback_service import list_feedback, mark_exported
 from app.core.infra.qdrant import get_qdrant
+from app.core.rag import parsers
 from app.core.rag.bm25 import get_bm25
+from app.core.rag.seeder import seed_docs
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -104,6 +106,83 @@ async def rebuild_knowledge_base() -> dict:
     get_bm25().build(chunks)
     logger.info("[Task] rebuild_knowledge_base 完成：%s chunks", len(chunks))
     return {"rebuilt": True, "chunks": len(chunks)}
+
+
+async def ingest_uploaded_document(file_path: str, filename: str, category: str = "") -> dict:
+    """上传文档入库任务（POST /knowledge/upload 校验通过后入队）。
+
+    worker 无 lifespan，任务内按需 qdrant.connect()（幂等）；解析按扩展名分流
+    （pdf/docx 走 parsers，其余 utf-8 直读），构造单文档走 seed_docs(reset=True)
+    ——reset 语义保证重复上传同名文件幂等覆盖（旧 chunks 先删后建，不新旧混合）。
+    seed_docs 的 BM25 build 只含本批 docs，不可依赖——写入成功后按 scroll_all
+    全量重建并 mark_changed 广播版本（web 进程惰性重载可见新文档）。
+    任一步失败返回含 error 的 dict（worker 内不抛栈、不静默，失败必 logger）。
+    """
+    try:
+        if not os.path.exists(file_path):
+            logger.warning("[Task] ingest_uploaded_document：文件不存在 %s", file_path)
+            return {"ingested": False, "error": f"文件不存在: {file_path}"}
+
+        ext = os.path.splitext(file_path)[1].lower()
+        try:
+            if ext in (".pdf", ".docx"):
+                text = parsers.extract_text(file_path)
+            else:
+                # .md/.txt/.sql/.yml/.yaml 纯文本直读
+                with open(file_path, encoding="utf-8") as f:
+                    text = f.read()
+        except Exception as e:
+            logger.warning("[Task] ingest_uploaded_document：解析失败 %s: %s", filename, e)
+            return {"ingested": False, "error": f"文档解析失败或内容为空: {filename}"}
+        if not text or not text.strip():
+            logger.warning("[Task] ingest_uploaded_document：内容为空 %s", filename)
+            return {"ingested": False, "error": f"文档解析失败或内容为空: {filename}"}
+
+        stem = os.path.splitext(os.path.basename(filename))[0]
+        doc_id = f"uploads/{stem}"
+        # PDF/DOCX 无 Markdown 结构：文件名注入首位标题（与 seed 脚本一致，
+        # 结构感知切块把标题并入首个 chunk，保留文档归属语义）
+        if ext in (".pdf", ".docx"):
+            text = f"# {filename}\n\n{text}"
+
+        def metadata_fn(doc: dict) -> dict:
+            return {
+                "doc_id": doc["doc_id"],
+                "title": doc["title"],
+                "source": f"knowledge/uploads/{filename}",
+                "category": category or "upload",
+                "security_group": ["user", "agent", "admin"],
+            }
+
+        qdrant = get_qdrant()
+        if not qdrant.is_connected:
+            await qdrant.connect()  # worker 无 lifespan，按需建立连接
+        result = await seed_docs(
+            [{"doc_id": doc_id, "title": filename, "text": text}],
+            metadata_fn,
+            reset=True,
+            log_prefix="IngestUpload",
+        )
+        if not result.get("qdrant_ok"):
+            logger.warning("[Task] ingest_uploaded_document：Qdrant 不可用，%s 入库失败", filename)
+            return {"ingested": False, "error": "Qdrant 不可用，文档入库失败"}
+
+        written = result.get("vector_written", 0)
+        if written > 0:
+            # seed_docs 结束时会 close 连接，按需重连后再全量重建 BM25
+            qdrant = get_qdrant()
+            if not qdrant.is_connected:
+                await qdrant.connect()
+            chunks_all = await qdrant.scroll_all()
+            get_bm25().build(chunks_all)
+            get_bm25().mark_changed()
+        logger.info(
+            "[Task] ingest_uploaded_document 完成：%s → %s（%s chunks）", filename, doc_id, written
+        )
+        return {"ingested": True, "doc_id": doc_id, "chunks": written}
+    except Exception as e:
+        logger.exception("[Task] ingest_uploaded_document 异常：%s", e)
+        return {"ingested": False, "error": f"文档入库异常: {e}"}
 
 
 def _load_existing_questions(out_path: str) -> set[str]:

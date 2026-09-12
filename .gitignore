@@ -87,3 +87,6 @@ backend/_persona_answers/
 # 本地备份与预览临时文件
 *.bak_*
 README.preview.html
+
+# 知识库上传文件（运行时数据不入库）
+knowledge/uploads/

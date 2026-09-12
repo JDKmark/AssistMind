@@ -3,18 +3,20 @@
 覆盖：
 1. 列表：按 doc_id 聚合 chunk 数
 2. 列表：Qdrant 不可用时返回 error 字段（不抛 500）
-3. 删除：调 delete_by_doc + 重建 BM25
+3. 删除：delete_by_doc + BM25 增量 remove_by_doc + 语义缓存失效 + mark_changed 版本广播
 4. 删除：doc_id 校验（422）
-5. 删除：Qdrant 不可用 / 删除失败（503）
+5. 删除：Qdrant 不可用 / 删除失败（503）；旁路失败（缓存失效/版本广播）不影响删除
 6. 重建：scroll_all → get_bm25().build
-7. 未认证访问拒绝
-8. 列表角色限制（user 403 / agent、admin 200）
-9. 坏例回流/评估：入队 RQ 任务秒回 job_id（与 rebuild 同模式，仅管理员）
+7. 上传：合法文件入库队（写 uploads 目录 + RQ job）/ 扩展名白名单 / 5MB 上限 / 路径穿越拒绝
+8. chunk 明细：scroll_by_doc / 404 / Qdrant 不可用 503
+9. 召回测试：透传 retrieve_raw / 空白 query 422 / top_k 越界 422
+10. 未认证访问拒绝、角色限制（user 403 / agent、admin 200；admin-only 端点 agent 403）
 
-mock 策略：mock app.api.knowledge 中的 get_qdrant / get_bm25 引用，
-Qdrant 用 MagicMock 设置 is_connected + scroll_all/delete_by_doc 返回值，
-不连真实服务。依赖 get_current_user 用 dependency_overrides 覆盖（autouse fixture，
-测试结束即清理，避免模块级 override 污染同进程其他测试文件的 /me 等鉴权接口）。
+mock 策略：mock app.api.knowledge 中的 get_qdrant / get_bm25 / cache_invalidate /
+enqueue_task / retrieve_raw 引用，Qdrant 用 MagicMock 设置 is_connected +
+scroll_all/scroll_by_doc/delete_by_doc 返回值，不连真实服务。依赖 get_current_user
+用 dependency_overrides 覆盖（autouse fixture，测试结束即清理，避免模块级
+override 污染同进程其他测试文件的 /me 等鉴权接口）。
 """
 
 from __future__ import annotations
@@ -105,21 +107,58 @@ def test_list_docs_qdrant_unavailable_returns_error_field():
 # ---------- 2. 删除 ----------
 
 
-def test_delete_doc_deletes_and_rebuilds_bm25():
-    """删除：调 delete_by_doc(doc_id) 并用剩余 chunk 重建 BM25。"""
+def test_delete_doc_removes_bm25_invalidates_cache_and_broadcasts():
+    """删除：delete_by_doc 后 BM25 增量 remove_by_doc（不再 scroll_all 全量重建）、
+    语义缓存失效、mark_changed 版本广播，响应形状不变。"""
     qdrant = _mock_qdrant(CHUNKS)
     bm25 = MagicMock()
-    with patch("app.api.knowledge.get_qdrant", return_value=qdrant), patch(
-        "app.api.knowledge.get_bm25", return_value=bm25
+    with (
+        patch("app.api.knowledge.get_qdrant", return_value=qdrant),
+        patch("app.api.knowledge.get_bm25", return_value=bm25),
+        patch("app.api.knowledge.cache_invalidate", new=AsyncMock()) as mock_invalidate,
     ):
         resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "ops-1"})
     assert resp.status_code == 200
     assert resp.json() == {"deleted": True, "doc_id": "ops-1"}
     qdrant.delete_by_doc.assert_awaited_once_with("ops-1")
-    # 删除后以 scroll_all 全量结果重建 BM25 索引
-    qdrant.scroll_all.assert_awaited_once()
-    bm25.build.assert_called_once()
-    assert bm25.build.call_args[0][0] == CHUNKS
+    # 增量移除而非全量重建（BM25 一等公民的内存索引原地收缩）
+    bm25.remove_by_doc.assert_called_once_with("ops-1")
+    bm25.build.assert_not_called()
+    qdrant.scroll_all.assert_not_awaited()
+    mock_invalidate.assert_awaited_once()
+    bm25.mark_changed.assert_called_once()
+
+
+def test_delete_doc_cache_invalidate_failure_still_200(caplog):
+    """删除：旁路步骤（语义缓存失效）失败只 warning，不影响删除结果。"""
+    qdrant = _mock_qdrant(CHUNKS)
+    bm25 = MagicMock()
+    with (
+        patch("app.api.knowledge.get_qdrant", return_value=qdrant),
+        patch("app.api.knowledge.get_bm25", return_value=bm25),
+        patch("app.api.knowledge.cache_invalidate", new=AsyncMock(side_effect=ConnectionError("redis down"))),
+    ):
+        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "ops-1"})
+    assert resp.status_code == 200
+    assert resp.json() == {"deleted": True, "doc_id": "ops-1"}
+    qdrant.delete_by_doc.assert_awaited_once_with("ops-1")
+    assert any("缓存" in r.message or "invalidate" in r.message.lower() for r in caplog.records)
+
+
+def test_delete_doc_mark_changed_failure_still_200(caplog):
+    """删除：旁路步骤（版本广播 mark_changed）失败只 warning，不影响删除结果。"""
+    qdrant = _mock_qdrant(CHUNKS)
+    bm25 = MagicMock()
+    bm25.mark_changed = MagicMock(side_effect=ConnectionError("redis down"))
+    with (
+        patch("app.api.knowledge.get_qdrant", return_value=qdrant),
+        patch("app.api.knowledge.get_bm25", return_value=bm25),
+        patch("app.api.knowledge.cache_invalidate", new=AsyncMock()),
+    ):
+        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "ops-1"})
+    assert resp.status_code == 200
+    assert resp.json() == {"deleted": True, "doc_id": "ops-1"}
+    assert caplog.records
 
 
 def test_delete_doc_validation_failed():
@@ -291,3 +330,219 @@ def test_list_docs_admin_allowed():
         app.dependency_overrides[get_current_user] = original
     assert resp.status_code == 200
     assert resp.json()["total"] == 2
+
+
+# ---------- 6. 文档上传（POST /upload，仅 admin） ----------
+
+
+def _upload_job_mock():
+    job = MagicMock()
+    job.id = "job-upload"
+    return job
+
+
+def test_upload_md_enqueues_and_saves_file(tmp_path):
+    """上传合法 md：200 {job_id, status:queued}，文件写入 uploads 目录并入队任务。"""
+    job = _upload_job_mock()
+    with (
+        patch("app.api.knowledge.UPLOAD_DIR", str(tmp_path)),
+        patch("app.api.knowledge.enqueue_task", return_value=job) as mock_enqueue,
+    ):
+        resp = client.post(
+            "/api/v1/knowledge/upload",
+            files={"file": ("退货规则.md", "# 退货规则\n7 天无理由".encode("utf-8"), "text/markdown")},
+            data={"category": "业务规则"},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"job_id": "job-upload", "status": "queued"}
+    # 文件已持久化到 uploads 目录（原始文件留存供追溯）
+    saved = tmp_path / "退货规则.md"
+    assert saved.exists()
+    assert "退货规则" in saved.read_text(encoding="utf-8")
+    # 入队的是 ingest_uploaded_document 任务，参数透传 file_path/filename/category
+    mock_enqueue.assert_called_once()
+    assert mock_enqueue.call_args[0][0] is not None
+    kwargs = mock_enqueue.call_args[1]
+    assert kwargs["filename"] == "退货规则.md"
+    assert kwargs["category"] == "业务规则"
+    assert kwargs["owner"] == "testuser"
+    assert str(saved) in kwargs["file_path"]
+
+
+def test_upload_exe_rejected_422(tmp_path):
+    """上传 .exe：422 不支持的文件类型，不入队、不写文件。"""
+    job = _upload_job_mock()
+    with (
+        patch("app.api.knowledge.UPLOAD_DIR", str(tmp_path)),
+        patch("app.api.knowledge.enqueue_task", return_value=job) as mock_enqueue,
+    ):
+        resp = client.post(
+            "/api/v1/knowledge/upload",
+            files={"file": ("data.exe", b"MZ fake binary", "application/octet-stream")},
+        )
+    assert resp.status_code == 422
+    assert "不支持的文件类型" in resp.json()["detail"]
+    mock_enqueue.assert_not_called()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_upload_oversize_rejected_422(tmp_path):
+    """上传 >5MB：422 文件超过上限，不入队。"""
+    job = _upload_job_mock()
+    big = b"x" * (5 * 1024 * 1024 + 1)
+    with (
+        patch("app.api.knowledge.UPLOAD_DIR", str(tmp_path)),
+        patch("app.api.knowledge.enqueue_task", return_value=job) as mock_enqueue,
+    ):
+        resp = client.post(
+            "/api/v1/knowledge/upload",
+            files={"file": ("big.txt", big, "text/plain")},
+        )
+    assert resp.status_code == 422
+    assert "5MB" in resp.json()["detail"]
+    mock_enqueue.assert_not_called()
+
+
+def test_upload_path_traversal_rejected_422(tmp_path):
+    """文件名带 ../：422 拒绝（不落盘、不逃逸 uploads 目录）。"""
+    job = _upload_job_mock()
+    with (
+        patch("app.api.knowledge.UPLOAD_DIR", str(tmp_path)),
+        patch("app.api.knowledge.enqueue_task", return_value=job) as mock_enqueue,
+    ):
+        resp = client.post(
+            "/api/v1/knowledge/upload",
+            files={"file": ("../evil.md", b"# evil", "text/markdown")},
+        )
+    assert resp.status_code == 422
+    mock_enqueue.assert_not_called()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_upload_agent_role_403(tmp_path):
+    """上传：仅管理员可调用，agent 返回 403。"""
+    async def agent_user():
+        return {"username": "agent1", "role": "agent"}
+
+    original = app.dependency_overrides[get_current_user]
+    app.dependency_overrides[get_current_user] = agent_user
+    try:
+        with patch("app.api.knowledge.UPLOAD_DIR", str(tmp_path)):
+            resp = client.post(
+                "/api/v1/knowledge/upload",
+                files={"file": ("a.md", b"content", "text/markdown")},
+            )
+    finally:
+        app.dependency_overrides[get_current_user] = original
+    assert resp.status_code == 403
+
+
+# ---------- 7. chunk 明细（GET /{doc_id}/chunks，staff） ----------
+
+
+DOC_CHUNKS = [
+    {"chunk_index": 0, "doc_id": "uploads/退货规则", "title": "退货规则.md", "section_title": "",
+     "source": "knowledge/uploads/退货规则.md", "category": "upload", "table_comment": "", "text": "7 天无理由"},
+    {"chunk_index": 1, "doc_id": "uploads/退货规则", "title": "退货规则.md", "section_title": "时限",
+     "source": "knowledge/uploads/退货规则.md", "category": "upload", "table_comment": "", "text": "超时概不受理"},
+]
+
+
+def test_get_doc_chunks_success():
+    """chunk 明细：有数据返回 200 {doc_id, chunks}，chunks 非空。"""
+    qdrant = _mock_qdrant(CHUNKS)
+    qdrant.scroll_by_doc = AsyncMock(return_value=DOC_CHUNKS)
+    with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
+        # doc_id 含分隔符（uploads/<stem>），走 path 转换器路由
+        resp = client.get("/api/v1/knowledge/uploads/退货规则/chunks")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["doc_id"] == "uploads/退货规则"
+    assert len(data["chunks"]) == 2
+    assert data["chunks"][0]["text"] == "7 天无理由"
+    qdrant.scroll_by_doc.assert_awaited_once_with("uploads/退货规则")
+
+
+def test_get_doc_chunks_not_found_404():
+    """chunk 明细：scroll_by_doc 空且聚合列表无该 doc_id → 404。"""
+    qdrant = _mock_qdrant(CHUNKS)  # scroll_all 返回 CHUNKS，无 uploads/退货规则
+    qdrant.scroll_by_doc = AsyncMock(return_value=[])
+    with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
+        resp = client.get("/api/v1/knowledge/not-exist/chunks")
+    assert resp.status_code == 404
+    assert "不存在" in resp.json()["detail"]
+
+
+def test_get_doc_chunks_exists_in_aggregate_empty_chunks_200():
+    """chunk 明细：scroll_by_doc 空但聚合列表有该 doc_id → 200 空数组（不误报 404）。"""
+    qdrant = _mock_qdrant([{"doc_id": "ghost", "title": "t", "source": "s", "category": "c", "text": "x"}])
+    qdrant.scroll_by_doc = AsyncMock(return_value=[])
+    with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
+        resp = client.get("/api/v1/knowledge/ghost/chunks")
+    assert resp.status_code == 200
+    assert resp.json() == {"doc_id": "ghost", "chunks": []}
+
+
+def test_get_doc_chunks_qdrant_unavailable_503():
+    """chunk 明细：Qdrant 不可用 → 503。"""
+    qdrant = _mock_qdrant([], connected=False)
+    with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
+        resp = client.get("/api/v1/knowledge/any-doc/chunks")
+    assert resp.status_code == 503
+    assert "Qdrant" in resp.json()["detail"]
+
+
+# ---------- 8. 召回测试（POST /search-test，staff） ----------
+
+
+RETRIEVE_RAW_RESULT = {
+    "query": "退货政策是什么",
+    "vector": [{"doc_id": "d1", "title": "t", "section_title": "", "text": "x", "score": 0.9}],
+    "bm25": [],
+    "fused": [{"doc_id": "d1", "title": "t", "section_title": "", "text": "x", "rrf_score": 0.03}],
+    "degraded": [],
+}
+
+
+def test_search_test_passes_through_retrieve_raw():
+    """召回测试：透传 retrieve_raw 结果（strip 后的 query + role + top_k）。"""
+    retrieve_raw = AsyncMock(return_value=RETRIEVE_RAW_RESULT)
+    with patch("app.api.knowledge.retrieve_raw", retrieve_raw):
+        resp = client.post(
+            "/api/v1/knowledge/search-test",
+            json={"query": "  退货政策是什么  ", "top_k": 3},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == RETRIEVE_RAW_RESULT
+    retrieve_raw.assert_awaited_once_with("退货政策是什么", role="admin", top_k=3)
+
+
+def test_search_test_blank_query_422():
+    """召回测试：query 全空白 → 422。"""
+    with patch("app.api.knowledge.retrieve_raw", AsyncMock()) as mock_raw:
+        resp = client.post("/api/v1/knowledge/search-test", json={"query": "   "})
+    assert resp.status_code == 422
+    mock_raw.assert_not_awaited()
+
+
+def test_search_test_top_k_out_of_range_422():
+    """召回测试：top_k=25 越界（1-20）→ 422。"""
+    with patch("app.api.knowledge.retrieve_raw", AsyncMock()):
+        resp = client.post(
+            "/api/v1/knowledge/search-test", json={"query": "q", "top_k": 25}
+        )
+    assert resp.status_code == 422
+
+
+def test_search_test_user_role_403():
+    """召回测试：user 角色返回 403（staff-only）。"""
+    async def user_only():
+        return {"username": "u", "role": "user"}
+
+    original = app.dependency_overrides[get_current_user]
+    app.dependency_overrides[get_current_user] = user_only
+    try:
+        resp = client.post("/api/v1/knowledge/search-test", json={"query": "q"})
+    finally:
+        app.dependency_overrides[get_current_user] = original
+    assert resp.status_code == 403

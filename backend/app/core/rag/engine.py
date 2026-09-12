@@ -199,6 +199,86 @@ async def retrieve(
     }
 
 
+async def retrieve_raw(
+    query: str,
+    role: str = "user",
+    top_k: int = 5,
+) -> dict[str, Any]:
+    """召回测试 dry-run：embed 原问题 → 向量 + BM25 各取 top_k*4 候选 → RRF 融合。
+
+    与 retrieve 的差异（知识库「召回测试」端点专用）：
+    - 不做查询改写 / CRAG / 重排 / 生成 / _dedup，只看原始召回与 RRF 融合结果
+    - 候选数为 top_k*4（与 retrieve 的重排候选规模语义一致）
+
+    Returns:
+        {
+            "query": 原问题,
+            "vector": 向量路结果,
+            "bm25": BM25 路结果,
+            "fused": RRF 融合结果（带 rrf_score）,
+            "degraded": list[str],  # 触发的降级项
+        }
+
+    绝不抛异常：两路召回各自 try/except 降级返回 []（与 qdrant/bm25 内部
+    降级语义一致），外层再兜底一层，dry-run 端点不允许 500。
+    """
+    degraded: list[str] = []
+    try:
+        # 1. Embedding（仅原问题，不做改写变体）
+        embeddings = await embed_async([query])
+        if embeddings is None:
+            degraded.append("embedding")
+
+        async def _vector_task() -> list[dict[str, Any]]:
+            if not embeddings:
+                return []
+            try:
+                qdrant = get_qdrant()
+                return await qdrant.search(
+                    query_vector=embeddings[0], top_k=top_k * 4, role=role
+                )
+            except Exception as e:
+                logger.warning("[RAGEngine] retrieve_raw 向量召回失败: %s", e)
+                return []
+
+        async def _bm25_task() -> list[dict[str, Any]]:
+            try:
+                bm25 = get_bm25()
+                return await bm25.search(query, top_k * 4, role)
+            except Exception as e:
+                logger.warning("[RAGEngine] retrieve_raw BM25 召回失败: %s", e)
+                return []
+
+        # 2. 两路并行召回（RBAC 按 role 过滤）
+        vector_results, bm25_results = await asyncio.gather(_vector_task(), _bm25_task())
+
+        # embedding 失败时向量路为空已由 "embedding" 标注，不重复标 "qdrant"
+        if not vector_results and "embedding" not in degraded:
+            degraded.append("qdrant")
+        if not bm25_results:
+            degraded.append("bm25")
+
+        # 3. RRF 融合（不做 _dedup / 重排 / CRAG / 生成）
+        fused = _rrf_fuse(vector_results, bm25_results, k=settings.RRF_K)
+        return {
+            "query": query,
+            "vector": vector_results,
+            "bm25": bm25_results,
+            "fused": fused,
+            "degraded": degraded,
+        }
+    except Exception as e:
+        # 兜底：防未来改动引入抛出路径，dry-run 端点不允许 500
+        logger.warning("[RAGEngine] retrieve_raw 兜底失败: %s", e)
+        return {
+            "query": query,
+            "vector": [],
+            "bm25": [],
+            "fused": [],
+            "degraded": degraded + ["raw_retrieve_failed"],
+        }
+
+
 async def _vector_retrieve(
     embeddings: list[list[float]], role: str
 ) -> list[dict[str, Any]]:
