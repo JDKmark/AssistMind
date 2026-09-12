@@ -48,7 +48,20 @@
         :data="docs"
         style="width: 100%"
       >
-        <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span>{{ row ? row.title : '' }}</span>
+            <!-- 停用标识：staff 可见（不加 role 限制），存量数据缺省 enabled 视为启用 -->
+            <el-tag
+              v-if="row && row.enabled === false"
+              size="small"
+              type="danger"
+              class="disabled-tag"
+            >
+              已停用
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="source" label="来源" min-width="140" show-overflow-tooltip />
         <el-table-column label="分类" width="110">
           <template #default="{ row }">
@@ -69,13 +82,40 @@
             <span class="am-mono">{{ row ? row.chunk_count : '' }}</span>
           </template>
         </el-table-column>
+        <el-table-column v-if="auth.role === 'admin'" label="参与检索" width="100">
+          <template #default="{ row }">
+            <el-switch
+              :model-value="row ? row.enabled !== false : true"
+              :active-value="true"
+              :inactive-value="false"
+              :loading="togglingDocId === (row ? row.doc_id : '')"
+              @change="(val) => handleToggle(row, val)"
+            />
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="90">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDetail(row)">详情</el-button>
           </template>
         </el-table-column>
-        <el-table-column v-if="auth.role === 'admin'" label="操作" width="110">
+        <el-table-column v-if="auth.role === 'admin'" label="操作" width="170">
           <template #default="{ row }">
+            <el-popconfirm
+              :title="`确认重新灌库「${row ? row.title : ''}」？将重新解析源文件并覆盖现有 chunks`"
+              :width="280"
+              @confirm="handleReingest(row)"
+            >
+              <template #reference>
+                <el-button
+                  type="primary"
+                  link
+                  :disabled="reingestingDocId !== ''"
+                  :loading="reingestingDocId === (row ? row.doc_id : '')"
+                >
+                  重新灌库
+                </el-button>
+              </template>
+            </el-popconfirm>
             <el-popconfirm
               :title="`确认删除文档「${row ? row.title : ''}」？删除后不可恢复`"
               @confirm="handleDelete(row)"
@@ -240,8 +280,14 @@
       </template>
     </el-dialog>
 
-    <!-- 文档 chunk 明细抽屉：按 chunk 展示切片文本 -->
-    <el-drawer v-model="detailVisible" :title="detailTitle" size="45%">
+    <!-- 文档 chunk 明细抽屉：按 chunk 展示切片文本（停用文档在标题旁展示标识，staff 可见） -->
+    <el-drawer v-model="detailVisible" size="45%">
+      <template #header>
+        <div class="drawer-header">
+          <span class="drawer-title">{{ detailTitle }}</span>
+          <el-tag v-if="detailDisabled" size="small" type="danger">已停用</el-tag>
+        </div>
+      </template>
       <div v-loading="detailLoading" class="detail-body">
         <el-collapse v-if="detailChunks && detailChunks.length">
           <el-collapse-item
@@ -277,6 +323,8 @@ import {
   uploadDoc,
   getDocChunks,
   searchTest,
+  toggleDoc,
+  reingestDoc,
 } from '@/api/knowledge'
 import { useAuthStore } from '@/stores/auth'
 
@@ -464,12 +512,62 @@ async function confirmUpload() {
   }
 }
 
+// ---------- 启停检索 / 重新灌库（admin） ----------
+
+const togglingDocId = ref('')
+const reingestingDocId = ref('')
+
+// 启停文档检索：成功后本地同步开关态；失败回滚列表（以服务端为准，简单可靠）
+async function handleToggle(row, target) {
+  if (!row || !row.doc_id) return
+  togglingDocId.value = row.doc_id
+  try {
+    await toggleDoc(row.doc_id, target)
+    row.enabled = target
+    ElMessage.success(target ? '已恢复检索' : '已停用检索')
+  } catch (e) {
+    // 错误已由 request 拦截器统一提示；开关回滚到服务端状态
+    await loadDocs()
+  } finally {
+    togglingDocId.value = ''
+  }
+}
+
+// 重新灌库：入队 RQ 异步任务后复用 pollJob 轮询（与上传/重建同模式）
+async function handleReingest(row) {
+  if (!row || !row.doc_id) return
+  reingestingDocId.value = row.doc_id
+  try {
+    const data = await reingestDoc(row.doc_id)
+    const jobId = data.job_id
+    if (!jobId) throw new Error('未返回任务 ID')
+
+    await pollJob(jobId, {
+      onSuccess: async (job) => {
+        const chunks = job.result?.chunks ?? 0
+        ElMessage.success(`重灌完成：${chunks} 个 chunk`)
+        await loadDocs()
+      },
+      onFail: (job) => {
+        ElMessage.error(`重新灌库失败：${job.error || '未知错误'}`)
+      },
+    })
+  } catch (e) {
+    // 入队/轮询失败：request 拦截器已统一提示，这里终止轮询
+    console.warn('[Knowledge] 重灌任务终止', e)
+  } finally {
+    reingestingDocId.value = ''
+  }
+}
+
 // ---------- 文档 chunk 明细抽屉 ----------
 
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detailTitle = ref('')
 const detailChunks = ref(null)
+// 打开抽屉时记录该文档的停用态（标题旁展示「已停用」标识）
+const detailDisabled = ref(false)
 
 // 存量数据可能缺失 chunk_index（后端按顺序补位，但防御 null/负数）
 function chunkIndexLabel(chunk) {
@@ -482,6 +580,7 @@ function chunkIndexLabel(chunk) {
 async function openDetail(row) {
   if (!row || !row.doc_id) return
   detailTitle.value = row.title || row.doc_id
+  detailDisabled.value = row?.enabled === false
   detailChunks.value = null
   detailVisible.value = true
   detailLoading.value = true
@@ -587,6 +686,17 @@ onMounted(loadDocs)
 }
 .degraded-alert {
   margin-bottom: 16px;
+}
+/* 停用标识（标题列 / 抽屉标题旁） */
+.disabled-tag {
+  margin-left: 8px;
+}
+/* 抽屉标题行：标题 + 停用标识 */
+.drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
 }
 /* 上传对话框 */
 .upload-category {

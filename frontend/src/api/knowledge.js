@@ -30,6 +30,16 @@ export function getDocChunks(docId) {
   return request.get(`/knowledge/${docId}/chunks`)
 }
 
+// 启停文档检索（admin）：body {enabled} → {doc_id, enabled}，404/503 由拦截器统一提示
+export function toggleDoc(docId, enabled) {
+  return request.post(`/knowledge/${docId}/toggle`, { enabled })
+}
+
+// 重新灌库入队（admin）：返回 {job_id, status}，耗时执行在 worker 进程
+export function reingestDoc(docId) {
+  return request.post(`/knowledge/${docId}/reingest`)
+}
+
 // 召回测试 dry-run：{query, top_k} → {query, vector, bm25, fused, degraded?}
 export function searchTest(payload) {
   return request.post('/knowledge/search-test', payload)

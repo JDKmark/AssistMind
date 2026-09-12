@@ -8,6 +8,8 @@ const knowledgeApi = vi.hoisted(() => ({
   deleteDoc: vi.fn(),
   rebuildIndex: vi.fn(),
   getJobStatus: vi.fn(),
+  toggleDoc: vi.fn(),
+  reingestDoc: vi.fn(),
 }))
 
 vi.mock('@/api/knowledge', () => knowledgeApi)
@@ -48,6 +50,10 @@ const stubs = {
     props: ['title'],
     template:
       '<div class="el-popconfirm-stub" :title="title"><slot name="reference" /></div>',
+  },
+  'el-switch': {
+    props: ['modelValue', 'loading'],
+    template: '<span class="el-switch-stub" />',
   },
   'el-tag': { template: '<span class="el-tag-stub"><slot /></span>' },
   'el-empty': {
@@ -116,16 +122,19 @@ describe('Knowledge 组件', () => {
     expect(wrapper.text()).toContain('Qdrant 不可用')
   })
 
-  it('每行渲染删除确认浮层与删除按钮', async () => {
+  it('每行渲染重灌与删除确认浮层（重灌在删除前）', async () => {
     knowledgeApi.listDocs.mockResolvedValue({ docs: DOCS, total: 2 })
     const wrapper = mountKnowledge()
     await flushPromises()
 
-    const pop = wrapper.find('.el-popconfirm-stub')
-    expect(pop.exists()).toBe(true)
-    expect(pop.attributes('title')).toContain('确认删除文档')
-    // 确认浮层内带删除按钮
-    expect(pop.find('button.el-button-stub').text()).toBe('删除')
+    const pops = wrapper.findAll('.el-popconfirm-stub')
+    const reingestPop = pops.find((p) => (p.attributes('title') || '').includes('确认重新灌库'))
+    const deletePop = pops.find((p) => (p.attributes('title') || '').includes('确认删除文档'))
+    expect(reingestPop).toBeTruthy()
+    expect(deletePop).toBeTruthy()
+    // 确认浮层内分别带重灌 / 删除按钮
+    expect(reingestPop.find('button.el-button-stub').text()).toBe('重新灌库')
+    expect(deletePop.find('button.el-button-stub').text()).toBe('删除')
   })
 
   it('删除文档调用 deleteDoc 并提示成功', async () => {
@@ -151,6 +160,101 @@ describe('Knowledge 组件', () => {
 
     expect(knowledgeApi.deleteDoc).toHaveBeenCalledWith('ops-1')
     expect(wrapper.vm.deletingDocId).toBe('')
+  })
+
+  it('停用开关：toggleDoc 成功后本地同步 enabled 并提示', async () => {
+    knowledgeApi.listDocs.mockResolvedValue({ docs: DOCS, total: 2 })
+    knowledgeApi.toggleDoc.mockResolvedValue({ doc_id: 'ops-1', enabled: false })
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    const row = { ...DOCS[0], enabled: true }
+    await wrapper.vm.handleToggle(row, false)
+
+    expect(knowledgeApi.toggleDoc).toHaveBeenCalledWith('ops-1', false)
+    expect(row.enabled).toBe(false)
+    expect(ElMessageMock.success).toHaveBeenCalledWith('已停用检索')
+    expect(wrapper.vm.togglingDocId).toBe('')
+  })
+
+  it('停用开关：恢复检索提示成功且 enabled 同步为 true', async () => {
+    knowledgeApi.listDocs.mockResolvedValue({ docs: DOCS, total: 2 })
+    knowledgeApi.toggleDoc.mockResolvedValue({ doc_id: 'ops-1', enabled: true })
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    const row = { ...DOCS[0], enabled: false }
+    await wrapper.vm.handleToggle(row, true)
+
+    expect(knowledgeApi.toggleDoc).toHaveBeenCalledWith('ops-1', true)
+    expect(row.enabled).toBe(true)
+    expect(ElMessageMock.success).toHaveBeenCalledWith('已恢复检索')
+  })
+
+  it('停用开关失败：回滚列表（重新 loadDocs）且不提示成功', async () => {
+    knowledgeApi.listDocs.mockResolvedValue({ docs: DOCS, total: 2 })
+    knowledgeApi.toggleDoc.mockRejectedValue(new Error('停用失败'))
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    const callsBefore = knowledgeApi.listDocs.mock.calls.length
+    await wrapper.vm.handleToggle({ ...DOCS[0] }, false)
+
+    expect(ElMessageMock.success).not.toHaveBeenCalled()
+    expect(knowledgeApi.listDocs.mock.calls.length).toBe(callsBefore + 1)
+    expect(wrapper.vm.togglingDocId).toBe('')
+  })
+
+  it('重新灌库：入队后轮询完成，提示 chunk 数并刷新列表', async () => {
+    knowledgeApi.listDocs.mockResolvedValue({ docs: DOCS, total: 2 })
+    knowledgeApi.reingestDoc.mockResolvedValue({ job_id: 'job-r1', status: 'queued' })
+    knowledgeApi.getJobStatus.mockResolvedValue({
+      job_id: 'job-r1',
+      status: 'finished',
+      result: { ingested: true, doc_id: 'ops-1', chunks: 7 },
+    })
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    const callsBefore = knowledgeApi.listDocs.mock.calls.length
+    await wrapper.vm.handleReingest(DOCS[0])
+
+    expect(knowledgeApi.reingestDoc).toHaveBeenCalledWith('ops-1')
+    expect(knowledgeApi.getJobStatus).toHaveBeenCalledWith('job-r1')
+    expect(ElMessageMock.success).toHaveBeenCalledWith('重灌完成：7 个 chunk')
+    expect(knowledgeApi.listDocs.mock.calls.length).toBe(callsBefore + 1)
+    expect(wrapper.vm.reingestingDocId).toBe('')
+  })
+
+  it('重新灌库任务失败时提示错误且不刷新列表', async () => {
+    knowledgeApi.listDocs.mockResolvedValue({ docs: DOCS, total: 2 })
+    knowledgeApi.reingestDoc.mockResolvedValue({ job_id: 'job-r2', status: 'queued' })
+    knowledgeApi.getJobStatus.mockResolvedValue({
+      job_id: 'job-r2',
+      status: 'failed',
+      error: '源文件不存在',
+    })
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    const callsBefore = knowledgeApi.listDocs.mock.calls.length
+    await wrapper.vm.handleReingest(DOCS[0])
+
+    expect(ElMessageMock.error).toHaveBeenCalledWith(expect.stringContaining('源文件不存在'))
+    expect(knowledgeApi.listDocs.mock.calls.length).toBe(callsBefore)
+    expect(wrapper.vm.reingestingDocId).toBe('')
+  })
+
+  it('重新灌库入队响应缺 job_id 时终止且不轮询', async () => {
+    knowledgeApi.listDocs.mockResolvedValue({ docs: DOCS, total: 2 })
+    knowledgeApi.reingestDoc.mockResolvedValue({ status: 'queued' })
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    await wrapper.vm.handleReingest(DOCS[0])
+
+    expect(knowledgeApi.getJobStatus).not.toHaveBeenCalled()
+    expect(wrapper.vm.reingestingDocId).toBe('')
   })
 
   it('重建索引入队并轮询到完成，提示 chunk 数', async () => {
