@@ -90,3 +90,7 @@ README.preview.html
 
 # 知识库上传文件（运行时数据不入库）
 knowledge/uploads/
+
+# Trae IDE / CodeGraph 本地工作目录（机器本地产物，不入库）
+.trae/
+.codegraph/
