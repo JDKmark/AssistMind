@@ -11,6 +11,7 @@ const ticketApi = vi.hoisted(() => ({
   getTicket: vi.fn(),
   listReplies: vi.fn(),
   addReply: vi.fn(),
+  getTicketConversation: vi.fn(),
 }))
 
 vi.mock('@/api/ticket', () => ticketApi)
@@ -98,6 +99,10 @@ const stubs = {
     emits: ['update:modelValue'],
     template: '<input class="el-input-stub" :placeholder="placeholder" />',
   },
+  'el-empty': {
+    props: ['description'],
+    template: '<div class="el-empty-stub"><span>{{ description }}</span></div>',
+  },
 }
 
 const TICKETS = [
@@ -147,6 +152,7 @@ describe('Tickets 组件', () => {
     ticketApi.updateTicketStatus.mockResolvedValue({})
     ticketApi.listReplies.mockResolvedValue({ replies: [] })
     ticketApi.addReply.mockResolvedValue({ id: 1 })
+    ticketApi.getTicketConversation.mockResolvedValue({ conversation_id: 'conv-1', messages: [] })
     authMock.role = 'user'
   })
 
@@ -261,5 +267,87 @@ describe('Tickets 组件', () => {
     expect(opCol.findAll('.el-select-stub').length).toBe(TICKETS.length)
     expect(wrapper.findAll('button').filter((b) => b.text() === '详情').length).toBe(TICKETS.length)
     expect(wrapper.text()).not.toContain('确认解决')
+  })
+
+  // ---------- human-reply-loop：查看用户会话 ----------
+
+  const CONV_MESSAGES = [
+    {
+      role: 'user',
+      content: '空调不制冷了，帮我看看',
+      created_at: '2026-09-12T10:00:00',
+      intent: 'task',
+    },
+    {
+      role: 'assistant',
+      content: '已为您创建工单，请稍候。',
+      created_at: '2026-09-12T10:00:05',
+      intent: 'task',
+    },
+  ]
+
+  it('conversation_id 非空：详情显示「查看用户会话」按钮，点击后渲染只读会话消息', async () => {
+    ticketApi.getTicket.mockResolvedValue({ ...TICKET_DETAIL, conversation_id: 'conv-1' })
+    ticketApi.getTicketConversation.mockResolvedValue({
+      conversation_id: 'conv-1',
+      messages: CONV_MESSAGES,
+    })
+
+    const wrapper = mountTickets()
+    await flushPromises()
+    const detailBtn = wrapper.findAll('button').filter((b) => b.text() === '详情')[0]
+    await detailBtn.trigger('click')
+    await flushPromises()
+
+    const convBtn = wrapper.findAll('button').find((b) => b.text() === '查看用户会话')
+    expect(convBtn).toBeTruthy()
+    // 点击前只读区未展开
+    expect(wrapper.find('.conv-panel').exists()).toBe(false)
+
+    await convBtn.trigger('click')
+    await flushPromises()
+
+    expect(ticketApi.getTicketConversation).toHaveBeenCalledWith(TICKETS[0].id)
+    expect(wrapper.find('.conv-panel').exists()).toBe(true)
+    const msgs = wrapper.findAll('.conv-msg')
+    expect(msgs.length).toBe(2)
+    const roles = wrapper.findAll('.conv-msg-meta .el-tag-stub').map((t) => t.text())
+    expect(roles).toEqual(['用户', 'AI'])
+    expect(wrapper.text()).toContain('空调不制冷了，帮我看看')
+    expect(wrapper.text()).toContain('已为您创建工单')
+    // 时间 MM-DD HH:mm
+    expect(wrapper.text()).toContain('09-12 10:00')
+  })
+
+  it('conversation_id 为空（旧工单兼容）：不显示「查看用户会话」按钮', async () => {
+    // 默认 TICKET_DETAIL 无 conversation_id
+    const wrapper = mountTickets()
+    await flushPromises()
+    const detailBtn = wrapper.findAll('button').filter((b) => b.text() === '详情')[0]
+    await detailBtn.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('button').some((b) => b.text() === '查看用户会话')).toBe(false)
+    expect(ticketApi.getTicketConversation).not.toHaveBeenCalled()
+  })
+
+  it('会话加载失败（404/403）：区内展示空态，不阻塞沟通记录区', async () => {
+    ticketApi.getTicket.mockResolvedValue({ ...TICKET_DETAIL, conversation_id: 'conv-1' })
+    ticketApi.getTicketConversation.mockRejectedValue(new Error('not found'))
+
+    const wrapper = mountTickets()
+    await flushPromises()
+    const detailBtn = wrapper.findAll('button').filter((b) => b.text() === '详情')[0]
+    await detailBtn.trigger('click')
+    await flushPromises()
+
+    const convBtn = wrapper.findAll('button').find((b) => b.text() === '查看用户会话')
+    await convBtn.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.conv-panel').exists()).toBe(true)
+    expect(wrapper.find('.el-empty-stub').exists()).toBe(true)
+    // 沟通记录区不受影响
+    expect(wrapper.text()).toContain('沟通记录')
   })
 })

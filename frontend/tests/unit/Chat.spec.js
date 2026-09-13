@@ -54,6 +54,14 @@ const feedbackApi = vi.hoisted(() => ({
 
 vi.mock('@/api/feedback', () => feedbackApi)
 
+// 工单回复 API（人工客服线程：轮询 listReplies / 回帖 addReply）
+const ticketApi = vi.hoisted(() => ({
+  listReplies: vi.fn(),
+  addReply: vi.fn(),
+}))
+
+vi.mock('@/api/ticket', () => ticketApi)
+
 const ElMessageMock = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
@@ -165,6 +173,8 @@ describe('Chat 组件', () => {
         { role: 'assistant', content: '48 小时内原路退回。', intent: 'faq', created_at: '2026-08-28T10:00:05' },
       ],
     })
+    ticketApi.listReplies.mockResolvedValue({ ticket_id: '', replies: [] })
+    ticketApi.addReply.mockResolvedValue({ id: 0, ticket_id: '', sender_role: 'user', content: '' })
     const personaStore = usePersonaStore()
     personaStore.personaId = ''
     personaStore.personas = []
@@ -1336,5 +1346,174 @@ describe('Chat 组件', () => {
 
     expect(wrapper.text()).toContain('正常回答')
     expect(wrapper.find('.bubble.user').exists()).toBe(true)
+  })
+
+  // ---------- human-reply-loop：人工客服线程 ----------
+
+  const THREAD_TICKET = 'TK-20260912001'
+
+  function emitTransferHuman() {
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'task' })
+      onEvent('tool_call', {
+        tool_name: 'transfer_human',
+        arguments: { title: '转人工', priority: 'high' },
+      })
+      onEvent('tool_result', {
+        tool_name: 'transfer_human',
+        result: { ticket_id: THREAD_TICKET, created: true },
+      })
+      onEvent('done', { answer: '已为您转接人工客服，请稍候。' })
+      onDone({ answer: '已为您转接人工客服，请稍候。' })
+      return Promise.resolve()
+    })
+  }
+
+  it('transfer_human 成功后消息流末尾渲染人工客服线程卡片并立即拉取工单回复', async () => {
+    emitTransferHuman()
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '帮我转人工客服')
+
+    const thread = wrapper.find('.human-thread')
+    expect(thread.exists()).toBe(true)
+    const text = thread.text()
+    expect(text).toContain('人工客服')
+    expect(text).toContain(THREAD_TICKET)
+    expect(text).toContain('客服人员已加入处理')
+    // 挂接即拉取该工单回复（首次立即）
+    expect(ticketApi.listReplies).toHaveBeenCalledWith(THREAD_TICKET)
+  })
+
+  it('普通建单（create_ticket）不出现人工客服线程卡片', async () => {
+    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+      onEvent('start', { query: q, intent: 'task' })
+      onEvent('tool_call', { tool_name: 'create_ticket', arguments: {} })
+      onEvent('tool_result', {
+        tool_name: 'create_ticket',
+        result: { ticket_id: THREAD_TICKET, created: true },
+      })
+      onEvent('done', { answer: '已创建工单' })
+      onDone({ answer: '已创建工单' })
+      return Promise.resolve()
+    })
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '我要退货')
+
+    expect(wrapper.find('.human-thread').exists()).toBe(false)
+    expect(ticketApi.listReplies).not.toHaveBeenCalled()
+  })
+
+  it('客服回复渲染为左侧「人工客服 · 用户名」气泡，用户回复渲染为右侧气泡', async () => {
+    ticketApi.listReplies.mockResolvedValue({
+      ticket_id: THREAD_TICKET,
+      replies: [
+        {
+          id: 1,
+          ticket_id: THREAD_TICKET,
+          sender_role: 'agent',
+          sender_username: 'agent1',
+          content: '您好，问题已收到',
+          created_at: '2026-09-12T10:00:00',
+        },
+        {
+          id: 2,
+          ticket_id: THREAD_TICKET,
+          sender_role: 'user',
+          sender_username: 'user1',
+          content: '麻烦尽快处理',
+          created_at: '2026-09-12T10:01:00',
+        },
+      ],
+    })
+    emitTransferHuman()
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '帮我转人工客服')
+
+    const rows = wrapper.findAll('.human-thread-row')
+    expect(rows.length).toBe(2)
+    expect(rows[0].classes()).toContain('staff')
+    expect(rows[0].text()).toContain('人工客服 · agent1')
+    expect(rows[0].text()).toContain('您好，问题已收到')
+    expect(rows[1].classes()).toContain('self')
+    expect(rows[1].text()).toContain('麻烦尽快处理')
+  })
+
+  it('线程输入框回帖：调用 addReply 并即时渲染为用户气泡、清空输入', async () => {
+    emitTransferHuman()
+    const wrapper = mountChat()
+    await typeAndSend(wrapper, '帮我转人工客服')
+
+    ticketApi.addReply.mockResolvedValue({
+      id: 9,
+      ticket_id: THREAD_TICKET,
+      sender_role: 'user',
+      sender_username: 'user1',
+      content: '好的谢谢',
+      created_at: '2026-09-12T10:05:00',
+    })
+
+    await wrapper.find('.human-thread-input .el-input-stub').setValue('好的谢谢')
+    const sendBtn = wrapper.find('.human-thread-input .el-button-stub')
+    expect(sendBtn.attributes('disabled')).toBeUndefined()
+    await sendBtn.trigger('click')
+    await flushPromises()
+
+    expect(ticketApi.addReply).toHaveBeenCalledWith(THREAD_TICKET, '好的谢谢')
+    const rows = wrapper.findAll('.human-thread-row')
+    expect(rows.length).toBe(1)
+    expect(rows[0].classes()).toContain('self')
+    expect(rows[0].text()).toContain('好的谢谢')
+    expect(wrapper.find('.human-thread-input .el-input-stub').element.value).toBe('')
+  })
+
+  it('轮询 15s 间隔拉取新回复并按 id 去重合并；组件卸载后停止轮询（无残留定时器）', async () => {
+    vi.useFakeTimers()
+    try {
+      let seqId = 0
+      ticketApi.listReplies.mockImplementation(() => {
+        seqId += 1
+        return Promise.resolve({
+          ticket_id: THREAD_TICKET,
+          replies: [
+            {
+              id: seqId,
+              ticket_id: THREAD_TICKET,
+              sender_role: 'agent',
+              sender_username: 'agent1',
+              content: `回复 ${seqId}`,
+              created_at: '2026-09-12T10:00:00',
+            },
+          ],
+        })
+      })
+      emitTransferHuman()
+
+      const wrapper = mountChat()
+      await nextTick()
+      await wrapper.find('.el-input-stub').setValue('帮我转人工客服')
+      await wrapper.find('.ai-send').trigger('click')
+      // fake timers 下 flushPromises（依赖 setTimeout）会挂起，用定时器步进排空微任务
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(0)
+
+      // 挂接后立即拉一次
+      expect(ticketApi.listReplies).toHaveBeenCalledTimes(1)
+      expect(wrapper.findAll('.human-thread-row').length).toBe(1)
+
+      // 15s 一轮：新 id 追加渲染
+      await vi.advanceTimersByTimeAsync(15000)
+      expect(ticketApi.listReplies).toHaveBeenCalledTimes(2)
+      expect(wrapper.findAll('.human-thread-row').length).toBe(2)
+
+      await vi.advanceTimersByTimeAsync(15000)
+      expect(ticketApi.listReplies).toHaveBeenCalledTimes(3)
+
+      // 卸载：定时器清理，不再轮询
+      wrapper.unmount()
+      await vi.advanceTimersByTimeAsync(45000)
+      expect(ticketApi.listReplies).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

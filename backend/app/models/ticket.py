@@ -48,6 +48,8 @@ class Ticket(Base):
     category: Mapped[str] = mapped_column(String(32), default="")  # 标记"转人工"等
     # 用 String 软外键指向 users.id，不强约束以便测试
     user_id: Mapped[str] = mapped_column(String(36), default="system")
+    # 关联的聊天会话（task 链路转人工建单经参数补填注入；工单页手动建单为空串）
+    conversation_id: Mapped[str] = mapped_column(String(64), default="", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

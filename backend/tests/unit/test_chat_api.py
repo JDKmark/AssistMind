@@ -464,8 +464,12 @@ def test_chat_task_tool_call_events():
     # done 携带最终答案
     assert _events_dict(events)["done"]["answer"] == "工单已创建"
 
-    # ToolAgent 实例化一次，run 调用一次（无 history 时传 None）
-    fake_agent.run.assert_awaited_once_with("创建工单", history=None)
+    # ToolAgent 实例化一次，run 调用一次（无 history 时传 None；
+    # conversation_id 与 start 事件一致，转人工建单关联会话依赖它）
+    fake_agent.run.assert_awaited_once()
+    run_kwargs = fake_agent.run.await_args.kwargs
+    assert run_kwargs["history"] is None
+    assert run_kwargs["conversation_id"] == _events_dict(events)["start"]["conversation_id"]
 
 
 # ---------- 3b. task 意图多轮 history 传递 ----------
@@ -1315,7 +1319,39 @@ def test_chat_task_resolved_passes_annotated_query_and_preset_entities():
         "我的 S1 Pro 不吸了 贝亲 S1 Pro 电动吸奶器",
         history=None,
         preset_entities={"product_id": "P006"},
+        conversation_id=_events_dict(_parse_sse(resp.text))["start"]["conversation_id"],
     )
+
+
+# ---------- 3c. task 意图 conversation_id 透传 Agent（转人工工单关联会话） ----------
+
+
+def test_chat_task_passes_conversation_id_to_agent():
+    """task 意图：请求携带的 conversation_id 透传 agent.run（工单关联会话链路入口）。"""
+    fake_agent = MagicMock()
+    fake_agent.run = AsyncMock(
+        return_value={"answer": "已转人工", "tool_calls": [], "iterations": 1, "degraded": False}
+    )
+    with patch(
+        "app.api.chat.route",
+        new=AsyncMock(
+            return_value={
+                "intent": "task",
+                "confidence": 1.0,
+                "source": "rule",
+                "low_confidence": False,
+            }
+        ),
+    ), patch("app.api.chat.ToolAgent", return_value=fake_agent):
+        resp = client.post(
+            "/api/v1/chat/ask",
+            headers=AUTH_HEADERS,
+            json={"query": "帮我转人工客服", "conversation_id": "C1"},
+        )
+
+    assert resp.status_code == 200
+    fake_agent.run.assert_awaited_once()
+    assert fake_agent.run.await_args.kwargs["conversation_id"] == "C1"
 
 
 def test_chat_task_disambiguation_clarify_short_circuits_before_agent():

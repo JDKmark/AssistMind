@@ -408,6 +408,58 @@
             </template>
           </div>
         </div>
+
+          <!-- 人工客服线程（transfer_human 成功后挂接）：工单回复轮询落在此处，
+               staff 回复左泡、用户回帖右泡；新消息自动滚底，卸载停止轮询 -->
+          <div v-if="humanThreadTicketId" class="human-thread">
+            <div class="human-thread-header">
+              <el-tag size="small" type="warning">人工客服</el-tag>
+              <span class="human-thread-ticket">{{ humanThreadTicketId }}</span>
+              <span class="muted-text">客服人员已加入处理，可在下方直接回复</span>
+            </div>
+            <div ref="threadListRef" class="human-thread-msgs">
+              <div v-if="!humanThread.replies.length" class="muted-text human-thread-empty">
+                暂无客服回复，客服接入后消息会显示在这里
+              </div>
+              <div
+                v-for="r in humanThread.replies"
+                :key="r.id"
+                class="human-thread-row"
+                :class="r.sender_role === 'user' ? 'self' : 'staff'"
+              >
+                <template v-if="r.sender_role !== 'user'">
+                  <div class="ht-meta">
+                    <span class="ht-who">人工客服 · {{ r.sender_username }}</span>
+                    <span class="ht-time">{{ fmtTime(r.created_at) }}</span>
+                  </div>
+                  <div class="ht-bubble">{{ r.content }}</div>
+                </template>
+                <template v-else>
+                  <div class="ht-meta">
+                    <span class="ht-time">{{ fmtTime(r.created_at) }}</span>
+                  </div>
+                  <div class="ht-bubble self">{{ r.content }}</div>
+                </template>
+              </div>
+            </div>
+            <div class="human-thread-input">
+              <el-input
+                v-model="threadDraft"
+                placeholder="回复人工客服…"
+                maxlength="2000"
+                @keydown.enter="sendThreadReply"
+              />
+              <el-button
+                type="primary"
+                size="small"
+                :loading="threadSending"
+                :disabled="!threadDraft.trim()"
+                @click="sendThreadReply"
+              >
+                发送
+              </el-button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -497,6 +549,7 @@ import { ElMessage } from 'element-plus'
 import { chatStream, fetchPersonas } from '@/api/chat'
 import { listConversations, listMessages } from '@/api/conversation'
 import { submitFeedback } from '@/api/feedback'
+import { listReplies, addReply } from '@/api/ticket'
 import { useAuthStore } from '@/stores/auth'
 import { usePersonaStore } from '@/stores/persona'
 import AiInputBox from '@/components/Chat/AiInputBox.vue'
@@ -584,9 +637,90 @@ const currentConversationId = ref('')
 // 播报状态保留在页面层（done 事件朗读判断用），UI 由 AiInputBox 渲染
 const speakEnabled = ref(false)
 
+// ---------- 人工客服线程（transfer_human 成功后挂接） ----------
+const humanThreadTicketId = ref('')
+// 线程数据：{ ticketId, replies }；staff 与用户回复统一按 reply.id 去重合并
+const humanThread = ref({ ticketId: '', replies: [] })
+const threadDraft = ref('')
+const threadSending = ref(false)
+const threadListRef = ref(null)
+// 轮询定时器（15s 一轮）；组件卸载时清理，避免残留请求
+let threadTimer = null
+const THREAD_POLL_INTERVAL = 15000
+
+// 线程消息区滚底（新回复到达 / 本地发送后调用）
+function scrollThreadToBottom() {
+  nextTick(() => {
+    const el = threadListRef.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
+// 按 reply.id 去重合并回复（轮询与本地发送共用），有新增时滚底
+function mergeReplies(list) {
+  const existing = new Set(humanThread.value.replies.map((r) => r.id))
+  let added = false
+  for (const r of list || []) {
+    if (r && r.id != null && !existing.has(r.id)) {
+      humanThread.value.replies.push(r)
+      existing.add(r.id)
+      added = true
+    }
+  }
+  if (added) scrollThreadToBottom()
+}
+
+async function loadHumanReplies() {
+  if (!humanThreadTicketId.value) return
+  try {
+    const data = await listReplies(humanThreadTicketId.value)
+    mergeReplies(data.replies || [])
+  } catch (e) {
+    // 错误提示已由 request 拦截器统一处理；单轮失败不中断，下个周期重试
+    console.warn('[Chat] 人工客服回复轮询失败', e)
+  }
+}
+
+// transfer_human 成功：挂接该工单回复线程（立即拉一次 + 15s 轮询，卸载停止）
+function startHumanThread(ticketId) {
+  if (humanThreadTicketId.value === ticketId) return
+  humanThreadTicketId.value = ticketId
+  humanThread.value = { ticketId, replies: [] }
+  if (threadTimer) clearInterval(threadTimer)
+  threadTimer = setInterval(loadHumanReplies, THREAD_POLL_INTERVAL)
+  loadHumanReplies()
+}
+
+// 用户在线程内回帖：写入工单 replies（sender_role=user 由后端 JWT 定），成功后即时渲染
+async function sendThreadReply() {
+  const content = threadDraft.value.trim()
+  if (!content || threadSending.value || !humanThreadTicketId.value) return
+  threadSending.value = true
+  try {
+    const reply = await addReply(humanThreadTicketId.value, content)
+    threadDraft.value = ''
+    if (reply && reply.id != null) {
+      mergeReplies([reply])
+    } else {
+      // 返回体异常时兜底走一次轮询对齐服务端状态
+      await loadHumanReplies()
+    }
+  } catch (e) {
+    // 失败提示由 request 拦截器统一处理；输入保留便于重发
+    console.warn('[Chat] 人工客服回复发送失败', e)
+  } finally {
+    threadSending.value = false
+  }
+}
+
 onBeforeUnmount(() => {
   stopSpeaking()
   if (liveTimer) clearInterval(liveTimer)
+  // 人工客服线程轮询：组件销毁即停止（无残留定时器）
+  if (threadTimer) {
+    clearInterval(threadTimer)
+    threadTimer = null
+  }
   // 组件真正销毁（如登出后布局卸载）时终止在途 SSE 流，
   // 避免旧 token 的请求在后台继续消费到结束
   activeAbort?.abort()
@@ -1130,6 +1264,11 @@ function handleEvent(msg, name, data) {
         if (ticketId) {
           tc.ticketId = ticketId
           msg.ticketId = ticketId
+          // transfer_human 成功（工具名匹配）：聊天流挂接人工客服线程（工单回复轮询）
+          const isTransfer =
+            data.tool_name === 'transfer_human' ||
+            msg.toolCalls.some((t) => t.tool_name === 'transfer_human')
+          if (isTransfer) startHumanThread(ticketId)
         }
       }
       break
@@ -2130,8 +2269,99 @@ onMounted(() => {
   white-space: pre-wrap;
 }
 
+/* 人工客服线程（transfer_human 成功后出现在消息流末尾）：琥珀色卡片区分 AI 气泡 */
+.human-thread {
+  margin: 6px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--am-amber-700) 30%, var(--am-line));
+  border-radius: 10px;
+  background: #fff;
+}
+.human-thread-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--am-line);
+}
+.human-thread-ticket {
+  font-family: var(--am-font-mono);
+  font-size: 12px;
+  color: var(--am-text-2);
+}
+.human-thread-msgs {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 2px 4px;
+}
+.human-thread-empty {
+  text-align: center;
+  padding: 8px 0;
+  font-size: 13px;
+}
+.human-thread-row {
+  display: flex;
+  flex-direction: column;
+  max-width: 78%;
+}
+.human-thread-row.staff {
+  align-self: flex-start;
+}
+.human-thread-row.self {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.ht-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+.ht-who {
+  font-weight: 600;
+  color: var(--am-amber-700);
+}
+.ht-time {
+  color: var(--am-text-3);
+}
+.ht-bubble {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.human-thread-row.staff .ht-bubble {
+  background: var(--am-paper);
+  border: 1px solid var(--am-line);
+  border-top-left-radius: 3px;
+  color: var(--am-text);
+}
+.ht-bubble.self {
+  background: linear-gradient(135deg, var(--am-blue-600), var(--am-blue-500));
+  color: #fff;
+  border-top-right-radius: 3px;
+}
+.human-thread-input {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--am-line);
+}
+
 /* ============ 移动端（<768px，P1-3 配套）：触控目标放大，桌面密度不变 ============ */
 @media (max-width: 767px) {
+  .human-thread-input {
+    flex-direction: column;
+    align-items: stretch;
+  }
   .fb-btn {
     width: 40px;
     height: 40px;

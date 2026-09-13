@@ -48,6 +48,11 @@ _MALL_EXTRA_COLUMNS = [
     ("owner_user_id", "VARCHAR(36)"),
 ]
 
+# Ticket 增加 conversation_id（转人工工单关联会话）：create_all 只新建表不补存量列，需幂等 ALTER
+_TICKET_EXTRA_COLUMNS = [
+    ("conversation_id", "VARCHAR(64)"),
+]
+
 # 初始账号清单：(username, password, role)，逐账号幂等创建（存在则跳过，不更新）
 _INITIAL_USERS = [
     ("admin", "admin123", "admin"),
@@ -196,6 +201,17 @@ async def init_db() -> None:
                 await conn.execute(
                     text(f"ALTER TABLE mall_orders ADD COLUMN IF NOT EXISTS {col} {ddl}")
                 )
+            for col, ddl in _TICKET_EXTRA_COLUMNS:
+                await conn.execute(
+                    text(f"ALTER TABLE tickets ADD COLUMN IF NOT EXISTS {col} {ddl}")
+                )
+            # 索引同样只建新表不补存量：显式幂等创建（与模型 index=True 的默认索引名一致）
+            await conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_tickets_conversation_id "
+                    "ON tickets (conversation_id)"
+                )
+            )
             for order_sns, new_owner in _OWNER_MIGRATIONS:
                 await conn.execute(
                     text(

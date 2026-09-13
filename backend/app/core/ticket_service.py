@@ -58,6 +58,7 @@ def _ticket_to_dict(ticket: Ticket) -> dict:
         "status": ticket.status,
         "category": ticket.category,
         "user_id": ticket.user_id,
+        "conversation_id": ticket.conversation_id,
         "created_at": ticket.created_at.isoformat() if ticket.created_at else None,
         "updated_at": ticket.updated_at.isoformat() if ticket.updated_at else None,
     }
@@ -98,6 +99,7 @@ async def _persist_ticket(
     priority: str,
     user_id: str,
     category: str,
+    conversation_id: str = "",
 ) -> Ticket:
     """构造并持久化一个新工单。"""
     ticket = Ticket(
@@ -108,6 +110,7 @@ async def _persist_ticket(
         status="open",
         category=category,
         user_id=user_id,
+        conversation_id=conversation_id,
     )
     session.add(ticket)
     await session.commit()
@@ -121,8 +124,11 @@ async def create_ticket(
     priority: str = "normal",
     user_id: str = "system",
     category: str = "",
+    conversation_id: str = "",
 ) -> dict:
     """创建工单（幂等）。
+
+    conversation_id：关联的聊天会话（task 链路转人工建单注入；默认空串）。
 
     返回 {"ticket_id": str, "created": bool, "ticket": {...}}。
     """
@@ -152,7 +158,8 @@ async def create_ticket(
                         "ticket": _ticket_to_dict(existing),
                     }
                 ticket = await _persist_ticket(
-                    session, title, description, priority, user_id, category
+                    session, title, description, priority, user_id, category,
+                    conversation_id,
                 )
                 return {"ticket_id": ticket.id, "created": True, "ticket": _ticket_to_dict(ticket)}
         elif redis.is_connected:
@@ -167,7 +174,8 @@ async def create_ticket(
                     }
                 # 极端情况：锁被持有但查不到重复（对方尚未提交），仍创建避免请求堆积
                 ticket = await _persist_ticket(
-                    session, title, description, priority, user_id, category
+                    session, title, description, priority, user_id, category,
+                    conversation_id,
                 )
                 return {"ticket_id": ticket.id, "created": True, "ticket": _ticket_to_dict(ticket)}
         else:
@@ -175,7 +183,8 @@ async def create_ticket(
             logger.warning("[ticket] Redis 不可用，跳过幂等检查直接创建")
             async with async_session() as session:
                 ticket = await _persist_ticket(
-                    session, title, description, priority, user_id, category
+                    session, title, description, priority, user_id, category,
+                    conversation_id,
                 )
                 return {"ticket_id": ticket.id, "created": True, "ticket": _ticket_to_dict(ticket)}
     finally:

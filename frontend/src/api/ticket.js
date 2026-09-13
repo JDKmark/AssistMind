@@ -27,6 +27,11 @@ export function addReply(ticketId, content) {
   return request.post(`/ticket/${ticketId}/replies`, { content })
 }
 
+// 查看工单关联的用户会话（staff 专用；404=工单不存在或未关联会话，user 角色 403）
+export function getTicketConversation(ticketId) {
+  return request.get(`/ticket/${ticketId}/conversation`)
+}
+
 // 工单更新轮询：silent=true 走 request.js 静默通道（失败不弹窗、不置后端不可用状态），
 // 由 ticketPolling 捕获后 console.warn 静默降级
 export function getTicketUpdates(sinceIso) {

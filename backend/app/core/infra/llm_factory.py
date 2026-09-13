@@ -194,10 +194,11 @@ def _build_chat_model(name: str, *, stream_fast: bool = False) -> ChatOpenAI:
             timeout=timeout,
         )
     timeout = settings.LLM_STREAM_TIMEOUT if stream_fast else settings.LLM_TIMEOUT
+    api_key, base_url, model = settings.llm_profile()
     return ChatOpenAI(
-        model=settings.DEEPSEEK_MODEL,
-        api_key=settings.DEEPSEEK_API_KEY,
-        base_url=settings.DEEPSEEK_BASE_URL,
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
         temperature=0.3,
         max_tokens=2048,
         timeout=timeout,
@@ -327,7 +328,7 @@ async def _call_llm_impl(
             result = await _deepseek_with_retry(prompt, system, info=info)
             if info is not None:
                 info["provider"] = "deepseek"
-                info["model"] = settings.DEEPSEEK_MODEL
+                info["model"] = settings.llm_profile()[2]
                 info["timeout_s"] = settings.LLM_TIMEOUT
             return result
         except CircuitBreakerOpenError:
@@ -423,7 +424,7 @@ async def call_llm(
             input={"prompt": prompt, "system": system, "generation": generation},
             metadata={
                 "provider": settings.LLM_PROVIDER,
-                "model": settings.DEEPSEEK_MODEL,
+                "model": settings.llm_profile()[2],
                 "timeout_s": settings.LLM_TIMEOUT,
             },
         )
@@ -585,7 +586,7 @@ async def _stream_impl(
                 yield d
             if info is not None:
                 info["provider"] = "deepseek"
-                info["model"] = settings.DEEPSEEK_MODEL
+                info["model"] = settings.llm_profile()[2]
                 info["timeout_s"] = settings.LLM_STREAM_TIMEOUT
             return
         except Exception as e:
@@ -665,7 +666,7 @@ async def stream_llm(
             input={"prompt": prompt, "system": system, "generation": generation},
             metadata={
                 "provider": settings.LLM_PROVIDER,
-                "model": settings.DEEPSEEK_MODEL,
+                "model": settings.llm_profile()[2],
                 "timeout_s": settings.LLM_STREAM_TIMEOUT,
             },
         )
@@ -748,10 +749,11 @@ def get_chat_model() -> BaseChatModel:
             timeout=settings.LLM_FALLBACK_TIMEOUT,
         )
     if not is_open("llm_deepseek"):
+        api_key, base_url, model = settings.llm_profile()
         return ChatOpenAI(
-            model=settings.DEEPSEEK_MODEL,
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url=settings.DEEPSEEK_BASE_URL,
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
             temperature=0.3,
             timeout=settings.LLM_TIMEOUT,
         )

@@ -18,7 +18,7 @@ mock 策略：mock app.api.ticket 中的 service 引用，不连真实 DB。
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -384,3 +384,217 @@ def test_add_reply_user_does_not_write_audit(mock_get, mock_add, mock_audit):
     resp = client.post("/api/v1/ticket/TK-1/replies", json={"content": "补充信息"})
     assert resp.status_code == 200
     mock_audit.assert_not_awaited()
+
+
+# ---------- 转人工工单关联会话（conversation_id 落库全链） ----------
+
+# 服务层（ticket_service）mock 工具：与 test_ticket_service.py 同模式，
+# 就地复刻以保持本文件自包含（避免跨测试文件 import 耦合）
+
+
+def _make_service_session() -> AsyncMock:
+    """构造一个 mock AsyncSession。"""
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
+    return session
+
+
+def _bind_service_session(mock_session_cls, session: AsyncMock) -> None:
+    """将 mock session 绑定到 async_session() 上下文管理器。"""
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+
+def _make_service_redis(connected: bool) -> MagicMock:
+    """构造一个 mock RedisClient（connected=False 跳过幂等直接创建）。"""
+    redis = MagicMock()
+    redis.is_connected = connected
+    redis.client = None
+    return redis
+
+
+@patch("app.core.ticket_service.async_session")
+@patch("app.core.ticket_service.get_redis")
+async def test_create_ticket_with_conversation_id_persists_and_returns_it(
+    mock_redis, mock_session_cls
+):
+    """建单传入 conversation_id="C1"：落库到 Ticket 并在返回体中可见。"""
+    from app.core.ticket_service import create_ticket as service_create_ticket
+
+    session = _make_service_session()
+    _bind_service_session(mock_session_cls, session)
+    mock_redis.return_value = _make_service_redis(connected=False)
+
+    result = await service_create_ticket(
+        "转人工：需要人工", "描述", conversation_id="C1"
+    )
+
+    assert result["created"] is True
+    assert result["ticket"]["conversation_id"] == "C1"
+    persisted = session.add.call_args[0][0]
+    assert persisted.conversation_id == "C1"
+
+
+@patch("app.core.ticket_service.async_session")
+@patch("app.core.ticket_service.get_redis")
+async def test_create_ticket_without_conversation_id_defaults_empty(
+    mock_redis, mock_session_cls
+):
+    """既有建单路径不回归：不传 conversation_id 时为空串（工单页手动建单）。"""
+    from app.core.ticket_service import create_ticket as service_create_ticket
+
+    session = _make_service_session()
+    _bind_service_session(mock_session_cls, session)
+    mock_redis.return_value = _make_service_redis(connected=False)
+
+    result = await service_create_ticket("手动工单", "描述")
+
+    assert result["created"] is True
+    assert result["ticket"]["conversation_id"] == ""
+    persisted = session.add.call_args[0][0]
+    assert persisted.conversation_id == ""
+
+
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_get_ticket_returns_conversation_id(mock_get):
+    """GET /ticket/{id} 返回体含 conversation_id（转人工建单传入 C1 → 返回 C1）。"""
+    mock_get.return_value = {
+        "id": "TK-1",
+        "title": "转人工",
+        "user_id": "testuser",
+        "conversation_id": "C1",
+    }
+    resp = client.get("/api/v1/ticket/TK-1")
+    assert resp.status_code == 200
+    assert resp.json()["conversation_id"] == "C1"
+
+
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_get_ticket_conversation_id_empty_when_not_linked(mock_get):
+    """未关联会话的旧工单：conversation_id 为空串（前端据此隐藏会话入口）。"""
+    mock_get.return_value = {
+        "id": "TK-old",
+        "title": "旧工单",
+        "user_id": "testuser",
+        "conversation_id": "",
+    }
+    resp = client.get("/api/v1/ticket/TK-old")
+    assert resp.status_code == 200
+    assert resp.json()["conversation_id"] == ""
+
+
+# ---------- 客服查看用户会话上下文（GET /{ticket_id}/conversation） ----------
+
+
+@patch("app.api.ticket.list_messages", new_callable=AsyncMock)
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_ticket_conversation_success(mock_get, mock_msgs):
+    """agent 读关联工单：200，返回 conversation_id 与时间正序消息列表。
+
+    list_messages 收到的 user_id 是工单归属者（会话主人），不是客服自己。
+    """
+    mock_get.return_value = {
+        "id": "TK-1",
+        "user_id": "customer1",
+        "conversation_id": "C1",
+    }
+    mock_msgs.return_value = {
+        "conversation_id": "C1",
+        "messages": [
+            {"role": "user", "content": "订单查不到", "intent": "task",
+             "created_at": "2026-09-12T10:00:00"},
+            {"role": "assistant", "content": "正在为您查询", "intent": "task",
+             "created_at": "2026-09-12T10:00:05"},
+        ],
+    }
+
+    async def agent_user():
+        return {"username": "agent1", "role": "agent"}
+
+    app.dependency_overrides[get_current_user] = agent_user
+    try:
+        resp = client.get("/api/v1/ticket/TK-1/conversation")
+    finally:
+        app.dependency_overrides[get_current_user] = fake_user
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["conversation_id"] == "C1"
+    assert [m["role"] for m in data["messages"]] == ["user", "assistant"]
+    for m in data["messages"]:
+        assert set(m) == {"role", "content", "created_at", "intent"}
+    # 时间正序（created_at 单调不减）
+    times = [m["created_at"] for m in data["messages"]]
+    assert times == sorted(times)
+    mock_msgs.assert_awaited_once_with("C1", user_id="customer1")
+
+
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_ticket_conversation_ticket_missing_404(mock_get):
+    """工单不存在：404（防枚举，与详情接口统一形状）。"""
+    mock_get.return_value = None
+
+    async def agent_user():
+        return {"username": "agent1", "role": "agent"}
+
+    app.dependency_overrides[get_current_user] = agent_user
+    try:
+        resp = client.get("/api/v1/ticket/TK-notexist/conversation")
+    finally:
+        app.dependency_overrides[get_current_user] = fake_user
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "工单不存在"
+
+
+@patch("app.api.ticket.list_messages", new_callable=AsyncMock)
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_ticket_conversation_no_conversation_404(mock_get, mock_msgs):
+    """工单存在但 conversation_id 为空：404「该工单未关联会话」，不调消息服务。"""
+    mock_get.return_value = {
+        "id": "TK-old",
+        "user_id": "customer1",
+        "conversation_id": "",
+    }
+
+    async def agent_user():
+        return {"username": "agent1", "role": "agent"}
+
+    app.dependency_overrides[get_current_user] = agent_user
+    try:
+        resp = client.get("/api/v1/ticket/TK-old/conversation")
+    finally:
+        app.dependency_overrides[get_current_user] = fake_user
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "该工单未关联会话"
+    mock_msgs.assert_not_awaited()
+
+
+@patch("app.api.ticket.list_messages", new_callable=AsyncMock)
+@patch("app.api.ticket.get_ticket", new_callable=AsyncMock)
+def test_ticket_conversation_service_error_503(mock_get, mock_msgs):
+    """消息服务异常（DB 不可用等）：503 降级，不抛 500 栈。"""
+    mock_get.return_value = {
+        "id": "TK-1",
+        "user_id": "customer1",
+        "conversation_id": "C1",
+    }
+    mock_msgs.side_effect = RuntimeError("db unavailable")
+
+    async def agent_user():
+        return {"username": "agent1", "role": "agent"}
+
+    app.dependency_overrides[get_current_user] = agent_user
+    try:
+        resp = client.get("/api/v1/ticket/TK-1/conversation")
+    finally:
+        app.dependency_overrides[get_current_user] = fake_user
+    assert resp.status_code == 503
+
+
+def test_ticket_conversation_user_role_403():
+    """user 角色直调：require_staff 依赖挡下，403（不触发工单查询）。"""
+    # autouse fixture 已将 get_current_user 覆盖为 user 角色
+    resp = client.get("/api/v1/ticket/TK-1/conversation")
+    assert resp.status_code == 403

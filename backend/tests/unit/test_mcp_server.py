@@ -153,7 +153,11 @@ async def test_create_ticket_normal(mock_create):
     assert result["ticket"]["title"] == "登录失败"
     assert result["ticket"]["priority"] == "high"
     mock_create.assert_awaited_once_with(
-        "登录失败", "用户无法登录系统", priority="high", user_id="user1"
+        "登录失败",
+        "用户无法登录系统",
+        priority="high",
+        user_id="user1",
+        conversation_id="",
     )
 
 
@@ -188,6 +192,44 @@ async def test_transfer_human(mock_create):
         priority="high",
         category="transfer_human",
         user_id="user2",
+        conversation_id="",
+    )
+
+
+# ---------- 4.1 conversation_id 透传（转人工工单关联会话） ----------
+
+
+@patch("app.core.mcp.server._create_ticket", new_callable=AsyncMock)
+async def test_create_ticket_forwards_conversation_id(mock_create):
+    """create_ticket 收到 conversation_id 时透传 service（转人工工单关联会话）。"""
+    mock_create.return_value = {"ticket_id": "TK-cid", "created": True, "ticket": {}}
+
+    await create_ticket(
+        "标题", "描述", conversation_id="C1", ctx=_ctx(username="user1")
+    )
+
+    mock_create.assert_awaited_once_with(
+        "标题", "描述", priority="normal", user_id="user1", conversation_id="C1"
+    )
+
+
+@patch("app.core.mcp.server._create_ticket", new_callable=AsyncMock)
+async def test_transfer_human_forwards_conversation_id(mock_create):
+    """transfer_human 收到 conversation_id 时透传其内部建单调用。"""
+    mock_create.return_value = {"ticket_id": "TK-cid2", "created": True, "ticket": {}}
+
+    result = await transfer_human(
+        "机器人答不上来", conversation_id="C1", ctx=_ctx(username="user2")
+    )
+
+    assert result["ticket_id"] == "TK-cid2"
+    mock_create.assert_awaited_once_with(
+        title="转人工：机器人答不上来",
+        description="机器人答不上来",
+        priority="high",
+        category="transfer_human",
+        user_id="user2",
+        conversation_id="C1",
     )
 
 

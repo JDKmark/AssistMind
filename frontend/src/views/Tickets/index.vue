@@ -135,6 +135,35 @@
           </el-descriptions-item>
         </el-descriptions>
 
+        <!-- 查看用户会话（转人工关联会话的工单可见）：只读渲染会话消息，
+             404（未关联/不存在）/403 由拦截器提示，区内展示空态 -->
+        <div v-if="currentTicket && currentTicket.conversation_id" class="conv-section">
+          <el-button
+            size="small"
+            type="primary"
+            plain
+            :loading="convLoading"
+            class="conv-toggle-btn"
+            @click="loadConversation"
+          >
+            查看用户会话
+          </el-button>
+          <div v-if="convExpanded" v-loading="convLoading" class="conv-panel">
+            <div v-if="conversation.length" class="conv-list">
+              <div v-for="(m, i) in conversation" :key="i" class="conv-msg">
+                <div class="conv-msg-meta">
+                  <el-tag size="small" :type="m.role === 'user' ? 'info' : 'success'" effect="plain">
+                    {{ m.role === 'user' ? '用户' : 'AI' }}
+                  </el-tag>
+                  <span class="conv-msg-time">{{ formatShortTime(m.created_at) }}</span>
+                </div>
+                <div class="conv-msg-content">{{ m.content }}</div>
+              </div>
+            </div>
+            <el-empty v-else-if="!convLoading" description="暂无会话消息" :image-size="60" />
+          </div>
+        </div>
+
         <!-- 人工介入沟通线程：用户补充说明，客服/管理员答复，双方可见 -->
         <div class="reply-section">
           <div class="reply-title">沟通记录</div>
@@ -184,7 +213,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { listTickets, createTicket, updateTicketStatus, getTicket, listReplies, addReply } from '@/api/ticket'
+import { listTickets, createTicket, updateTicketStatus, getTicket, listReplies, addReply, getTicketConversation } from '@/api/ticket'
 import { useAuthStore } from '@/stores/auth'
 import { useBreakpoint } from '@/utils/useBreakpoint'
 
@@ -213,6 +242,10 @@ const currentTicket = ref(null)
 const replies = ref([])
 const replyDraft = ref('')
 const replySubmitting = ref(false)
+// 查看用户会话（只读）：展开状态 + 消息列表 + 加载态
+const convExpanded = ref(false)
+const convLoading = ref(false)
+const conversation = ref([])
 
 function replySenderTagType(role) {
   return role === 'user' ? 'info' : 'warning'
@@ -257,6 +290,12 @@ function formatTime(iso) {
   return iso.replace('T', ' ').slice(0, 19)
 }
 
+// 会话消息时间：MM-DD HH:mm（详情抽屉内紧凑展示）
+function formatShortTime(iso) {
+  if (!iso) return ''
+  return iso.replace('T', ' ').slice(5, 16)
+}
+
 // 复制工单号到剪贴板（详情抽屉内小工具；失败提示不静默）
 async function copyTicketId() {
   const id = currentTicket.value && currentTicket.value.id
@@ -298,6 +337,9 @@ async function openDetail(row) {
   currentTicket.value = null
   replies.value = []
   replyDraft.value = ''
+  // 会话只读区随工单切换复位（旧工单无 conversation_id 不显示入口）
+  convExpanded.value = false
+  conversation.value = []
   try {
     const [data, replyData] = await Promise.all([getTicket(row.id), listReplies(row.id)])
     currentTicket.value = data
@@ -329,6 +371,23 @@ async function sendReply() {
     console.warn('[Tickets] 回复发送失败', e)
   } finally {
     replySubmitting.value = false
+  }
+}
+
+// 查看用户会话：拉取工单关联会话的消息列表（时间正序，只读）
+async function loadConversation() {
+  if (!currentTicket.value) return
+  convExpanded.value = true
+  convLoading.value = true
+  try {
+    const data = await getTicketConversation(currentTicket.value.id)
+    conversation.value = data.messages || []
+  } catch (e) {
+    // 404（未关联会话/不存在）或 403 已由 request 拦截器提示；区内走空态
+    conversation.value = []
+    console.warn('[Tickets] 用户会话加载失败', e)
+  } finally {
+    convLoading.value = false
   }
 }
 
@@ -410,6 +469,47 @@ onMounted(loadTickets)
 }
 .reply-section {
   margin-top: 16px;
+}
+/* 查看用户会话（只读）：限高 320px 滚动的消息列表 */
+.conv-section {
+  margin-top: 16px;
+}
+.conv-toggle-btn {
+  margin-bottom: 8px;
+}
+.conv-panel {
+  border: 1px solid var(--am-line);
+  border-radius: 8px;
+  padding: 10px;
+}
+.conv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.conv-msg {
+  padding: 8px 10px;
+  border: 1px solid var(--am-line);
+  border-radius: 8px;
+  background: var(--am-paper);
+}
+.conv-msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.conv-msg-time {
+  font-size: 12px;
+  color: var(--am-text-3);
+}
+.conv-msg-content {
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .reply-title {
   font-weight: 600;

@@ -1,10 +1,16 @@
 """RAGAS 评估脚本：对 RAG 链路跑 faithfulness / answer_relevancy / context_precision / context_recall。
 
 用法（在 backend/ 下）：
-    venv\\Scripts\\python.exe scripts/run_eval.py [数据集路径]
+    venv\\Scripts\\python.exe scripts/run_eval.py [数据集路径] [--dump-json 路径] [--judge-retries N]
 
 - 数据集路径缺省为 backend/app/data/eval_mall_qa.json，也可传入自定义 JSON
   （字段：question / ground_truth / adversarial），便于跑部分样本做冒烟验证
+- --dump-json：把逐条全量明细（问题 / 命中文档 / 检索片段全文 / 回答 /
+  ground_truth / 四项分数 / 失败原因）写入指定 JSON。报告里的回答会被截断到
+  60 字，人工抽检必须依赖这个文件，不要只看 stdout
+- --judge-retries：首轮判分出现 NaN 的行逐条重试的次数（默认 2，0 = 关闭）。
+  ragas 的 raise_exceptions=False 会把失败行静默记成 NaN，只报"有效 N/M"，
+  重试后仍失败的行会带失败原因写进 --dump-json 的 row_errors，并在报告末尾列出
 
 流程：
 1. 读取 backend/app/data/eval_mall_qa.json（字段：question / ground_truth / adversarial），
@@ -36,11 +42,13 @@ from __future__ import annotations
 
 import asyncio
 import glob
+import inspect
 import json
 import logging
 import math
 import os
 import sys
+import time
 import types
 import warnings
 
@@ -135,6 +143,135 @@ KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "knowledge",
 EVAL_METRICS = [
     m for m in (faithfulness, context_precision, context_recall) if m is not None
 ]
+
+
+def _is_missing(value) -> bool:
+    """分数缺失判定：None 或 NaN（ragas raise_exceptions=False 时失败行记为 NaN）。"""
+    return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+# ---------- judge 调用旁路记录（诊断 IncompleteOutputException 用） ----------
+
+_JUDGE_CALL_SINK: list[dict] = []
+_JUDGE_CAPTURE = False
+
+
+class _CaptureCompletions:
+    """拦截 chat.completions.create，记录 finish_reason / 输出长度 / usage / 异常。
+
+    ragas 把判分异常吞成 NaN，row_errors 只剩"解析失败"，看不出截断诱因。
+    这里在 HTTP 客户端层旁路记账：finish_reason=length 即实锤输出截断，
+    配合 prompt_tokens 还能看出是不是长输入触发（同步与异步 client 都要包）。
+    """
+
+    def __init__(self, inner, sink: list, label: str) -> None:
+        self._inner = inner
+        self._sink = sink
+        self._label = label
+
+    def _record(self, kwargs: dict, response=None, error: Exception | None = None) -> None:
+        try:
+            messages = kwargs.get("messages") or []
+            entry: dict = {
+                "ts": time.strftime("%H:%M:%S"),
+                "label": self._label,
+                "model": kwargs.get("model"),
+                "max_tokens": kwargs.get("max_tokens"),
+                "input_chars": sum(
+                    len(str(m.get("content") or ""))
+                    for m in messages
+                    if isinstance(m, dict)
+                ),
+            }
+            if error is not None:
+                entry["error"] = f"{type(error).__name__}: {error}"
+            if response is not None:
+                choices = getattr(response, "choices", None) or []
+                choice = choices[0] if choices else None
+                content = getattr(getattr(choice, "message", None), "content", "") or ""
+                entry["finish_reason"] = getattr(choice, "finish_reason", None)
+                entry["output_chars"] = len(content)
+                entry["output_tail"] = content[-80:]
+                usage = getattr(response, "usage", None)
+                if usage is not None:
+                    entry["prompt_tokens"] = getattr(usage, "prompt_tokens", None)
+                    entry["completion_tokens"] = getattr(usage, "completion_tokens", None)
+            self._sink.append(entry)
+        except Exception:
+            pass  # 记账失败绝不能影响评估本身
+
+    def create(self, *args, **kwargs):
+        try:
+            result = self._inner.create(*args, **kwargs)
+        except Exception as e:  # 调用本身就失败（网络/超时/限流）也要记账
+            self._record(kwargs, error=e)
+            raise
+        if inspect.isawaitable(result):
+
+            async def _await_and_record():
+                try:
+                    resp = await result
+                except Exception as e:
+                    self._record(kwargs, error=e)
+                    raise
+                self._record(kwargs, response=resp)
+                return resp
+
+            return _await_and_record()
+        self._record(kwargs, response=result)
+        return result
+
+
+class _CaptureChat:
+    def __init__(self, inner_chat, sink: list, label: str) -> None:
+        self.completions = _CaptureCompletions(inner_chat.completions, sink, label)
+        self._inner_chat = inner_chat
+
+    def __getattr__(self, name):
+        return getattr(self._inner_chat, name)
+
+
+class _CaptureClient:
+    def __init__(self, inner, sink: list, label: str) -> None:
+        self.chat = _CaptureChat(inner.chat, sink, label)
+        self._inner = inner
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def _judge_calls_summary() -> str:
+    """finish_reason 分布 + 异常类型分布（报告用一句话说清截断情况）。"""
+    if not _JUDGE_CALL_SINK:
+        return "无 judge 调用记录"
+    by_finish: dict[str, int] = {}
+    by_error: dict[str, int] = {}
+    for e in _JUDGE_CALL_SINK:
+        if e.get("error"):
+            etype = e["error"].split(":", 1)[0]
+            by_error[etype] = by_error.get(etype, 0) + 1
+        else:
+            fr = str(e.get("finish_reason"))
+            by_finish[fr] = by_finish.get(fr, 0) + 1
+    parts = [f"共 {len(_JUDGE_CALL_SINK)} 次调用"]
+    if by_finish:
+        parts.append("finish_reason=" + json.dumps(by_finish, ensure_ascii=False))
+    if by_error:
+        parts.append("异常=" + json.dumps(by_error, ensure_ascii=False))
+    return "；".join(parts)
+
+
+def _write_judge_calls(dump_path: str | None) -> None:
+    """judge 调用记录落盘（sidecar JSONL）+ 打印分布摘要。"""
+    if not _JUDGE_CALL_SINK:
+        return
+    logger.info("[Eval] judge 调用记录：%s", _judge_calls_summary())
+    if dump_path:
+        sidecar = dump_path + ".judge_calls.jsonl"
+        with open(sidecar, "w", encoding="utf-8") as f:
+            for e in _JUDGE_CALL_SINK:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        logger.info("[Eval] judge 原始调用记录已落盘: %s", os.path.abspath(sidecar))
 
 
 def load_dataset(path: str) -> list[dict]:
@@ -285,11 +422,27 @@ async def run_rag(item: dict) -> dict:
         if source and source not in hit_docs:
             hit_docs.append(source)
 
+    # 检索片段明细：人工抽检要知道"判分时到底喂了哪些片段"，
+    # 只留文本无法回答"正确内容有没有进上下文"（见 RAGAS 抽检记录 2026-09-13）
+    contexts_detail: list[dict] = []
+    for c in contexts:
+        text = c.get("text", "") or ""
+        detail = {
+            "source": c.get("source") or c.get("doc_id") or "",
+            "doc_id": c.get("doc_id", ""),
+            "chars": len(text),
+        }
+        for score_key in ("score", "rerank_score", "rrf_score"):
+            if c.get(score_key) is not None:
+                detail[score_key] = c[score_key]
+        contexts_detail.append(detail)
+
     return {
         "question": question,
         "ground_truth": item["ground_truth"],
         "adversarial": item["adversarial"],
         "contexts": [c.get("text", "") for c in contexts],
+        "contexts_detail": contexts_detail,
         "hit_docs": hit_docs,
         "answer": gen["answer"],
         "degraded": retrieval["degraded"] + (["llm"] if gen["degraded"] else []),
@@ -342,7 +495,7 @@ else:
     ProjectEmbeddings = None  # type: ignore[assignment,misc]
 
 
-def build_ragas_llm(async_client: bool = False):
+def build_ragas_llm(async_client: bool = False, max_tokens: int | None = None):
     """构造 ragas 评分 LLM：与项目配置一致（LLM_PROVIDER=deepseek → DeepSeek，
     LLM_PROVIDER=ollama → Ollama），OpenAI 兼容协议 + instructor 结构化输出。
 
@@ -351,10 +504,19 @@ def build_ragas_llm(async_client: bool = False):
     - async_client=True：AsyncOpenAI，供 collections 版指标使用（ascore 内部
       调用 llm.agenerate，同步 client 会报
       "Cannot use agenerate() with a synchronous client"）
+    - max_tokens：judge 输出上限。2026-09-13 端到端复查发现 4096 下
+      deepseek-v4-flash 的长 JSON 结构化输出被截断 → IncompleteOutputException，
+      42 条里 15 行 faithfulness 静默丢失且重试无法挽回（同输入重复截断），
+      故默认提到 8192，可用环境变量 EVAL_JUDGE_MAX_TOKENS / CLI 覆盖
 
     注意：ragas 指标调用是长 JSON 结构化输出，本地 Ollama 推理较慢，
     客户端超时放宽到 90s（离线批量评估，不走交互链路的 15s 降级超时）。
     """
+    if max_tokens is None:
+        try:
+            max_tokens = int(os.environ.get("EVAL_JUDGE_MAX_TOKENS", "8192"))
+        except ValueError:
+            max_tokens = 8192
     client_cls = openai.AsyncOpenAI if async_client else openai.OpenAI
     if settings.LLM_PROVIDER == "ollama":
         client = client_cls(
@@ -370,13 +532,20 @@ def build_ragas_llm(async_client: bool = False):
             timeout=settings.LLM_TIMEOUT,
         )
         model = settings.DEEPSEEK_MODEL
-    return llm_factory(
-        model,
-        client=client,
-        # 2048 在 deepseek-v4-flash 等长 JSON 结构化输出（ragas NLI 语句列表）下
-        # 频繁截断 → IncompleteOutputException 重试拖慢且产生 NaN，调大到 4096
-        max_tokens=4096,
-    )
+    if _JUDGE_CAPTURE:
+        raw_client = client
+        client = _CaptureClient(client, _JUDGE_CALL_SINK, "async" if async_client else "sync")
+    try:
+        return llm_factory(
+            model,
+            client=client,
+            max_tokens=max_tokens,
+        )
+    except Exception as e:
+        if _JUDGE_CAPTURE:
+            logger.warning("[Eval] judge 调用记录包装与 instructor 不兼容（%s），退回原始 client", e)
+            return llm_factory(model, client=raw_client, max_tokens=max_tokens)
+        raise
 
 
 if RAGAS_AVAILABLE:
@@ -421,7 +590,109 @@ else:
     ZhAnswerRelevancy = None  # type: ignore[assignment,misc]
 
 
-async def run_evaluation(rows: list[dict]):
+async def _retry_missing_scores(
+    rows: list[dict],
+    samples: list,
+    metrics: list,
+    result,
+    ragas_llm,
+    embeddings,
+    retries: int,
+) -> dict:
+    """对首轮判分缺分的行逐条重试，返回诊断信息。
+
+    ragas 的 raise_exceptions=False 会把失败行记成 NaN 且不给出原因（报告只显示
+    "有效 30/35"）。这里对缺失行单独重跑（每次只送一条样本），把能救回来的分数
+    补上并记录重试轮数；重试后仍缺失的行连问题、缺失指标一起写进 row_errors，
+    由 print_report 列出、由 --dump-json 落盘。
+    """
+    names = [m.name for m in metrics]
+    diag: dict = {"retry_rounds": 0, "retried_rows": 0, "row_errors": []}
+    for attempt in range(1, retries + 1):
+        pending = [
+            i
+            for i, s in enumerate(result.scores)
+            if any(_is_missing(s.get(n)) for n in names)
+        ]
+        if not pending:
+            break
+        diag["retry_rounds"] = attempt
+        diag["retried_rows"] += len(pending)
+        logger.warning(
+            "[Eval] 判分缺失重试第 %d/%d 轮：第 %s 行",
+            attempt,
+            retries,
+            [i + 1 for i in pending],
+        )
+        sub_dataset = EvaluationDataset(samples=[samples[i] for i in pending])
+        try:
+            sub_result = await aevaluate(
+                dataset=sub_dataset,
+                metrics=metrics,
+                llm=ragas_llm,
+                embeddings=embeddings,
+                raise_exceptions=False,
+                show_progress=False,
+            )
+        except Exception as e:  # 重试批次整体失败：保留原始缺失，进入下一轮
+            logger.warning("[Eval] 重试批次异常（保留原始缺失）: %s", e)
+            continue
+        if len(sub_result.scores) != len(pending):
+            # zip 按位置配对，行数不一致会把 A 行的分数写到 B 行上（静默错位），
+            # 宁可保持缺失也不能写错分数
+            logger.warning(
+                "[Eval] 重试返回行数不匹配（请求 %d 行，返回 %d 行），本轮跳过合并",
+                len(pending),
+                len(sub_result.scores),
+            )
+            continue
+        for idx, sub_scores in zip(pending, sub_result.scores):
+            for name in names:
+                if _is_missing(result.scores[idx].get(name)) and not _is_missing(
+                    sub_scores.get(name)
+                ):
+                    result.scores[idx][name] = sub_scores[name]
+    return diag
+
+
+def _collect_row_errors(
+    rows: list[dict],
+    scores: list[dict],
+    metric_names: list[str],
+    ar_errors: dict[int, str],
+    retry_rounds: int,
+) -> list[dict]:
+    """汇总仍缺分的行（问题 / 缺失指标 / 原因），供报告与 --dump-json 暴露。
+
+    单独拆出来是为了能离线单测（不依赖 ragas 与 LLM）。
+    """
+    row_errors: list[dict] = []
+    for i, score_row in enumerate(scores):
+        missing = [n for n in metric_names if _is_missing(score_row.get(n))]
+        if not missing:
+            continue
+        reasons = []
+        if i in ar_errors:
+            reasons.append(f"answer_relevancy: {ar_errors[i]}")
+        batch_failed = [n for n in missing if n != "answer_relevancy"]
+        if batch_failed:
+            reasons.append(
+                f"{'/'.join(batch_failed)}: judge 调用或结果解析失败，"
+                f"重试 {retry_rounds} 轮后仍未产出分数"
+            )
+        row_errors.append(
+            {
+                "index": i + 1,
+                "question": rows[i]["question"],
+                "adversarial": bool(rows[i].get("adversarial")),
+                "missing_metrics": missing,
+                "reason": "；".join(reasons) or "未知原因",
+            }
+        )
+    return row_errors
+
+
+async def run_evaluation(rows: list[dict], judge_retries: int = 2, judge_max_tokens: int | None = None):
     """构造 ragas 数据集并执行评估。
 
     - faithfulness / context_precision / context_recall：aevaluate 批处理
@@ -431,8 +702,9 @@ async def run_evaluation(rows: list[dict]):
       退化为单点采样（Ollama 等不支持 n>1 的端点），分数是单次余弦相似度，
       方差大；collections 版为 3 问题均值，评估口径更可靠。
 
-    失败行（raise_exceptions=False）由 ragas 记为 NaN，逐条明细中显示为 "-"，
-    平均分按有效行计算，不静默掩盖。
+    首批判分后对缺分行逐条重试（judge_retries 轮，默认 2）；重试后仍缺分的行
+    记入诊断信息 row_errors（含问题、缺失指标、原因），由报告与 --dump-json 暴露，
+    不再只显示一句"有效 N/M 行"。
     """
     if not RAGAS_AVAILABLE:  # pragma: no cover - main 已前置拦截，防御性兜底
         raise RuntimeError(
@@ -450,7 +722,7 @@ async def run_evaluation(rows: list[dict]):
     ]
     dataset = EvaluationDataset(samples=samples)
 
-    ragas_llm = build_ragas_llm()
+    ragas_llm = build_ragas_llm(max_tokens=judge_max_tokens)
     embeddings = ProjectEmbeddings()
 
     logger.info(
@@ -470,12 +742,26 @@ async def run_evaluation(rows: list[dict]):
         show_progress=True,
     )
 
+    # 缺失行重试：把能救回来的分数补上，救不回来的记录原因（P0-2）
+    diag = await _retry_missing_scores(
+        rows, samples, metrics, result, ragas_llm, embeddings, judge_retries
+    )
+    if diag["retry_rounds"]:
+        logger.info(
+            "[Eval] 判分缺失重试完成：%d 轮，累计重试 %d 行",
+            diag["retry_rounds"],
+            diag["retried_rows"],
+        )
+
     # answer_relevancy：collections 版逐条循环采样（strictness=3）；
     # 需要 AsyncOpenAI client（ascore 内部调 llm.agenerate）
     ar_metric = ZhAnswerRelevancy(
-        llm=build_ragas_llm(async_client=True), embeddings=embeddings, strictness=3
+        llm=build_ragas_llm(async_client=True, max_tokens=judge_max_tokens),
+        embeddings=embeddings,
+        strictness=3,
     )
-    for row, score_row in zip(rows, result.scores):
+    ar_errors: dict[int, str] = {}
+    for i, (row, score_row) in enumerate(zip(rows, result.scores)):
         # 与 aevaluate 的 raise_exceptions=False 语义一致：失败记 NaN，不中断
         try:
             if not row["answer"]:
@@ -487,8 +773,15 @@ async def run_evaluation(rows: list[dict]):
         except Exception as e:
             logger.warning("[Eval] answer_relevancy 评分失败: %s", e)
             score_row["answer_relevancy"] = float("nan")
+            ar_errors[i] = f"{type(e).__name__}: {e}"
 
-    return result
+    diag["answer_relevancy_errors"] = ar_errors
+    names = [m.name for m in metrics] + ["answer_relevancy"]
+    diag["row_errors"] = _collect_row_errors(
+        rows, result.scores, names, ar_errors, diag["retry_rounds"]
+    )
+
+    return result, diag
 
 
 def _fmt(score: float) -> str:
@@ -515,8 +808,8 @@ class _MultiGenDegradationCapture(logging.Handler):
             self.count += 1
 
 
-def print_report(rows: list[dict], scores: list[dict]) -> int:
-    """输出逐条明细 + 平均分。返回全部 NaN 的行数（全失败时调用方退出非 0）。"""
+def print_report(rows: list[dict], scores: list[dict], diag: dict | None = None) -> int:
+    """输出逐条明细 + 平均分 + 判分失败行清单。返回全部 NaN 的行数（全失败时调用方退出非 0）。"""
     # 打印项 = 本次实际评估的指标（无 ground_truth 时不含 context_recall）+ collections 版 answer_relevancy
     names = [m.name for m in _select_metrics(rows)] + ["answer_relevancy"]
 
@@ -584,13 +877,148 @@ def print_report(rows: list[dict], scores: list[dict]) -> int:
             else:
                 print(f"  {name:<20} = N/A")
 
+    # 判分失败行：不再只报"有效 N/M"，把失效的行和原因列出来（P0-2）
+    row_errors = (diag or {}).get("row_errors") or []
+    if row_errors:
+        print(f"\n===== 判分失败行（{len(row_errors)} 条，需人工复查）=====")
+        if (diag or {}).get("retry_rounds"):
+            print(f"已按缺失行重试 {diag['retry_rounds']} 轮，以下行重试后仍缺分：")
+        for err in row_errors:
+            tag = "对抗" if err.get("adversarial") else "常规"
+            question = err.get("question", "")
+            if len(question) > 34:
+                question = question[:34] + "…"
+            print(
+                f"  [{err.get('index', 0):02d}] ({tag}) 缺 {','.join(err.get('missing_metrics', []))}"
+                f" | {question} | {err.get('reason', '')}"
+            )
+    elif diag is not None:
+        print("\n判分完整性：全部样本均有分数（无失败行）")
+
     return all_nan_rows
 
 
+def dump_json(
+    path: str,
+    dataset_path: str,
+    rows: list[dict],
+    scores: list[dict],
+    diag: dict | None = None,
+) -> None:
+    """把逐条全量明细落盘，供人工抽检复查（回答不再被截断到 60 字）。
+
+    记录内容：问题 / 是否对抗 / ground_truth / 命中文档 / 检索片段明细与全文 /
+    回答 / 降级标记 / 四项分数（缺失记 null）/ 失败原因。
+    """
+    names = [m.name for m in _select_metrics(rows)] + ["answer_relevancy"]
+    records = []
+    for i, (row, s) in enumerate(zip(rows, scores), 1):
+        records.append(
+            {
+                "index": i,
+                "question": row["question"],
+                "adversarial": bool(row.get("adversarial")),
+                "ground_truth": row.get("ground_truth", ""),
+                "hit_docs": row.get("hit_docs", []),
+                "contexts_detail": row.get("contexts_detail", []),
+                "contexts_full": row.get("contexts", []),
+                "answer": row.get("answer", ""),
+                "degraded": row.get("degraded", []),
+                "scores": {
+                    name: (None if _is_missing(s.get(name)) else s.get(name))
+                    for name in names
+                },
+            }
+        )
+
+    payload = {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "dataset": os.path.abspath(dataset_path),
+        "metrics": names,
+        "sample_count": len(records),
+        "judge_retry_rounds": (diag or {}).get("retry_rounds", 0),
+        "row_errors": (diag or {}).get("row_errors", []),
+        "records": records,
+    }
+    out_dir = os.path.dirname(os.path.abspath(path))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    logger.info(
+        "[Eval] 全量明细已落盘: %s（%d 条，失败行 %d）",
+        os.path.abspath(path),
+        len(records),
+        len(payload["row_errors"]),
+    )
+
+
+def parse_args(argv: list[str]) -> tuple[str, str | None, int, int]:
+    """解析命令行：位置参数=数据集路径，--dump-json、--judge-retries、--judge-max-tokens。"""
+    dataset = DATASET_PATH
+    dump_path: str | None = None
+    retries = 2
+    try:
+        max_tokens = int(os.environ.get("EVAL_JUDGE_MAX_TOKENS", "8192"))
+    except ValueError:
+        max_tokens = 8192
+    positional: list[str] = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-h", "--help"):
+            print(
+                "用法: python scripts/run_eval.py [数据集路径] "
+                "[--dump-json 输出路径] [--judge-retries N] [--judge-max-tokens N]"
+            )
+            sys.exit(0)
+        if arg in ("--dump-json", "--judge-retries", "--judge-max-tokens"):
+            if i + 1 >= len(argv):
+                logger.error("[Eval] %s 需要一个参数值", arg)
+                sys.exit(1)
+            value = argv[i + 1]
+            i += 2
+        elif arg.startswith("--dump-json=") or arg.startswith("--judge-retries=") or arg.startswith("--judge-max-tokens="):
+            arg, value = arg.split("=", 1)
+            i += 1
+        else:
+            positional.append(arg)
+            i += 1
+            continue
+        if arg == "--dump-json":
+            dump_path = value
+        elif arg == "--judge-retries":
+            try:
+                retries = int(value)
+            except ValueError:
+                logger.error("[Eval] --judge-retries 需要整数，收到: %s", value)
+                sys.exit(1)
+        else:
+            try:
+                max_tokens = int(value)
+            except ValueError:
+                logger.error("[Eval] --judge-max-tokens 需要整数，收到: %s", value)
+                sys.exit(1)
+    if positional:
+        dataset = positional[0]
+    if retries < 0:
+        logger.warning("[Eval] --judge-retries 为负数，按 0 处理（关闭重试）")
+        retries = 0
+    if max_tokens < 256:
+        logger.warning("[Eval] --judge-max-tokens 过小（%d），按 8192 处理", max_tokens)
+        max_tokens = 8192
+    return dataset, dump_path, retries, max_tokens
+
+
 async def main() -> None:
+    global _JUDGE_CAPTURE
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    # 0. ragas 就绪检查：依赖缺失时明确退出码 5，不裸抛 ImportError 栈
+    # 0. 命令行参数（--help / 参数错误在任何环境下都应可用，故置于依赖检查之前）
+    dataset_path, dump_path, judge_retries, judge_max_tokens = parse_args(sys.argv[1:])
+    _JUDGE_CAPTURE = True  # judge 调用旁路记账：finish_reason / 长度 / 异常（诊断截断）
+
+    # 0.1 ragas 就绪检查：依赖缺失时明确退出码 5，不裸抛 ImportError 栈
     if not RAGAS_AVAILABLE:
         logger.error(
             "[Eval] ragas 不可导入，评估终止（RAGAS_IMPORT_ERROR: %s）。"
@@ -599,8 +1027,7 @@ async def main() -> None:
         )
         sys.exit(5)
 
-    # 1. 数据集（支持自定义路径，便于部分样本冒烟验证）
-    dataset_path = sys.argv[1] if len(sys.argv) > 1 else DATASET_PATH
+    # 1. 数据集
     rows = load_dataset(dataset_path)
 
     # 2. 外部服务就绪检查（LLM 不可用直接退出码 2）
@@ -646,12 +1073,14 @@ async def main() -> None:
     degradation = _MultiGenDegradationCapture()
     logging.getLogger().addHandler(degradation)
     try:
-        result = await run_evaluation(eval_rows)
+        result, diag = await run_evaluation(
+            eval_rows, judge_retries=judge_retries, judge_max_tokens=judge_max_tokens
+        )
     finally:
         logging.getLogger().removeHandler(degradation)
 
-    # 6. 输出明细 + 平均分
-    all_nan_rows = print_report(eval_rows, result.scores)
+    # 6. 输出明细 + 平均分 + 判分失败行清单
+    all_nan_rows = print_report(eval_rows, result.scores, diag)
     if all_nan_rows == len(eval_rows):
         logger.error(
             "[Eval] 评估未产生任何有效得分（评分调用全部失败，"
@@ -666,6 +1095,11 @@ async def main() -> None:
             " 循环采样（strictness=3），出现该警告说明指标被换回旧版",
             degradation.count,
         )
+
+    # 7. judge 调用记录落盘 + 全量明细落盘：报告里的回答被截断，人工抽检必须以这些文件为准
+    _write_judge_calls(dump_path)
+    if dump_path:
+        dump_json(dump_path, dataset_path, eval_rows, result.scores, diag)
 
     print("\n评估完成。")
     print("注：对抗样本（跨知识域/无对应文档/易混淆）检索不到对应文档属预期，相关指标会偏低。")

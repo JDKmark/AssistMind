@@ -100,10 +100,39 @@ def _dedup(docs: list[dict[str, Any]], threshold: float = 0.8) -> list[dict[str,
     return result
 
 
+def _estimate_tokens(text: str) -> int:
+    """粗估 token 数：中文约 0.6-0.7 token/字，混合文本取 0.7 偏保守。"""
+    return max(1, round(len(text) * 0.7))
+
+
+def _select_contexts(ranked: list[dict[str, Any]], max_count: int) -> list[dict[str, Any]]:
+    """按 token 预算拼装上下文（P1-1）。
+
+    旧逻辑死取 top_k=8 条，正确内容常卡在第 9-16 位被丢掉。新逻辑按 rerank
+    分数从高到低逐条放入，用完 CONTEXT_TOKEN_BUDGET 即停；max_count 仍是
+    条数硬上限。预算 <= 0 时退回旧的按条数截断。首条即使超预算也保留
+    （最相关的一条永远进上下文）。
+    """
+    budget = settings.CONTEXT_TOKEN_BUDGET
+    if budget <= 0:
+        return ranked[:max_count]
+    selected: list[dict[str, Any]] = []
+    used = 0
+    for c in ranked:
+        if len(selected) >= max_count:
+            break
+        cost = _estimate_tokens(c.get("text", "") or "")
+        if selected and used + cost > budget:
+            break
+        selected.append(c)
+        used += cost
+    return selected
+
+
 async def retrieve(
     query: str,
     role: str = "user",
-    top_k: int = 8,
+    top_k: int | None = None,
 ) -> dict[str, Any]:
     """RAG 检索主入口（不含生成）。
 
@@ -122,6 +151,7 @@ async def retrieve(
     """
     degraded: list[str] = []
     stage_ms: dict[str, int] = {}
+    max_count = top_k if top_k is not None else settings.CONTEXT_MAX_COUNT
 
     # 1. 查询改写
     _t = time.monotonic()
@@ -174,13 +204,13 @@ async def retrieve(
         reranked = await rerank_async(query, fused, top_k=settings.RERANK_TOP_K)
         if reranked is None:
             degraded.append("reranker")
-            contexts = fused[:top_k]
+            contexts = _select_contexts(fused, max_count)
         else:
-            # RERANK_TOP_K 是重排候选规模（让两路排名靠后的正确文档进入候选），
-            # 最终上下文仍截断到 top_k（默认 8），避免噪声淹没生成
-            contexts = reranked[:top_k]
+            # RERANK_TOP_K 是重排候选规模（让两路排名靠后的正确文档进入候选）；
+            # 最终上下文按 token 预算拼装（P1-1），不再死取 8 条
+            contexts = _select_contexts(reranked, max_count)
     else:
-        contexts = fused[:top_k]
+        contexts = _select_contexts(fused, max_count)
     stage_ms["rerank_ms"] = round((time.monotonic() - _t) * 1000)
     metrics.safe(metrics.observe_stage, "rerank", stage_ms["rerank_ms"] / 1000)
 
@@ -509,6 +539,10 @@ async def resolve_retrieval(
         degraded = degraded + retry_retrieval["degraded"]
         # P1 修复：重检索后必须重新检查 no_result / 空 contexts，避免错误生成
         if not retry_retrieval["contexts"] or retry_retrieval["crag"]["action"] == "no_result":
+            return [], retry_retrieval["crag"], degraded
+        # P1-3 严格门：改写重检索后复查质量，仍达不到 generate 线就拒答。
+        # 弱相关片段硬生成是对抗性问题的最差行为；config 可关（CRAG_RETRY_STRICT=False）
+        if settings.CRAG_RETRY_STRICT and retry_retrieval["crag"]["action"] != "generate":
             return [], retry_retrieval["crag"], degraded
         return retry_retrieval["contexts"], retry_retrieval["crag"], degraded
 

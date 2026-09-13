@@ -733,10 +733,16 @@ async def _handle_task(
             )
         else:
             agent = ToolAgent(mcp_client=client)
+        # conversation_id 透传 Agent：转人工建单经参数补填关联当前会话（LLM 不感知）
         if preset_entities:
-            result = await agent.run(query, history=history, preset_entities=preset_entities)
+            result = await agent.run(
+                query,
+                history=history,
+                preset_entities=preset_entities,
+                conversation_id=conversation_id,
+            )
         else:
-            result = await agent.run(query, history=history)
+            result = await agent.run(query, history=history, conversation_id=conversation_id)
         _sm["agent_ms"] = round((time.monotonic() - _t_agent) * 1000)
         _sm["iterations"] = int(result.get("iterations") or 0)
 

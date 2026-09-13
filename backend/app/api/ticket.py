@@ -1,14 +1,16 @@
-"""工单路由：创建 / 列表 / 状态流转。"""
+"""工单路由：创建 / 列表 / 状态流转 / 会话上下文。"""
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_staff
 from app.core import audit_service
+from app.core.conversation_service import list_messages
 from app.core.ticket_service import (
     add_reply,
     create_ticket,
@@ -18,6 +20,8 @@ from app.core.ticket_service import (
     list_updates,
     update_status,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -188,3 +192,38 @@ async def add_reply_api(
             {"sender_role": user.get("role"), "prev_status": ticket.get("status")},
         )
     return reply
+
+
+@router.get("/{ticket_id}/conversation")
+async def get_ticket_conversation_api(
+    ticket_id: str,
+    user: Annotated[dict, Depends(require_staff)],
+):
+    """客服查看工单关联的用户会话上下文（agent/admin，user 一律 403 由依赖挡下）。
+
+    消息按时间正序返回；user_id 传工单归属者（会话主人），而非客服自己
+    （list_messages 按 user_id 校验会话归属）。会话服务异常降级 503。
+    """
+    ticket = await get_ticket(ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工单不存在")
+    conversation_id = ticket.get("conversation_id") or ""
+    if not conversation_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="该工单未关联会话"
+        )
+    try:
+        return await list_messages(
+            conversation_id, user_id=ticket.get("user_id", "")
+        )
+    except Exception as e:
+        logger.warning(
+            "工单会话上下文读取失败 ticket=%s conversation=%s: %s",
+            ticket_id,
+            conversation_id,
+            e,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="会话服务暂不可用，请稍后重试",
+        ) from e

@@ -490,3 +490,123 @@ async def test_preset_entities_none_keeps_default_behavior(mock_call):
     ]
     assert product_calls[0].args[1]["product_id"] == "P001"
 
+
+# ---------- 12. 转人工工单关联会话（conversation_id 参数补填注入） ----------
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_conversation_id_injected_into_transfer_human(mock_call):
+    """run(conversation_id="C1") 后 LLM 调 transfer_human 未传会话 ID：补填 C1。
+
+    对应 spec「转人工创建的工单携带会话 ID」：LLM 不感知该参数，
+    execute_tool 程序化补填后工单仍关联 C1。
+    """
+    mcp = _make_mcp_mock(
+        call_tool_return={
+            "message": "已为您转接人工客服，工单号：TK-20260912000000123456",
+            "ticket_id": "TK-20260912000000123456",
+        }
+    )
+    mock_call.side_effect = [
+        'Action: transfer_human\nAction Input: {"reason":"机器人答不上来"}',
+        "Final Answer: 已为您转接人工客服，请稍候。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    result = await agent.run("帮我转人工客服", conversation_id="C1")
+
+    name, args = mcp.call_tool.await_args_list[-1].args
+    assert name == "transfer_human"
+    assert args["reason"] == "机器人答不上来"
+    assert args["conversation_id"] == "C1"
+    assert result["degraded"] is False
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_conversation_id_injected_into_create_ticket(mock_call):
+    """run(conversation_id="C1") 后 LLM 调 create_ticket：同样补填 C1。"""
+    mcp = _make_mcp_mock(
+        call_tool_return={"ticket_id": "TK-777", "created": True, "ticket": {}}
+    )
+    mock_call.side_effect = [
+        'Action: create_ticket\nAction Input: {"title":"标题","description":"描述"}',
+        "Final Answer: 已创建工单 TK-777。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    await agent.run("帮我创建一个工单，标题是标题，描述是描述", conversation_id="C1")
+
+    name, args = mcp.call_tool.await_args_list[-1].args
+    assert name == "create_ticket"
+    assert args["conversation_id"] == "C1"
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_conversation_id_not_injected_for_other_tools(mock_call):
+    """query_order 等非工单工具不注入 conversation_id（注入范围仅限两工具）。"""
+    mcp = _make_mcp_mock(
+        call_tool_return={"order_sn": "20260801001", "status": "已发货"}
+    )
+    mock_call.side_effect = [
+        'Action: query_order\nAction Input: {"order_sn":"20260801001"}',
+        "Final Answer: 您的订单 20260801001 已发货。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    await agent.run("查一下订单 20260801001", conversation_id="C1")
+
+    name, args = mcp.call_tool.await_args_list[-1].args
+    assert name == "query_order"
+    assert "conversation_id" not in args
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_no_conversation_id_keeps_args_clean(mock_call):
+    """run 未传 conversation_id（既有路径）：工具参数不含该键，零回归。"""
+    mcp = _make_mcp_mock(
+        call_tool_return={
+            "message": "已为您转接人工客服", "ticket_id": "TK-888"
+        }
+    )
+    mock_call.side_effect = [
+        'Action: transfer_human\nAction Input: {"reason":"需要人工"}',
+        "Final Answer: 已为您转接人工客服。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    await agent.run("帮我转人工客服")
+
+    name, args = mcp.call_tool.await_args_list[-1].args
+    assert name == "transfer_human"
+    assert args == {"reason": "需要人工"}
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_conversation_id_explicit_value_not_overridden(mock_call):
+    """LLM 显式给出 conversation_id 时：以 LLM 值为准，不覆盖（仅缺参补填）。"""
+    mcp = _make_mcp_mock(
+        call_tool_return={"message": "已转接", "ticket_id": "TK-999"}
+    )
+    mock_call.side_effect = [
+        'Action: transfer_human\nAction Input: {"reason":"需要人工","conversation_id":"LLM-C"}',
+        "Final Answer: 已为您转接人工客服。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    await agent.run("帮我转人工客服", conversation_id="C1")
+
+    _, args = mcp.call_tool.await_args_list[-1].args
+    assert args["conversation_id"] == "LLM-C"
+
+
+def test_get_tools_declares_conversation_id_for_ticket_tools():
+    """create_ticket/transfer_human 的 input_schema 声明 conversation_id（与 MCP server 签名一致，注明系统注入）。"""
+    agent = ToolAgent(mcp_client=_make_mcp_mock())
+    tools = {t["name"]: t for t in agent.get_tools()}
+
+    assert "conversation_id" in tools["create_ticket"]["input_schema"]
+    assert "conversation_id" in tools["transfer_human"]["input_schema"]
+    assert "系统自动注入" in tools["transfer_human"]["input_schema"]["conversation_id"]
+    assert "conversation_id" not in tools["query_order"]["input_schema"]
+    assert "conversation_id" not in tools["get_ticket_status"]["input_schema"]
+

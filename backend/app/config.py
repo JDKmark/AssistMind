@@ -6,9 +6,13 @@
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
+from typing import ClassVar
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -22,11 +26,18 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 1440
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
 
-    # ===== LLM（主 DeepSeek，备 Ollama）=====
+    # ===== LLM（多供应商，LLM_PROVIDER 一行切换）=====
+    # 约定：每个供应商一组 <前缀>_API_KEY/_BASE_URL/_MODEL（前缀 = 供应商名大写、连字符转下划线），
+    # 新增供应商 = 在此加一组字段 + .env 加三行，切换只改 LLM_PROVIDER。
+    # 专属组未配置时回落 DEEPSEEK_* 主配置（兼容旧 .env，见 llm_profile()）。
     LLM_PROVIDER: str = "deepseek"
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-chat"
+    # SenseTime SenseNova 网关（deepseek-v4-flash 的现行生产通道）
+    SENSENOVA_API_KEY: str = ""
+    SENSENOVA_BASE_URL: str = "https://token.sensenova.cn/v1"
+    SENSENOVA_MODEL: str = "deepseek-v4-flash"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:7b"
 
@@ -70,6 +81,15 @@ class Settings(BaseSettings):
     JACCARD_DEDUP_THRESHOLD: float = 0.8
     CRAG_HIGH_THRESHOLD: float = 0.7
     CRAG_LOW_THRESHOLD: float = 0.3
+    # 改写重检索后复查质量：仍达不到 generate 线就拒答，不拿弱相关片段硬生成
+    # （对抗性问题的正确行为是"说没找到"，不是编答案）。False = 关闭严格门。
+    CRAG_RETRY_STRICT: bool = True
+    # 上下文拼装 token 预算：rerank 后按分数从高到低逐条放入，用完即停。
+    # 旧逻辑死取 8 条会把排在 9-16 位的正确片段丢掉（RAGAS context_recall
+    # 与 2026-09-13 人工抽检均指向此）。0 = 关闭预算，退回按条数截断。
+    CONTEXT_TOKEN_BUDGET: int = 3500
+    # 上下文条数硬上限（与预算同时生效，防超长片段列表拖垮生成延迟）
+    CONTEXT_MAX_COUNT: int = 16
 
     # ===== 查询改写 =====
     QUERY_REWRITE_ENABLED: bool = True
@@ -211,6 +231,40 @@ class Settings(BaseSettings):
             raise RuntimeError("JWT_SECRET 必须在生产环境设置为强随机字符串")
         if self.LLM_PROVIDER == "deepseek" and not self.DEEPSEEK_API_KEY:
             raise RuntimeError("LLM_PROVIDER=deepseek 时必须设置 DEEPSEEK_API_KEY")
+
+    # 已做过「回落 DEEPSEEK_*」一次性告警的供应商（进程级去重，避免每次 LLM 调用刷屏）
+    _llm_fallback_warned: ClassVar[set[str]] = set()
+
+    def llm_profile(self) -> tuple[str, str, str]:
+        """按 LLM_PROVIDER 解析 (api_key, base_url, model) 三元组。
+
+        多供应商约定：优先取专属 <前缀>_API_KEY/_BASE_URL/_MODEL（前缀 = 供应商名
+        大写、连字符转下划线）；专属组未配置时回落 DEEPSEEK_* 主配置（兼容旧 .env，
+        每个供应商名只 warning一次）。mock/ollama 在 llm_factory 有专用分支，不走本方法。
+        deepseek 供应商的空 key 由 validate_security() 吐错；其余供应商两处皆空时
+        在此显式报错——宁可首调失败给出可读信息，不做空 key 静默请求。
+        """
+        provider = (self.LLM_PROVIDER or "").strip().lower()
+        prefix = provider.upper().replace("-", "_")
+        api_key = getattr(self, f"{prefix}_API_KEY", "") if provider else ""
+        if api_key:
+            base_url = getattr(self, f"{prefix}_BASE_URL", "") or self.DEEPSEEK_BASE_URL
+            model = getattr(self, f"{prefix}_MODEL", "") or self.DEEPSEEK_MODEL
+            return api_key, base_url, model
+        if provider != "deepseek" and prefix not in Settings._llm_fallback_warned:
+            Settings._llm_fallback_warned.add(prefix)
+            logger.warning(
+                "[LLM] provider=%r 未配置专属 %s_API_KEY，回落 DEEPSEEK_* 主配置（base_url=%s）",
+                provider,
+                prefix,
+                self.DEEPSEEK_BASE_URL,
+            )
+        if not self.DEEPSEEK_API_KEY and provider != "deepseek":
+            raise RuntimeError(
+                f"LLM_PROVIDER={provider!r} 无可用 API Key："
+                f"请配置 {prefix}_API_KEY，或设置回落配置 DEEPSEEK_API_KEY"
+            )
+        return self.DEEPSEEK_API_KEY, self.DEEPSEEK_BASE_URL, self.DEEPSEEK_MODEL
 
     @staticmethod
     def db_minimal_privilege_error(runtime_dsn: str, migration_dsn: str) -> str | None:

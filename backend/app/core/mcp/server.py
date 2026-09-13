@@ -60,7 +60,11 @@ async def search_knowledge(query: str, ctx: Context = None) -> list[dict]:
 
 @mcp.tool()
 async def create_ticket(
-    title: str, description: str, priority: str = "normal", ctx: Context = None
+    title: str,
+    description: str,
+    priority: str = "normal",
+    conversation_id: str = "",
+    ctx: Context = None,
 ) -> dict:
     """创建客服工单。
 
@@ -68,22 +72,30 @@ async def create_ticket(
         title: 工单标题（必填）
         description: 问题描述（必填）
         priority: 优先级 low/normal/high/urgent，默认 normal
+        conversation_id: 关联聊天会话 ID（系统自动注入，无需填写）
 
     Returns:
         {ticket_id, created, ticket}
     """
     identity = await _requester(ctx)
     return await _create_ticket(
-        title, description, priority=priority, user_id=identity["username"]
+        title,
+        description,
+        priority=priority,
+        user_id=identity["username"],
+        conversation_id=conversation_id,
     )
 
 
 @mcp.tool()
-async def transfer_human(reason: str, ctx: Context = None) -> dict:
+async def transfer_human(
+    reason: str, conversation_id: str = "", ctx: Context = None
+) -> dict:
     """转人工客服。创建一个标记为转人工的工单并返回提示话术。
 
     Args:
         reason: 转人工原因
+        conversation_id: 关联聊天会话 ID（系统自动注入，无需填写）
 
     Returns:
         {message, ticket_id}
@@ -95,6 +107,7 @@ async def transfer_human(reason: str, ctx: Context = None) -> dict:
         priority="high",
         category="transfer_human",
         user_id=identity["username"],
+        conversation_id=conversation_id,
     )
     return {
         "message": "已为您转接人工客服，客服人员将尽快与您联系。工单号：" + result["ticket_id"],

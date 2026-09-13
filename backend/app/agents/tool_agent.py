@@ -102,6 +102,10 @@ _INTENT_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("ticket", ("工单", "建单")),
 ]
 
+# 会话注入工具：创建工单时程序化补填 conversation_id（转人工工单关联会话，
+# 复用实体补填先例，LLM 不感知、不生成该参数）
+_CONVERSATION_TOOLS = {"create_ticket", "transfer_human"}
+
 
 class ToolAgent(BaseReActAgent):
     """通过 MCP Client 调用工具的 ReAct Agent。
@@ -124,6 +128,8 @@ class ToolAgent(BaseReActAgent):
         self.entity_fill = entity_fill
         # 本轮抽取的实体（订单号/商品 ID），run() 开头赋值，execute_tool 补填用
         self._entities: dict[str, str] = {}
+        # 当前会话 ID（run() 开头赋值），create_ticket/transfer_human 补填用
+        self._conversation_id: str = ""
 
     def get_tools(self) -> list[dict]:
         """返回 MCP Server 暴露的 8 个工具及其参数 schema（含电商业务工具）。"""
@@ -160,12 +166,16 @@ class ToolAgent(BaseReActAgent):
                     "title": "str",
                     "description": "str",
                     "priority": "str",
+                    "conversation_id": "str（系统自动注入，无需填写）",
                 },
             },
             {
                 "name": "transfer_human",
                 "description": "转人工客服",
-                "input_schema": {"reason": "str"},
+                "input_schema": {
+                    "reason": "str",
+                    "conversation_id": "str（系统自动注入，无需填写）",
+                },
             },
             {
                 "name": "get_ticket_status",
@@ -326,6 +336,14 @@ class ToolAgent(BaseReActAgent):
         filled_args, filled = fill_tool_args(name, input_data, self._entities)
         if filled:
             logger.info("[ToolAgent] 实体补填 %s 参数: %s -> %s", name, input_data, filled_args)
+        # 会话注入：工单工具缺 conversation_id 时补填当前会话（LLM 不感知）
+        if (
+            name in _CONVERSATION_TOOLS
+            and self._conversation_id
+            and not filled_args.get("conversation_id")
+        ):
+            filled_args["conversation_id"] = self._conversation_id
+            logger.info("[ToolAgent] 会话注入 %s 参数: conversation_id=%s", name, self._conversation_id)
         return await self.mcp_client.call_tool(name, filled_args)
 
     async def run(
@@ -333,6 +351,7 @@ class ToolAgent(BaseReActAgent):
         query: str,
         history: list[dict[str, str]] | None = None,
         preset_entities: dict[str, str] | None = None,
+        conversation_id: str = "",
     ) -> dict[str, Any]:
         """运行 Agent，增加 MCP 可用性预检查。
 
@@ -342,9 +361,13 @@ class ToolAgent(BaseReActAgent):
                 用于「查物流到哪了」等依赖上文订单号的多轮场景。
             preset_entities: 编排层消歧定向注入的实体（如 {"product_id": "P006"}，
                 可选）。合并语义：显式抽取结果优先，preset 仅补缺；默认 None 行为不变。
+            conversation_id: 当前聊天会话 ID（编排层透传，默认空串）。
+                execute_tool 对 create_ticket/transfer_human 缺参时补填，
+                使转人工建单关联会话；LLM 不感知该参数。
 
         MCP 不可用时直接返回降级话术，不进入 ReAct 循环。
         """
+        self._conversation_id = conversation_id or ""
         # 实体识别：当前问题 + 多轮历史 → 订单号/商品 ID（execute_tool 补填用）
         # 规则层确定性优先；ENTITY_LLM_FALLBACK 开启时规则未命中才走 LLM 兜底
         # entity_fill=False 时关闭（评估脚本 before/after 对比用）
