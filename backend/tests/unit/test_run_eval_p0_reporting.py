@@ -15,6 +15,7 @@ import asyncio
 import json
 import math
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -406,3 +407,73 @@ def test_split_batches_small_total_and_bad_size():
 def test_score_bag_holds_scores():
     bag = run_eval._ScoreBag([{"faithfulness": 1.0}])
     assert bag.scores[0]["faithfulness"] == 1.0
+
+
+# ---------------------------------------------------------------- 全局限速器
+
+
+def test_rate_limiter_spaces_calls():
+    limiter = run_eval._GlobalRateLimiter(rpm=600)  # 0.1s 间隔
+    t0 = time.monotonic()
+    for _ in range(4):
+        limiter.acquire()
+    elapsed = time.monotonic() - t0
+    assert limiter.calls == 4
+    assert elapsed >= 0.29  # 3 个间隔 ≈ 0.3s（首调不等待）
+
+
+def test_rate_limiter_install_patches_modules_and_limits(monkeypatch):
+    from app.core.rag import engine as rag_engine
+
+    calls: list[str] = []
+
+    async def fake_inner(prompt, **kwargs):
+        calls.append(prompt)
+        return "ok"
+
+    from app.core.infra import llm_factory as _llm
+
+    monkeypatch.setattr(_llm, "call_llm", fake_inner)
+    monkeypatch.setattr(rag_engine, "call_llm", fake_inner)
+
+    limiter_holder: list = []
+    run_eval.install_llm_rate_limit(rpm=600)
+    limiter_holder.append(run_eval._LLM_LIMITER)
+
+    result = asyncio.run(rag_engine.call_llm("问题"))
+    assert result == "ok" and calls == ["问题"]  # 包装后仍能正常返回
+    assert rag_engine.call_llm is not fake_inner  # 已被替换为限速版本
+    assert limiter_holder[0] is not None and limiter_holder[0].calls == 1
+
+
+def test_limited_client_wraps_async_create():
+    class _Msg:
+        content = "x"
+
+    class _Choice:
+        finish_reason = "stop"
+        message = _Msg()
+
+    class _Resp:
+        choices = [_Choice()]
+        usage = None
+
+    class _InnerCompletions:
+        def create(self, **kwargs):
+            async def _call():
+                return _Resp()
+
+            return _call()
+
+    class _InnerChat:
+        def __init__(self):
+            self.completions = _InnerCompletions()
+
+    class _Inner:
+        def __init__(self):
+            self.chat = _InnerChat()
+
+    limiter = run_eval._GlobalRateLimiter(rpm=6000)  # 0.01s，测试跑得快
+    client = run_eval._LimitedClient(_Inner(), limiter)
+    resp = asyncio.run(client.chat.completions.create(model="m", messages=[]))
+    assert resp is not None and limiter.calls == 1

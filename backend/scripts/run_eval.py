@@ -53,6 +53,7 @@ import logging
 import math
 import os
 import sys
+import threading
 import time
 import types
 import warnings
@@ -166,6 +167,122 @@ class _ScoreBag:
 
     def __init__(self, scores: list[dict]) -> None:
         self.scores = scores
+
+
+class _GlobalRateLimiter:
+    """进程内全局限速器（线程安全）：评估期间所有 LLM 调用共享，按 RPM 排队。
+
+    供应商网关（商汤）的 RPM 限制很紧，靠"批间 sleep"只能压住批的突发，压不住
+    单条样本内部的连打（改写变体 + CRAG 评估 + 生成 ≈ 5 次调用）与 ragas 判分的
+    并发（一批 3 条 × 3 指标）。统一在调用入口限速才稳。
+    """
+
+    def __init__(self, rpm: int) -> None:
+        self.interval = 60.0 / max(1, rpm)
+        self._lock = threading.Lock()
+        self._next_at = 0.0
+        self.calls = 0
+
+    def acquire(self) -> None:
+        with self._lock:
+            now = time.monotonic()
+            wait = self._next_at - now
+            if wait > 0:
+                time.sleep(wait)
+                now = time.monotonic()
+            self._next_at = max(now, self._next_at) + self.interval
+            self.calls += 1
+
+    async def acquire_async(self) -> None:
+        await asyncio.to_thread(self.acquire)
+
+
+class _LimitedCompletions:
+    """把 judge / answer_relevancy 的 OpenAI 调用也接入同一个限速器。
+
+    ragas 判分与 collections 版 answer_relevancy 走 OpenAI 客户端，不经
+    llm_factory.call_llm；只有把它们也排队，整体 RPM 才真正可控。
+    """
+
+    def __init__(self, inner, limiter: _GlobalRateLimiter) -> None:
+        self._inner = inner
+        self._limiter = limiter
+
+    def create(self, *args, **kwargs):
+        result = self._inner.create(*args, **kwargs)
+        if inspect.isawaitable(result):
+
+            async def _wrapped():
+                await self._limiter.acquire_async()
+                return await result
+
+            return _wrapped()
+        return result
+
+
+class _LimitedChat:
+    def __init__(self, inner_chat, limiter: _GlobalRateLimiter) -> None:
+        self.completions = _LimitedCompletions(inner_chat.completions, limiter)
+        self._inner_chat = inner_chat
+
+    def __getattr__(self, name):
+        return getattr(self._inner_chat, name)
+
+
+class _LimitedClient:
+    def __init__(self, inner, limiter: _GlobalRateLimiter) -> None:
+        self.chat = _LimitedChat(inner.chat, limiter)
+        self._inner = inner
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+_LLM_LIMITER: _GlobalRateLimiter | None = None
+
+
+def install_llm_rate_limit(rpm: int) -> None:
+    """给评估链路的 LLM 调用装全局限速（patch 各模块已绑定的 call_llm/stream_llm）。
+
+    engine/critic/query_rewriter 都是 `from ... import call_llm` 的绑定引用，
+    只 patch llm_factory 的模块属性不会生效，必须逐个模块替换。
+    """
+    global _LLM_LIMITER
+    if rpm <= 0:
+        return
+    from app.core.infra import llm_factory as _llm
+
+    limiter = _GlobalRateLimiter(rpm)
+    _LLM_LIMITER = limiter
+    orig_call = _llm.call_llm
+    orig_stream = _llm.stream_llm
+
+    async def limited_call_llm(prompt, **kwargs):
+        await asyncio.to_thread(limiter.acquire)
+        return await orig_call(prompt, **kwargs)
+
+    def limited_stream_llm(prompt, **kwargs):
+        async def _gen():
+            await asyncio.to_thread(limiter.acquire)
+            async for delta in orig_stream(prompt, **kwargs):
+                yield delta
+
+        return _gen()
+
+    targets = [
+        _llm,
+        sys.modules.get("app.core.rag.engine"),
+        sys.modules.get("app.core.rag.critic"),
+        sys.modules.get("app.core.query_rewriter"),
+    ]
+    for mod in targets:
+        if mod is None:
+            continue
+        if getattr(mod, "call_llm", None) is not None:
+            mod.call_llm = limited_call_llm
+        if getattr(mod, "stream_llm", None) is not None:
+            mod.stream_llm = limited_stream_llm
+    logger.info("[Eval] 已启用 LLM 全局限速：%d rpm（间隔 %.1fs）", rpm, limiter.interval)
 
 
 # ---------- judge 调用旁路记录（诊断 IncompleteOutputException 用） ----------
@@ -558,6 +675,10 @@ def build_ragas_llm(async_client: bool = False, max_tokens: int | None = None):
     if _JUDGE_CAPTURE:
         raw_client = client
         client = _CaptureClient(client, _JUDGE_CALL_SINK, "async" if async_client else "sync")
+    if async_client and _LLM_LIMITER is not None:
+        # answer_relevancy 的逐条 ascore 走这个异步客户端，必须排队（judge 批处理
+        # 的同步客户端由批间 sleep 控制节奏，避免阻塞事件循环）
+        client = _LimitedClient(client, _LLM_LIMITER)
     try:
         return llm_factory(
             model,
@@ -767,8 +888,8 @@ async def run_evaluation(rows: list[dict], judge_retries: int = 2, judge_max_tok
     # 42 条一次性并发会被 429 打穿（2026-09-13 实测 rpm exhausted，全部判分失败）。
     # 实测该网关 5 秒间隔（12 rpm）稳定通过，故默认每批 3 条（≈9 个并发调用）
     # + 批间 25 秒，把突发压到 12-18 rpm 以内；额度更紧时调小 batch / 调大 pause。
-    batch_size = max(1, int(os.environ.get("EVAL_JUDGE_BATCH_SIZE", "3")))
-    batch_pause = max(0, int(os.environ.get("EVAL_JUDGE_BATCH_PAUSE_S", "25")))
+    batch_size = max(1, int(os.environ.get("EVAL_JUDGE_BATCH_SIZE", "2")))
+    batch_pause = max(0, int(os.environ.get("EVAL_JUDGE_BATCH_PAUSE_S", "30")))
     ranges = _split_batches(len(samples), batch_size)
     batch_scores: list[dict] = []
     for bi, (start, end) in enumerate(ranges, 1):
@@ -1075,6 +1196,13 @@ async def main() -> None:
             RAGAS_IMPORT_ERROR,
         )
         sys.exit(5)
+
+    # 0.2 全局限速：供应商网关 RPM 很紧，评估期间所有 LLM 调用（含 judge）排队
+    try:
+        llm_rpm = int(os.environ.get("EVAL_LLM_RPM", "10"))
+    except ValueError:
+        llm_rpm = 10
+    install_llm_rate_limit(llm_rpm)
 
     # 1. 数据集
     rows = load_dataset(dataset_path)
