@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/JDKmark/AssistMind.git",
-      "revision": "c4d89c3d9ebf1ce1e05ab051781f11d426bd34c5"
+      "revision": "f4b07c25694800a990aefed20f83eeb240d70d92"
     },
     "views": [
       {
@@ -143,7 +143,7 @@
       "id": "mcp",
       "type": "backend",
       "label": "MCP 工具服务",
-      "sublabel": "统一业务工具集 · 13 个",
+      "sublabel": "统一业务工具集 · 8 个",
       "pos": [
         790,
         480

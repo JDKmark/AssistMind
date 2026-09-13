@@ -11,14 +11,14 @@
 
 ## 界面预览
 
-> 以下截图来自本地演示环境（真实对话链路：语义缓存命中、Agent 经 MCP 调用业务工具）。
+> 以下截图来自本地演示环境（真实对话链路：RAG 检索生成、Agent 经 MCP 调用业务工具）。
 
 | | |
 |---|---|
 | ![登录页](docs/screenshots/01-login.png) | ![RAG 问答（L1 语义缓存命中）](docs/screenshots/02-chat-faq.png) |
-| ![Agent 工具调用：订单售后办理](docs/screenshots/03-chat-agent.png) | ![知识库文档管理](docs/screenshots/04-knowledge.png) |
+| ![Agent 工具调用：订单售后办理](docs/screenshots/03-chat-agent.png) | ![知识库管理（上传 / 启停 / 重灌）](docs/screenshots/04-knowledge.png) |
 | ![工单列表](docs/screenshots/05-tickets.png) | ![我的订单（演示账号 user1）](docs/screenshots/06-orders.png) |
-| ![管理后台](docs/screenshots/07-admin.png) | |
+| ![管理后台](docs/screenshots/07-admin.png) | ![召回测试（RRF 融合命中）](docs/screenshots/08-recall-test.png) |
 
 
 
