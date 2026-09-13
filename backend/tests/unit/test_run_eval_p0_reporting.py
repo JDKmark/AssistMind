@@ -385,3 +385,24 @@ def test_print_report_announces_no_failures(capsys):
         {"retry_rounds": 0, "row_errors": []},
     )
     assert "无失败行" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- 判分分批（限速保护）
+
+
+def test_split_batches_even():
+    assert run_eval._split_batches(12, 6) == [(0, 6), (6, 12)]
+
+
+def test_split_batches_remainder():
+    assert run_eval._split_batches(42, 8) == [(0, 8), (8, 16), (16, 24), (24, 32), (32, 40), (40, 42)]
+
+
+def test_split_batches_small_total_and_bad_size():
+    assert run_eval._split_batches(3, 8) == [(0, 3)]
+    assert run_eval._split_batches(4, 0) == [(0, 1), (1, 2), (2, 3), (3, 4)]  # size<=0 归一为 1
+
+
+def test_score_bag_holds_scores():
+    bag = run_eval._ScoreBag([{"faithfulness": 1.0}])
+    assert bag.scores[0]["faithfulness"] == 1.0

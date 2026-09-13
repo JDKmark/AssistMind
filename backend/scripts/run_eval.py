@@ -11,6 +11,10 @@
 - --judge-retries：首轮判分出现 NaN 的行逐条重试的次数（默认 2，0 = 关闭）。
   ragas 的 raise_exceptions=False 会把失败行静默记成 NaN，只报"有效 N/M"，
   重试后仍失败的行会带失败原因写进 --dump-json 的 row_errors，并在报告末尾列出
+- 限速保护（环境变量）：判分按 EVAL_JUDGE_BATCH_SIZE（默认 6）分批，
+  批间停 EVAL_JUDGE_BATCH_PAUSE_S（默认 20 秒），重试前也等一个批间歇。
+  供应商网关（商汤等）RPM/TPM 远严于直连，不分批会被 429 打穿
+- judge 输出上限：EVAL_JUDGE_MAX_TOKENS（默认 8192，4096 下长 JSON 会被截断）
 
 流程：
 1. 读取 backend/app/data/eval_mall_qa.json（字段：question / ground_truth / adversarial），
@@ -148,6 +152,19 @@ EVAL_METRICS = [
 def _is_missing(value) -> bool:
     """分数缺失判定：None 或 NaN（ragas raise_exceptions=False 时失败行记为 NaN）。"""
     return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+def _split_batches(total: int, batch_size: int) -> list[tuple[int, int]]:
+    """把 [0, total) 切成若干 [start, end) 批次（判分限速用，可单测）。"""
+    size = max(1, batch_size)
+    return [(s, min(s + size, total)) for s in range(0, total, size)]
+
+
+class _ScoreBag:
+    """判分结果容器：逐批收集后统一成 {scores: [...]}，下游（重试/报告/落盘）不感知分批。"""
+
+    def __init__(self, scores: list[dict]) -> None:
+        self.scores = scores
 
 
 # ---------- judge 调用旁路记录（诊断 IncompleteOutputException 用） ----------
@@ -389,19 +406,22 @@ async def build_bm25_index() -> tuple[bool, int]:
 
 
 async def probe_llm() -> None:
-    """探测 LLM 可用性（DeepSeek → Ollama 降级链），不可用则报错退出（退出码 2）。"""
-    if not settings.DEEPSEEK_API_KEY and settings.LLM_PROVIDER != "ollama":
-        logger.error(
-            "[Eval] 未配置 DEEPSEEK_API_KEY（LLM_PROVIDER=%s），"
-            "无法生成回答与 ragas 评分，评估终止",
-            settings.LLM_PROVIDER,
-        )
-        sys.exit(2)
+    """探测 LLM 可用性（主供应商 → Ollama 降级链），不可用则报错退出（退出码 2）。"""
+    if settings.LLM_PROVIDER != "ollama":
+        api_key, _, _ = settings.llm_profile()
+        if not api_key:
+            logger.error(
+                "[Eval] 未配置 %s 的 API key（LLM_PROVIDER=%s），"
+                "无法生成回答与 ragas 评分，评估终止",
+                settings.LLM_PROVIDER.upper(),
+                settings.LLM_PROVIDER,
+            )
+            sys.exit(2)
     try:
         reply = await call_llm("请只回复两个字：正常", system="你是连通性测试助手。")
         logger.info("[Eval] LLM 连通性探测通过（回复: %s）", reply.strip()[:20])
     except LLMUnavailableError:
-        logger.error("[Eval] LLM 不可用（DeepSeek 与 Ollama 均失败），评估无法继续")
+        logger.error("[Eval] LLM 不可用（主供应商与 Ollama 均失败），评估无法继续")
         sys.exit(2)
 
 
@@ -504,6 +524,8 @@ def build_ragas_llm(async_client: bool = False, max_tokens: int | None = None):
     - async_client=True：AsyncOpenAI，供 collections 版指标使用（ascore 内部
       调用 llm.agenerate，同步 client 会报
       "Cannot use agenerate() with a synchronous client"）
+    - 凭据走 settings.llm_profile() 多供应商解析（deepseek/sensenova/...），
+      不能直接读 DEEPSEEK_*，否则 LLM_PROVIDER 切到其他供应商时评估仍打直连
     - max_tokens：judge 输出上限。2026-09-13 端到端复查发现 4096 下
       deepseek-v4-flash 的长 JSON 结构化输出被截断 → IncompleteOutputException，
       42 条里 15 行 faithfulness 静默丢失且重试无法挽回（同输入重复截断），
@@ -526,12 +548,12 @@ def build_ragas_llm(async_client: bool = False, max_tokens: int | None = None):
         )
         model = settings.OLLAMA_MODEL
     else:
+        api_key, base_url, model = settings.llm_profile()
         client = client_cls(
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url=settings.DEEPSEEK_BASE_URL,
+            api_key=api_key,
+            base_url=base_url,
             timeout=settings.LLM_TIMEOUT,
         )
-        model = settings.DEEPSEEK_MODEL
     if _JUDGE_CAPTURE:
         raw_client = client
         client = _CaptureClient(client, _JUDGE_CALL_SINK, "async" if async_client else "sync")
@@ -598,6 +620,7 @@ async def _retry_missing_scores(
     ragas_llm,
     embeddings,
     retries: int,
+    pause_s: int = 0,
 ) -> dict:
     """对首轮判分缺分的行逐条重试，返回诊断信息。
 
@@ -624,6 +647,9 @@ async def _retry_missing_scores(
             retries,
             [i + 1 for i in pending],
         )
+        if pause_s:
+            # 429/限流导致的失败，立刻重试会再次撞墙，先等一个批间歇
+            await asyncio.sleep(pause_s)
         sub_dataset = EvaluationDataset(samples=[samples[i] for i in pending])
         try:
             sub_result = await aevaluate(
@@ -720,31 +746,51 @@ async def run_evaluation(rows: list[dict], judge_retries: int = 2, judge_max_tok
         )
         for r in rows
     ]
-    dataset = EvaluationDataset(samples=samples)
 
     ragas_llm = build_ragas_llm(max_tokens=judge_max_tokens)
     embeddings = ProjectEmbeddings()
 
+    if settings.LLM_PROVIDER == "ollama":
+        active_model = settings.OLLAMA_MODEL
+    else:
+        _, _, active_model = settings.llm_profile()
     logger.info(
         "[Eval] 开始 ragas 评估：%d 条样本 × %d 项指标 + answer_relevancy(3 问题均值)（评分 LLM: %s / %s）",
         len(samples),
         len(metrics),
         settings.LLM_PROVIDER,
-        settings.DEEPSEEK_MODEL if settings.LLM_PROVIDER != "ollama" else settings.OLLAMA_MODEL,
+        active_model,
     )
 
-    result = await aevaluate(
-        dataset=dataset,
-        metrics=metrics,
-        llm=ragas_llm,
-        embeddings=embeddings,
-        raise_exceptions=False,
-        show_progress=True,
-    )
+    # 分批判分 + 批间歇：供应商网关（如商汤）的 RPM/TPM 限制远严于直连，
+    # 42 条一次性并发会被 429 打穿（2026-09-13 实测 rpm exhausted，全部判分失败）
+    batch_size = max(1, int(os.environ.get("EVAL_JUDGE_BATCH_SIZE", "6")))
+    batch_pause = max(0, int(os.environ.get("EVAL_JUDGE_BATCH_PAUSE_S", "20")))
+    ranges = _split_batches(len(samples), batch_size)
+    batch_scores: list[dict] = []
+    for bi, (start, end) in enumerate(ranges, 1):
+        logger.info("[Eval] 判分批次 %d/%d：样本 %d-%d", bi, len(ranges), start + 1, end)
+        sub_result = await aevaluate(
+            dataset=EvaluationDataset(samples=samples[start:end]),
+            metrics=metrics,
+            llm=ragas_llm,
+            embeddings=embeddings,
+            raise_exceptions=False,
+            show_progress=True,
+        )
+        for row in sub_result.scores:
+            batch_scores.append(dict(row))
+        # 行数对齐保护：少返回就补空行，避免后续 zip 错位（比缺分更糟）
+        while len(batch_scores) < end:
+            batch_scores.append({})
+        if bi < len(ranges) and batch_pause:
+            logger.info("[Eval] 批次间歇 %ds（限速保护）", batch_pause)
+            await asyncio.sleep(batch_pause)
+    result = _ScoreBag(batch_scores)
 
     # 缺失行重试：把能救回来的分数补上，救不回来的记录原因（P0-2）
     diag = await _retry_missing_scores(
-        rows, samples, metrics, result, ragas_llm, embeddings, judge_retries
+        rows, samples, metrics, result, ragas_llm, embeddings, judge_retries, pause_s=batch_pause
     )
     if diag["retry_rounds"]:
         logger.info(
@@ -1081,10 +1127,17 @@ async def main() -> None:
 
     # 6. 输出明细 + 平均分 + 判分失败行清单
     all_nan_rows = print_report(eval_rows, result.scores, diag)
+
+    # 7. 落盘必须在退出码判断之前：判分全失败时（退出码 4）更需要留下证据
+    #    （2026-09-13 商汤 429 事故中，dump 在 exit 之后被跳过，现场没保住）
+    _write_judge_calls(dump_path)
+    if dump_path:
+        dump_json(dump_path, dataset_path, eval_rows, result.scores, diag)
+
     if all_nan_rows == len(eval_rows):
         logger.error(
             "[Eval] 评估未产生任何有效得分（评分调用全部失败，"
-            "请检查 DEEPSEEK_API_KEY / 网络 / 模型 JSON 输出能力）"
+            "请检查 LLM API key / 网络 / 模型 JSON 输出能力）"
         )
         sys.exit(4)
 
