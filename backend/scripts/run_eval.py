@@ -11,9 +11,10 @@
 - --judge-retries：首轮判分出现 NaN 的行逐条重试的次数（默认 2，0 = 关闭）。
   ragas 的 raise_exceptions=False 会把失败行静默记成 NaN，只报"有效 N/M"，
   重试后仍失败的行会带失败原因写进 --dump-json 的 row_errors，并在报告末尾列出
-- 限速保护（环境变量）：判分按 EVAL_JUDGE_BATCH_SIZE（默认 6）分批，
-  批间停 EVAL_JUDGE_BATCH_PAUSE_S（默认 20 秒），重试前也等一个批间歇。
-  供应商网关（商汤等）RPM/TPM 远严于直连，不分批会被 429 打穿
+- 限速保护（环境变量）：判分按 EVAL_JUDGE_BATCH_SIZE（默认 3）分批，
+  批间停 EVAL_JUDGE_BATCH_PAUSE_S（默认 25 秒），重试前也等一个批间歇；
+  生成阶段条间停 EVAL_GEN_PAUSE_S（默认 3 秒）。供应商网关（商汤等）
+  RPM/TPM 远严于直连，不分批会被 429 打穿（实测 12 rpm 间隔稳定通过）
 - judge 输出上限：EVAL_JUDGE_MAX_TOKENS（默认 8192，4096 下长 JSON 会被截断）
 
 流程：
@@ -763,9 +764,11 @@ async def run_evaluation(rows: list[dict], judge_retries: int = 2, judge_max_tok
     )
 
     # 分批判分 + 批间歇：供应商网关（如商汤）的 RPM/TPM 限制远严于直连，
-    # 42 条一次性并发会被 429 打穿（2026-09-13 实测 rpm exhausted，全部判分失败）
-    batch_size = max(1, int(os.environ.get("EVAL_JUDGE_BATCH_SIZE", "6")))
-    batch_pause = max(0, int(os.environ.get("EVAL_JUDGE_BATCH_PAUSE_S", "20")))
+    # 42 条一次性并发会被 429 打穿（2026-09-13 实测 rpm exhausted，全部判分失败）。
+    # 实测该网关 5 秒间隔（12 rpm）稳定通过，故默认每批 3 条（≈9 个并发调用）
+    # + 批间 25 秒，把突发压到 12-18 rpm 以内；额度更紧时调小 batch / 调大 pause。
+    batch_size = max(1, int(os.environ.get("EVAL_JUDGE_BATCH_SIZE", "3")))
+    batch_pause = max(0, int(os.environ.get("EVAL_JUDGE_BATCH_PAUSE_S", "25")))
     ranges = _split_batches(len(samples), batch_size)
     batch_scores: list[dict] = []
     for bi, (start, end) in enumerate(ranges, 1):
@@ -1091,6 +1094,9 @@ async def main() -> None:
         logger.warning("[Eval] 本次评估为降级模式（仅 BM25 召回，无向量召回）")
 
     # 4. 逐条跑 RAG 链路（检索 + 生成）
+    #    每条样本内部会连打若干次 LLM（改写变体 + CRAG 评估 + 生成），
+    #    对低 RPM 网关需要条间停一下，避免突发被 429（EVAL_GEN_PAUSE_S，默认 3 秒）
+    gen_pause = max(0, int(os.environ.get("EVAL_GEN_PAUSE_S", "3")))
     logger.info("[Eval] 开始逐条执行 RAG 链路（%d 条）", len(rows))
     eval_rows = []
     for i, item in enumerate(rows, 1):
@@ -1113,6 +1119,8 @@ async def main() -> None:
                 "[Eval] [%d/%d] 触发降级: %s", i, len(rows), ",".join(r["degraded"])
             )
         eval_rows.append(r)
+        if gen_pause and i < len(rows):
+            await asyncio.sleep(gen_pause)
 
     # 5. ragas 评估（捕获多生成退化：若有人把 answer_relevancy 换回旧版指标，
     #    会在 Instructor LLM 下退化为单点采样，此处检测防回归）
