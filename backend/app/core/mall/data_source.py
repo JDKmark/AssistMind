@@ -6,7 +6,7 @@
 - mock: 恒用内存演示数据（MockMallDataSource，默认）
 - real: 恒用 PostgreSQL 实现（RealMallDataSource），单源失败走各方法降级
 - auto: 配置了 DATABASE_URL 且 PostgreSQL 健康探测（SELECT 1）通过 → real；
-        否则降级 mock（logger.warning），与 app.core.ops.data_source 门面语义一致
+        否则降级 mock（logger.warning）
 """
 
 from __future__ import annotations

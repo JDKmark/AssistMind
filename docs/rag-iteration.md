@@ -94,7 +94,7 @@ venv\Scripts\python.exe scripts/run_eval.py app/data/eval_feedback.json
 
 - 改造前后各跑一次 ②，diff 分数即归因证据（同一批 bad case 不得回退）；
 - 常规 / 对抗分组单独统计（bad case 标记为对抗样本，混在一起算平均会误导质量判断）；
-- eval 集（`app/data/eval_qa.json` / `eval_mall_qa.json` / `eval_feedback.json`）就是系统的
+- eval 集（`app/data/eval_mall_qa.json` / `eval_feedback.json`）就是系统的
   「数据驱动的迭代机制」底座：每次检索 / 切块 / Prompt 改动后跑全量回归，防止修 A 坏 B。
 
 ## 系统内已具备的能力速查

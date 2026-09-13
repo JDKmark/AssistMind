@@ -125,24 +125,6 @@ def init_breakers(redis: Redis | None = None) -> None:
             state_storage=_make_storage("postgres", redis),
             name="postgres",
         ),
-        "prometheus": CircuitBreaker(
-            fail_max=settings.CB_PROMETHEUS_FAIL_THRESHOLD,
-            timeout_duration=timedelta(seconds=settings.CB_PROMETHEUS_OPEN_SECONDS),
-            state_storage=_make_storage("prometheus", redis),
-            name="prometheus",
-        ),
-        "elasticsearch": CircuitBreaker(
-            fail_max=settings.CB_ELASTICSEARCH_FAIL_THRESHOLD,
-            timeout_duration=timedelta(seconds=settings.CB_ELASTICSEARCH_OPEN_SECONDS),
-            state_storage=_make_storage("elasticsearch", redis),
-            name="elasticsearch",
-        ),
-        "alertmanager": CircuitBreaker(
-            fail_max=settings.CB_ALERTMANAGER_FAIL_THRESHOLD,
-            timeout_duration=timedelta(seconds=settings.CB_ALERTMANAGER_OPEN_SECONDS),
-            state_storage=_make_storage("alertmanager", redis),
-            name="alertmanager",
-        ),
     }
     for name, breaker in _BREAKERS.items():
         breaker.add_listener(_StateChangeListener(name))

@@ -219,39 +219,6 @@ services:
       LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
     restart: unless-stopped
 
-  # ===== 真实运维数据源（Prometheus + 演示 exporter）=====
-  ops-exporter:
-    image: python:3.11-slim
-    container_name: smart-cs-ops-exporter
-    volumes:
-      - ./backend/scripts/ops_exporter.py:/app/ops_exporter.py:ro
-    command: python /app/ops_exporter.py
-    ports:
-      - "9100:9100"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:9100/metrics')\""]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  prometheus:
-    image: prom/prometheus:v2.53.0
-    container_name: smart-cs-prometheus
-    depends_on:
-      - ops-exporter
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./backend/scripts/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prom-data:/prometheus
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 volumes:
   qdrant-data:
   redis-data:
@@ -259,4 +226,3 @@ volumes:
   langfuse-db-data:
   langfuse-clickhouse-data:
   langfuse-minio-data:
-  prom-data:

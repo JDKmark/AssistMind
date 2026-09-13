@@ -51,8 +51,8 @@ def _override_auth():
 
 # 模拟 scroll_all 返回的 chunk（payload 结构对齐 qdrant.py scroll_all）
 CHUNKS = [
-    {"doc_id": "ops-1", "title": "运维手册", "source": "ops/manual.md", "category": "ops", "text": "chunk A"},
-    {"doc_id": "ops-1", "title": "运维手册", "source": "ops/manual.md", "category": "ops", "text": "chunk B"},
+    {"doc_id": "doc-1", "title": "产品手册", "source": "mall/manual.md", "category": "mall", "text": "chunk A"},
+    {"doc_id": "doc-1", "title": "产品手册", "source": "mall/manual.md", "category": "mall", "text": "chunk B"},
     {"doc_id": "mall-1", "title": "商城文档", "source": "mall/guide.md", "category": "mall", "text": "chunk C"},
 ]
 
@@ -77,10 +77,10 @@ def test_list_docs_aggregates_by_doc_id():
     assert data["total"] == 2
     assert "error" not in data
     by_id = {d["doc_id"]: d for d in data["docs"]}
-    assert by_id["ops-1"]["chunk_count"] == 2
-    assert by_id["ops-1"]["title"] == "运维手册"
-    assert by_id["ops-1"]["source"] == "ops/manual.md"
-    assert by_id["ops-1"]["category"] == "ops"
+    assert by_id["doc-1"]["chunk_count"] == 2
+    assert by_id["doc-1"]["title"] == "产品手册"
+    assert by_id["doc-1"]["source"] == "mall/manual.md"
+    assert by_id["doc-1"]["category"] == "mall"
     assert by_id["mall-1"]["chunk_count"] == 1
     assert by_id["mall-1"]["category"] == "mall"
 
@@ -119,12 +119,12 @@ def test_delete_doc_removes_bm25_invalidates_cache_and_broadcasts():
         patch("app.api.knowledge.get_bm25", return_value=bm25),
         patch("app.api.knowledge.cache_invalidate", new=AsyncMock()) as mock_invalidate,
     ):
-        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "ops-1"})
+        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "doc-1"})
     assert resp.status_code == 200
-    assert resp.json() == {"deleted": True, "doc_id": "ops-1"}
-    qdrant.delete_by_doc.assert_awaited_once_with("ops-1")
+    assert resp.json() == {"deleted": True, "doc_id": "doc-1"}
+    qdrant.delete_by_doc.assert_awaited_once_with("doc-1")
     # 增量移除而非全量重建（BM25 一等公民的内存索引原地收缩）
-    bm25.remove_by_doc.assert_called_once_with("ops-1")
+    bm25.remove_by_doc.assert_called_once_with("doc-1")
     bm25.build.assert_not_called()
     qdrant.scroll_all.assert_not_awaited()
     mock_invalidate.assert_awaited_once()
@@ -140,10 +140,10 @@ def test_delete_doc_cache_invalidate_failure_still_200(caplog):
         patch("app.api.knowledge.get_bm25", return_value=bm25),
         patch("app.api.knowledge.cache_invalidate", new=AsyncMock(side_effect=ConnectionError("redis down"))),
     ):
-        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "ops-1"})
+        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "doc-1"})
     assert resp.status_code == 200
-    assert resp.json() == {"deleted": True, "doc_id": "ops-1"}
-    qdrant.delete_by_doc.assert_awaited_once_with("ops-1")
+    assert resp.json() == {"deleted": True, "doc_id": "doc-1"}
+    qdrant.delete_by_doc.assert_awaited_once_with("doc-1")
     assert any("缓存" in r.message or "invalidate" in r.message.lower() for r in caplog.records)
 
 
@@ -157,9 +157,9 @@ def test_delete_doc_mark_changed_failure_still_200(caplog):
         patch("app.api.knowledge.get_bm25", return_value=bm25),
         patch("app.api.knowledge.cache_invalidate", new=AsyncMock()),
     ):
-        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "ops-1"})
+        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "doc-1"})
     assert resp.status_code == 200
-    assert resp.json() == {"deleted": True, "doc_id": "ops-1"}
+    assert resp.json() == {"deleted": True, "doc_id": "doc-1"}
     assert caplog.records
 
 
@@ -176,7 +176,7 @@ def test_delete_doc_qdrant_unavailable_503():
     """删除：Qdrant 不可用时返回 503 明确错误。"""
     qdrant = _mock_qdrant([], connected=False)
     with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
-        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "ops-1"})
+        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "doc-1"})
     assert resp.status_code == 503
     assert "Qdrant" in resp.json()["detail"]
 
@@ -185,7 +185,7 @@ def test_delete_doc_delete_failed_503():
     """删除：delete_by_doc 返回 False（断路器 Open/异常）时返回 503。"""
     qdrant = _mock_qdrant([], deleted=False)
     with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
-        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "ops-1"})
+        resp = client.post("/api/v1/knowledge/delete", json={"doc_id": "doc-1"})
     assert resp.status_code == 503
 
 
@@ -569,10 +569,10 @@ def test_toggle_doc_success():
         patch("app.api.knowledge.get_bm25", return_value=bm25),
         patch("app.api.knowledge.cache_invalidate", new=AsyncMock()) as mock_invalidate,
     ):
-        resp = client.post("/api/v1/knowledge/ops-1/toggle", json={"enabled": False})
+        resp = client.post("/api/v1/knowledge/doc-1/toggle", json={"enabled": False})
     assert resp.status_code == 200
-    assert resp.json() == {"doc_id": "ops-1", "enabled": False}
-    qdrant.set_payload_by_doc.assert_awaited_once_with("ops-1", {"enabled": False})
+    assert resp.json() == {"doc_id": "doc-1", "enabled": False}
+    qdrant.set_payload_by_doc.assert_awaited_once_with("doc-1", {"enabled": False})
     # toggle 后 BM25 索引必须重载，停用文档才不会继续被打分
     bm25.mark_changed.assert_called_once()
     # 语义缓存可能引用该文档，必须失效
@@ -593,7 +593,7 @@ def test_toggle_doc_qdrant_unavailable_503():
     """启停切换：Qdrant 不可用 → 503 明确错误。"""
     qdrant = _toggle_qdrant(connected=False)
     with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
-        resp = client.post("/api/v1/knowledge/ops-1/toggle", json={"enabled": True})
+        resp = client.post("/api/v1/knowledge/doc-1/toggle", json={"enabled": True})
     assert resp.status_code == 503
     assert "Qdrant" in resp.json()["detail"]
 
@@ -602,7 +602,7 @@ def test_toggle_doc_set_payload_failed_503():
     """启停切换：set_payload_by_doc 返回 False（断路器 Open/写入异常）→ 503。"""
     qdrant = _toggle_qdrant(payload_set=False)
     with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
-        resp = client.post("/api/v1/knowledge/ops-1/toggle", json={"enabled": False})
+        resp = client.post("/api/v1/knowledge/doc-1/toggle", json={"enabled": False})
     assert resp.status_code == 503
     assert "启停" in resp.json()["detail"]
 
@@ -620,10 +620,10 @@ def test_toggle_doc_bypass_failure_still_200(caplog):
             new=AsyncMock(side_effect=ConnectionError("redis down")),
         ),
     ):
-        resp = client.post("/api/v1/knowledge/ops-1/toggle", json={"enabled": True})
+        resp = client.post("/api/v1/knowledge/doc-1/toggle", json={"enabled": True})
     assert resp.status_code == 200
-    assert resp.json() == {"doc_id": "ops-1", "enabled": True}
-    qdrant.set_payload_by_doc.assert_awaited_once_with("ops-1", {"enabled": True})
+    assert resp.json() == {"doc_id": "doc-1", "enabled": True}
+    qdrant.set_payload_by_doc.assert_awaited_once_with("doc-1", {"enabled": True})
     assert caplog.records
 
 
@@ -635,7 +635,7 @@ def test_toggle_doc_agent_role_403():
     original = app.dependency_overrides[get_current_user]
     app.dependency_overrides[get_current_user] = agent_user
     try:
-        resp = client.post("/api/v1/knowledge/ops-1/toggle", json={"enabled": False})
+        resp = client.post("/api/v1/knowledge/doc-1/toggle", json={"enabled": False})
     finally:
         app.dependency_overrides[get_current_user] = original
     assert resp.status_code == 403
@@ -660,13 +660,13 @@ def test_reingest_doc_enqueues_job():
         patch("app.api.knowledge.get_qdrant", return_value=qdrant),
         patch("app.api.knowledge.enqueue_task", return_value=job) as mock_enqueue,
     ):
-        resp = client.post("/api/v1/knowledge/ops-1/reingest")
+        resp = client.post("/api/v1/knowledge/doc-1/reingest")
     assert resp.status_code == 200
     assert resp.json() == {"job_id": "job-reingest", "status": "queued"}
     mock_enqueue.assert_called_once()
     assert mock_enqueue.call_args[0][0] is reingest_document
     kwargs = mock_enqueue.call_args[1]
-    assert kwargs["doc_id"] == "ops-1"
+    assert kwargs["doc_id"] == "doc-1"
     assert kwargs["owner"] == "testuser"
     # 入队前不做耗时重灌动作
     qdrant.set_payload_by_doc.assert_not_awaited()
@@ -690,7 +690,7 @@ def test_reingest_doc_qdrant_unavailable_503():
     """重灌：Qdrant 不可用 → 503 明确错误（存在性校验无法进行）。"""
     qdrant = _toggle_qdrant(connected=False)
     with patch("app.api.knowledge.get_qdrant", return_value=qdrant):
-        resp = client.post("/api/v1/knowledge/ops-1/reingest")
+        resp = client.post("/api/v1/knowledge/doc-1/reingest")
     assert resp.status_code == 503
     assert "Qdrant" in resp.json()["detail"]
 
@@ -703,7 +703,7 @@ def test_reingest_doc_agent_role_403():
     original = app.dependency_overrides[get_current_user]
     app.dependency_overrides[get_current_user] = agent_user
     try:
-        resp = client.post("/api/v1/knowledge/ops-1/reingest")
+        resp = client.post("/api/v1/knowledge/doc-1/reingest")
     finally:
         app.dependency_overrides[get_current_user] = original
     assert resp.status_code == 403

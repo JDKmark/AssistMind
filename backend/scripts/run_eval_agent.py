@@ -25,7 +25,7 @@
 
 说明：
 - LLM_FALLBACK_TIMEOUT 放宽到 60s：本地 Ollama 推理较慢（qwen3 带思考链），
-  沿用运行前设置环境变量的方式（与 run_eval_ops.py 强制 OPS_DATA_SOURCE=mock 同思路），
+  沿用运行前设置环境变量的方式（运行前 export，不改代码），
   只影响超时时长，不改变降级链路语义。
 """
 

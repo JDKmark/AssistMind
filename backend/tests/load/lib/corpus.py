@@ -1,7 +1,7 @@
 """压测语料：复用项目既有评估集 + 高频 FAQ（不另造数据，spec 3.3）。
 
 来源：
-- ``app/data/eval_qa.json``（25 条，含 4 条对抗）
+- ``app/data/eval_mall_qa.json``（40 条，含 5 条对抗）
 - ``app/data/eval_mall_qa.json``（40 条，含 5 条对抗）
 - 一组高频 FAQ（退货政策 / 运费谁出 / 优惠券叠加），用于 S1 缓存命中场景
 
@@ -56,7 +56,7 @@ def _load_questions(filename: str) -> list[str]:
 
 def evaluation_questions() -> list[str]:
     """65 条评估集全部问题（S2 FAQ 未命中用）。"""
-    return _load_questions("eval_qa.json") + _load_questions("eval_mall_qa.json")
+    return _load_questions("eval_mall_qa.json")
 
 
 class Corpus:

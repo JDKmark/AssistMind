@@ -31,7 +31,7 @@ def force_langfuse_disabled(monkeypatch) -> None:
     """每个测试强制 Langfuse 未启用（keys=None + 重置单例客户端）。
 
     `Settings` 读本机 .env（spec 复盘「测试环境污染」同款问题）：真实 key 会让
-    chat/ops 链路的埋点在单测里真实创建 Langfuse 客户端并向 LANGFUSE_HOST
+    chat 链路的埋点在单测里真实创建 Langfuse 客户端并向 LANGFUSE_HOST
     导出 span（OTEL 网络等待拖慢测试）。需要验证「已启用」行为的用例
     （test_langfuse_infra / test_llm_langfuse 等）自行 monkeypatch 覆盖，
     用例内 patch 优先生效。
@@ -50,22 +50,6 @@ def force_langfuse_disabled(monkeypatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def force_mock_ops_source(monkeypatch) -> None:
-    """每个测试强制运维数据源为 mock 模式。
-
-    避免 OPS_DATA_SOURCE=auto 时对真实 Prometheus 做健康探测（网络/超时/状态污染）。
-    需要测试 real/auto 切换的用例自行 monkeypatch 覆盖 settings。
-    """
-    from app.config import Settings
-    from app.core.ops import data_source
-
-    monkeypatch.setattr(data_source, "settings", Settings(OPS_DATA_SOURCE="mock"))
-    data_source.reset_source()
-    yield
-    data_source.reset_source()
-
-
-@pytest.fixture(autouse=True)
 def force_mock_mall_source(monkeypatch) -> None:
     """每个测试强制电商业务数据源为 mock 模式。
 
@@ -79,25 +63,6 @@ def force_mock_mall_source(monkeypatch) -> None:
     data_source.reset_source()
     yield
     data_source.reset_source()
-
-
-@pytest.fixture(autouse=True)
-def mock_ticket_queries() -> None:
-    """mock 工单检索，避免诊断链路 collect 阶段连接真实 PostgreSQL。
-
-    ops_supervisor.collect 现在会检索历史工单（search_tickets / list_tickets），
-    PostgreSQL 不在单测范围内，统一 mock 掉（不 mock 时异步连接泄漏会产生
-    Connection._cancel 警告）。
-    """
-    from unittest.mock import AsyncMock, patch
-
-    with patch(
-        "app.core.ops.pipeline.search_tickets", new=AsyncMock(return_value=[])
-    ), patch(
-        "app.core.ops.pipeline.list_tickets",
-        new=AsyncMock(return_value={"tickets": [], "total": 0}),
-    ):
-        yield
 
 
 @pytest.fixture(autouse=True)

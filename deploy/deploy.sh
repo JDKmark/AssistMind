@@ -124,7 +124,6 @@ printf ' 查看日志:      docker compose -f docker-compose.yml -f docker-compo
 printf ' 停止:          docker compose -f docker-compose.yml -f docker-compose.app.yml down\n'
 printf ' 重启:          docker compose -f docker-compose.yml -f docker-compose.app.yml restart\n'
 printf ' 重灌知识库:    docker compose -f docker-compose.yml -f docker-compose.app.yml exec backend python scripts/seed_mall_kb.py --reset\n'
-printf '                然后同上执行 seed_ops_kb.py --reset\n'
 printf '============================================================\n'
 [ "${backend_up}" = "1" ] && ok "部署完成，浏览器打开 ${URL}/（需在安全组放行 80 端口）" \
                           || warn "部署未完全就绪，请先排查日志。"

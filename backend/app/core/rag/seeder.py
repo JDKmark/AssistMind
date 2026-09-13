@@ -1,6 +1,6 @@
 """知识库灌库公共逻辑：chunk → embedding → upsert → BM25（seed 脚本共用）。
 
-seed_mall_kb.py / seed_ops_kb.py 的灌库循环完全一致，差异仅在文档加载
+seed_mall_kb.py 等灌库脚本的灌库循环完全一致，差异仅在文档加载
 （目录/扩展名/排除规则）与 metadata（source/category）——统一到此处，
 避免两个知识库的分块行为漂移（如历史 bug：YAML 前缀在 seed 链路未生效）。
 
@@ -34,7 +34,7 @@ async def seed_docs(
         docs: [{doc_id, title, text}] 文档列表（加载逻辑由各脚本自定义）
         metadata_fn: 文档 → chunk 元数据（doc_id/title/source/category/security_group）
         reset: 先按 doc_id 清空再写入（幂等重建）
-        log_prefix: 日志前缀（区分 mall/ops）
+        log_prefix: 日志前缀（区分来源类别）
     """
     qdrant = get_qdrant()
     await qdrant.connect()

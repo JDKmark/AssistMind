@@ -184,26 +184,6 @@
       ]
     },
     {
-      "id": "ops",
-      "type": "backend",
-      "label": "运维诊断 Agent",
-      "sublabel": "计划 → 采集 → 分析 · 独立入口",
-      "pos": [
-        70,
-        100
-      ],
-      "size": [
-        160,
-        66
-      ],
-      "sources": [
-        {
-          "path": "backend/app/agents/ops_supervisor.py",
-          "line": 1
-        }
-      ]
-    },
-    {
       "id": "deepseek",
       "type": "external",
       "label": "DeepSeek API",
@@ -342,16 +322,6 @@
       "to": "dialog",
       "label": "槽位补填",
       "fromSide": "left"
-    },
-    {
-      "from": "ops",
-      "to": "rag",
-      "label": "证据检索",
-      "toSide": "left",
-      "labelAt": [
-        700,
-        225
-      ]
     }
   ],
   "cards": [

@@ -10,7 +10,7 @@
 ### 方案 A（主推）：单台轻量云服务器 + Docker Compose（约 ¥70-120/月）
 
 - **选型**：腾讯云 / 阿里云「轻量应用服务器」，**2 核 4G，磁盘 40-60G**，Ubuntu 22.04/Debian 12。
-  - 为什么 4G：本项目有 Qdrant + Redis + PostgreSQL + Langfuse(可选) + Prometheus 等基础设施容器 + **3 个应用容器**（backend / frontend / RQ worker），外加 torch（sentence-transformers）常驻内存，2G 会很紧。
+  - 为什么 4G：本项目有 Qdrant + Redis + PostgreSQL + Langfuse(可选) 等基础设施容器 + **3 个应用容器**（backend / frontend / RQ worker），外加 torch（sentence-transformers）常驻内存，2G 会很紧。
   - 为什么 40G+：后端镜像含 torch 约 2-3G，知识库向量与 PG 数据另占空间。
   - 新用户 / 学生认证通常有 3-12 个月更低价格，用完可退。
 - **DeepSeek 走在线 API**：全程无 GPU 需求，按量计费很便宜（演示一天成本通常不足 1 元）。
@@ -79,7 +79,7 @@ bash deploy/deploy.sh
 ### 5. 访问验证
 
 - 浏览器打开 `http://<服务器IP>/`，用 `admin / admin123` 登录。
-- 按 README「六、知识来源与演示口径」的演示说明走查一遍（FAQ 问答 → 订单物流 → 退货闭环 → 运维诊断 → Admin/异步重建 → 语音+人格）。
+- 按 README「六、知识来源与演示口径」的演示说明走查一遍（FAQ 问答 → 订单物流 → 退货闭环 → Admin/异步重建 → 语音+人格）。
 - 后端文档 `http://<服务器IP>:8001/docs`。
 
 ### 6.（可选）HTTPS
@@ -91,7 +91,7 @@ bash deploy/deploy.sh
 
 ---
 
-## 三、运维命令表（在仓库根执行）
+## 三、常用命令表（在仓库根执行）
 
 | 操作 | 命令 |
 |---|---|
@@ -100,7 +100,7 @@ bash deploy/deploy.sh
 | 停止全部 | `docker compose -f docker-compose.yml -f docker-compose.app.yml down` |
 | 重启应用 | `docker compose -f docker-compose.yml -f docker-compose.app.yml restart backend frontend worker` |
 | 更新代码后重部署 | 重新上传代码 → `docker compose -f docker-compose.yml -f docker-compose.app.yml up -d --build` |
-| 重灌电商/运维知识库 | `docker compose -f docker-compose.yml -f docker-compose.app.yml exec backend python scripts/seed_mall_kb.py --reset`（运维库同法换 seed_ops_kb.py） |
+| 重灌知识库 | `docker compose -f docker-compose.yml -f docker-compose.app.yml exec backend python scripts/seed_mall_kb.py --reset` |
 | 主动检查后端健康 | `curl http://localhost:8001/api/v1/health` |
 | 进入后端容器排障 | `docker compose -f docker-compose.yml -f docker-compose.app.yml exec backend sh` |
 
@@ -110,9 +110,9 @@ bash deploy/deploy.sh
 
 - **API Key 安全**：`.env.prod` 已被 `.gitignore` 忽略**不要提交**；泄露后到 DeepSeek 平台重置。
 - **Worker 必须常驻**：知识库重建 / 坏例回流 / 评估运行入队后由 worker 进程消费（`docker-compose.app.yml` 的 `worker` 服务，`deploy.sh` 已包含）；worker 崩溃会让任务滞留队列（`Retry=2` 后转 failed），排查用 `logs -f worker`。
-- **公开演示口径（演示前必读）**：业务数据是演示清单（取材自 macrozheng/mall 官方文档 + 自建规则），运维诊断是受控场景——被问到时主动声明，口径见 README「六、知识来源与演示口径」。
+
 - **限流默认开启**：`RATE_LIMIT_PER_MINUTE=60`（按客户端 IP 固定窗口，Redis 不可用自动放行），防止分享链接后被刷爆 token；需要临时放开可在 `.env.prod` 调高后 `restart backend`。
-- **Langfuse / Prometheus 端口默认也映射到宿主机**（3001/9090），如非必要可在安全组不对外放行。
+- **Langfuse 端口默认也映射到宿主机**（3001），如非必要可在安全组不对外放行。
 - **重启幂等**：`init_db` / `seed_mall_db` / 知识库灌库全部幂等（集合非空跳过），无需手工干预。
 - **磁盘**：容器重建会累积旧镜像，定期 `docker image prune` 释放空间。
 

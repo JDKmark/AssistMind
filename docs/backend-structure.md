@@ -32,12 +32,10 @@ response_generator）逐项对账后发现一个明确缺口：
 |---|---|---|---|
 | `api/chat` | SSE 聊天入口：意图分流 + 事件流编排 | `POST /api/v1/chat/ask` → SSE | agents、core/router、core/rag、core/dialog |
 | `agents/tool_agent` | ReAct 循环 + MCP 工具调用 + 实体补填 | `run(query, history) -> {answer, tool_calls, ...}` | core/mcp、core/mall/entity_extractor、core/dialog |
-| `agents/ops_supervisor` | 运维诊断三节点编排（LangGraph 壳，流程见 core/ops/pipeline） | `run(query) -> {report, ...}` | core/ops/pipeline、core/rag |
-| `core/ops/pipeline` | 诊断流水线：计划 → 采集 → 分析（Agent 与 SSE 流式共用） | `_plan(query)` / `collect(plan, query)` / `analyze(query, evidence)` | core/ops/data_source、core/ticket_service、core/rag |
 | `core/router/intent` | 三级意图路由（规则→语义→LLM） | `route(query) -> {intent, confidence, source}` | core/data（intent_routes.json） |
 | `core/mall/entity_extractor` | 订单号/商品 ID 规则抽取 + 工具参数补填 | `extract(query, history) -> {order_sn, product_id}` | 无 |
 | `core/rag/engine` | RAG 检索 + 生成编排 | `retrieve(query) -> {contexts, crag}` / `generate(...)` | core/rag/*、core/dialog |
-| `core/mcp/server` | MCP 工具注册（13 个） | `@mcp.tool()` 声明 | core/mall、core/ops、core/rag |
+| `core/mcp/server` | MCP 工具注册（8 个） | `@mcp.tool()` 声明 | core/mall、core/rag |
 | `core/dialog` | 对话上下文管理：裁剪/提取/格式化 + 槽位状态机 | `trim_history(history)` / `extract_query(messages)` / `format_history(history)` / `extract_slots(query, history)` / `missing_slots(intent, slots)` | 无 |
 
 ## 新增模块（2026-08-27：RQ 异步任务 / 语音 TTS / 人格库）
@@ -66,7 +64,6 @@ HTTP POST /api/v1/chat/ask {query, history?}
       → chat: LLM 直连（历史拼 prompt）
   → SSE 事件流（start/tool_call/tool_result/done/...）
 
-[agents/ops_supervisor]：由独立后端 API POST /api/v1/ops/diagnose 调用（非聊天意图路由）
   run(query) → {report}
 
 [core/dialog]（新增，统一对话上下文）
@@ -87,7 +84,6 @@ HTTP POST /api/v1/chat/ask {query, history?}
     │        │                      (HTTP streamable)
     │        └──> [core/mall/entity_extractor]
     ├──> [core/rag/engine] ──> [core/rag/*]（chunking/bm25/qdrant/reranker/critic）
-    ├──> [agents/ops_supervisor] ──> [core/ops/*]
     └──> [core/dialog]（全部意图共用：裁剪 history / 提取 query / 格式化历史 / 槽位状态机）
                 ▲
                 └── 消费方：api/chat、agents/base、agents/tool_agent、core/rag/engine

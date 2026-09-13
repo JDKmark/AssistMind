@@ -108,11 +108,9 @@ asyncio.run(main())
     if ($count -gt 0) {
         Write-Host "      向量库已有 $count 条文档，跳过灌库（秒起）" -ForegroundColor Green
     } else {
-        Write-Host "      首次启动：灌入电商+运维知识库（含 embedding，约 1-3 分钟）..." -ForegroundColor Yellow
+        Write-Host "      首次启动：灌入电商知识库（含 embedding，约 1-3 分钟）..." -ForegroundColor Yellow
         venv\Scripts\python.exe scripts/seed_mall_kb.py --reset
         if ($LASTEXITCODE -ne 0) { throw "seed_mall_kb 失败" }
-        venv\Scripts\python.exe scripts/seed_ops_kb.py --reset
-        if ($LASTEXITCODE -ne 0) { throw "seed_ops_kb 失败" }
     }
 }
 finally {

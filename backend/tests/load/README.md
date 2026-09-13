@@ -66,7 +66,7 @@ $env:FAULT_RERANKER="fail"; $env:LOAD_SCENARIO="s5"
 | S6 | `scenarios/s6_spike.py` | 尖峰，观察限流/排队雪崩 | 独立跑 |
 | S7 | `scenarios/s7_soak.py` | 浸泡 30–60 min，观察内存/连接/缓存泄漏 | 独立跑 |
 
-语料直接复用项目既有资产：`app/data/eval_qa.json`（25 条）+ `app/data/eval_mall_qa.json`
+语料直接复用项目既有资产：`app/data/eval_mall_qa.json`（40 条）
 （40 条）+ 一组高频 FAQ。压测后可顺手复跑 RAGAS，做**性能与质量双闸门**。
 
 ---

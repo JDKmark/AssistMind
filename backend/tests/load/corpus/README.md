@@ -4,7 +4,7 @@
 
 | 语料 | 文件 | 条数 | 用途 |
 |---|---|---|---|
-| 产品文档问答评估集 | `backend/app/data/eval_qa.json` | 25（含 4 条对抗） | S2 FAQ 未命中（完整 RAG） |
+| 产品文档问答评估集 | `backend/app/data/eval_mall_qa.json` | 40（含 5 条对抗） | S2 FAQ 未命中（完整 RAG） |
 | 电商业务问答评估集 | `backend/app/data/eval_mall_qa.json` | 40（含 5 条对抗） | S2 / S5 故障注入 |
 | 高频 FAQ（本目录约定） | `backend/tests/load/lib/corpus.py` `HIGH_FREQ_FAQ` | 5 | S1 缓存命中 |
 | Agent 工具链问句 | `backend/tests/load/lib/corpus.py` `TASK_QUERIES` | 5 | S3 Agent 多轮 |

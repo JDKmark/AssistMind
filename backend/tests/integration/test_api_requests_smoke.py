@@ -130,7 +130,6 @@ def live_server() -> str:
             "OLLAMA_BASE_URL": f"http://127.0.0.1:{port}",
             # 冒烟场景确定性：mock 业务数据源、跳过本地重排（一次 1-2 分钟）、禁用埋点
             "MALL_DATA_SOURCE": "mock",
-            "OPS_DATA_SOURCE": "mock",
             "RERANKER_ENABLED": "false",
             "LANGFUSE_PUBLIC_KEY": "",
             "LANGFUSE_SECRET_KEY": "",

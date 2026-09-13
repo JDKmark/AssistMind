@@ -582,7 +582,6 @@ const INTENT_LABELS = {
   faq: '知识问答',
   task: '工具操作',
   chat: '自由对话',
-  diagnose: '运维诊断',
   unclear: '待澄清',
 }
 

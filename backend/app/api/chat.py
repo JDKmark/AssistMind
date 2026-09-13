@@ -219,7 +219,6 @@ def _chat_trace_span(span_name: str, query: str) -> Iterator[Any | None]:
     faq/task/chat 三类意图共用：链路里的 llm.call span 通过 OTEL context 自动挂到
     本 trace 名下，使「query → 检索/工具 → 生成」形成可按会话归因的证据链；
     trace_id 经 done 事件回传前端（提交反馈时关联，bad case 归因/回流用）。
-    与 ops 诊断 trace 同构。
     """
     langfuse = get_langfuse()
     if langfuse is None:

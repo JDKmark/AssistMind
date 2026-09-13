@@ -1,16 +1,11 @@
-"""MCP Server：向 Agent 暴露知识库检索、运维数据与工单工具。
+"""MCP Server：向 Agent 暴露知识库检索、客服工单与电商业务工具。
 
 使用 mcp 2.0.0 的 MCPServer（mcp.server.mcpserver.MCPServer），
 通过 streamable_http 传输挂载到 FastAPI。
 
-工具清单（13 个）：
-- search_knowledge：知识库检索（运维故障案例手册）
-- query_metric：查询服务指标时序
-- search_log：搜索服务日志
-- query_change：查询变更记录（部署/配置）
-- get_alerts：查询告警
-- create_incident：创建故障工单（severity 映射 priority）
-- create_ticket / transfer_human / get_ticket_status：客服工单（保留）
+工具清单（8 个）：
+- search_knowledge：知识库检索
+- create_ticket / transfer_human / get_ticket_status：客服工单
 - query_order / query_logistics / query_product / apply_refund：电商业务（mall 门面）
 
 注意：工具函数名 create_ticket 与 ticket_service.create_ticket 重名，
@@ -28,7 +23,6 @@ from app.config import get_settings
 from app.core.infra.redis import get_redis
 from app.core.mall import data_source as mall_ds
 from app.core.mcp.security import MCPAuthMiddleware
-from app.core.ops import data_source as ops_ds
 from app.core.rag.engine import retrieve as _retrieve
 from app.core.ticket_service import create_ticket as _create_ticket
 from app.core.ticket_service import get_ticket as _get_ticket
@@ -36,7 +30,7 @@ from app.core.ticket_service import get_ticket as _get_ticket
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-mcp = MCPServer("AssistOps")
+mcp = MCPServer("AssistMind-MCP")
 
 
 async def _requester(ctx: Context | None) -> dict:
@@ -49,10 +43,10 @@ async def _requester(ctx: Context | None) -> dict:
 
 @mcp.tool()
 async def search_knowledge(query: str, ctx: Context = None) -> list[dict]:
-    """搜索知识库（故障案例手册），返回相关文档片段。
+    """搜索知识库，返回相关文档片段。
 
     Args:
-        query: 用户查询问题（如"数据库连接池耗尽如何排查"）
+        query: 用户查询问题
 
     Returns:
         相关文档列表，每个含 doc_id/title/source/text/score
@@ -62,128 +56,6 @@ async def search_knowledge(query: str, ctx: Context = None) -> list[dict]:
     identity = await _requester(ctx)
     result = await _retrieve(query, role=identity["role"])
     return result["contexts"]
-
-
-@mcp.tool()
-async def query_metric(
-    service: str,
-    metric: str,
-    start_ts: int | None = None,
-    end_ts: int | None = None,
-) -> dict:
-    """查询服务监控指标时序数据。
-
-    Args:
-        service: 服务名（api-gateway/order-service/inventory-service/payment-service/user-service）
-        metric: 指标名（cpu_usage/memory_usage/error_rate/latency_p95/qps）
-        start_ts: 起始时间（epoch 秒，默认 2 小时前）
-        end_ts: 结束时间（epoch 秒，默认当前）
-
-    Returns:
-        {service, metric, points: [{ts, value}], summary: {current, max, min, avg}}
-    """
-    points = await ops_ds.query_metric(service, metric, start_ts, end_ts)
-    if not points:
-        return {"service": service, "metric": metric, "points": [], "summary": {}}
-    values = [p["value"] for p in points]
-    return {
-        "service": service,
-        "metric": metric,
-        "points": points,
-        "summary": {
-            "current": values[-1],
-            "max": round(max(values), 2),
-            "min": round(min(values), 2),
-            "avg": round(sum(values) / len(values), 2),
-        },
-    }
-
-
-@mcp.tool()
-async def search_log(
-    service: str | None = None,
-    keyword: str | None = None,
-    start_ts: int | None = None,
-    end_ts: int | None = None,
-    limit: int = 20,
-) -> list[dict]:
-    """搜索服务日志。
-
-    Args:
-        service: 服务名（可选，不过滤则搜索全部）
-        keyword: 关键字（可选，如"connection pool"/"slow query"）
-        start_ts: 起始时间（epoch 秒）
-        end_ts: 结束时间（epoch 秒）
-        limit: 返回条数上限
-
-    Returns:
-        日志列表 [{ts, service, level, message, trace_id}]
-    """
-    return await ops_ds.search_logs(
-        service=service,
-        keyword=keyword,
-        start_ts=start_ts,
-        end_ts=end_ts,
-        limit=limit,
-    )
-
-
-@mcp.tool()
-async def query_change(
-    service: str | None = None,
-    start_ts: int | None = None,
-    end_ts: int | None = None,
-    limit: int = 10,
-) -> list[dict]:
-    """查询变更记录（部署/配置/扩容）。
-
-    Args:
-        service: 服务名（可选）
-        start_ts: 起始时间（epoch 秒）
-        end_ts: 结束时间（epoch 秒）
-
-    Returns:
-        变更列表 [{ts, service, type, content}]
-    """
-    return await ops_ds.query_changes(
-        service=service, start_ts=start_ts, end_ts=end_ts, limit=limit
-    )
-
-
-@mcp.tool()
-async def get_alerts(service: str | None = None) -> list[dict]:
-    """查询当前告警列表。
-
-    Args:
-        service: 服务名（可选）
-
-    Returns:
-        告警列表 [{alert_id, service, metric, severity, ts, message}]
-    """
-    return await ops_ds.get_alerts(service=service)
-
-
-@mcp.tool()
-async def create_incident(
-    title: str, description: str, severity: str = "medium", ctx: Context = None
-) -> dict:
-    """创建故障工单（incident）。
-
-    Args:
-        title: 故障标题（必填）
-        description: 故障描述与诊断结论（必填）
-        severity: 严重级别 low/medium/high/critical，映射到工单 priority
-
-    Returns:
-        {ticket_id, created, ticket}
-    """
-    priority_map = {"low": "low", "medium": "normal", "high": "high", "critical": "urgent"}
-    priority = priority_map.get(severity, "normal")
-    identity = await _requester(ctx)
-    return await _create_ticket(
-        title, description, priority=priority, category="incident",
-        user_id=identity["username"],
-    )
 
 
 @mcp.tool()

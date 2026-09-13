@@ -110,7 +110,7 @@ docker-compose up -d
 
 - **Langfuse 埋点旁路**：LANGFUSE\_PUBLIC\_KEY / LANGFUSE\_SECRET\_KEY 任一未配置即视为未启用（`is_langfuse_enabled()` 返回 False），埋点必须全程 no-op：不构造客户端、不阻塞、不抛异常、不改变返回值与异常语义
 
-- **LLM 单点埋点**：所有 LLM 调用统一由 `llm_factory.call_llm` 埋点（每次调用一个 span，name=llm.call），调用方不要重复埋 LLM；调用方只负责编排级 trace/span（如 ops\_diagnose）
+- **LLM 单点埋点**：所有 LLM 调用统一由 `llm_factory.call_llm` 埋点（每次调用一个 span，name=llm.call），调用方不要重复埋 LLM；调用方只负责编排级 trace/span（如 chat\_faq FAQ 问答链路）
 
 - **限流配置生效**：`RATE_LIMIT_PER_MINUTE` 由 `RateLimitMiddleware`（`core/infra/rate_limit.py`）消费——Redis 固定窗口按客户端 IP 计数，超限 429 + Retry-After，跳过 health/mcp；**不要删配置、不要绕过中间件**（防 LLM token 刷爆）
 
@@ -149,9 +149,6 @@ docker-compose up -d
 | Redis 记忆失败       | 用请求内上下文                                                                                                               |
 | 限流中间件 Redis 失败   | 放行（不误杀）+ RedisClient 记 warning；429 只对 Redis 可用时生效                                                                     |
 | PostgreSQL 失败    | 工单类返回 503，聊天类不受影响；mall 数据源各方法降级（query\_order/product → None、logistics → \[]、apply\_refund → 失败 dict），auto 模式整体降级 mock |
-| Prometheus 失败    | 指标返回空 + degraded；auto 模式下整体不可用降级 mock                                                                                 |
-| Elasticsearch 失败 | 日志/变更返回空 + degraded                                                                                                   |
-| Alertmanager 失败  | 告警返回空 + degraded                                                                                                      |
 | 实体抽取 LLM 兜底失败    | 返回空实体 dict + degraded 语义，不阻塞 Agent 主链路                                                                                |
 | edge-tts TTS 失败  | 后端返回 503 + warning；前端回落浏览器 speechSynthesis（两级降级，不静默）                                                                  |
 
@@ -177,18 +174,6 @@ docker-compose up -d
 
 - LangGraph `StateGraph` 的 node 函数必须返回 dict（更新 state），不能返回 None
 
-### 运维数据源（OPS）
-
-- **数据源已 async 化**：`data_source.py` 门面 + mock/real 双实现，所有调用必须 `await`，禁止用 `asyncio.to_thread` 包装
-
-- **OPS\_DATA\_SOURCE**：`auto`（默认，配置了 PROMETHEUS\_URL 且健康探测通过用 real，否则降级 mock）/ `mock` / `real`
-
-- **real 模式场景语义**：`set_active_scenario` 仅记录展示，不改变真实数据（数据即真实状态），前端有「模拟/真实数据」标签提示
-
-- **PromQL 表达式外置**：`backend/app/data/ops_metric_exprs.json`，支持 `{service}` 占位符，文件 mtime 变化热加载，不要硬编码进代码
-
-- **Prometheus 健康探测**：auto 模式首次访问时探测 `/-/healthy`（3s 超时，不走断路器）；探测失败整体降级 mock
-
 ### Langfuse（可观测性）
 
 - **4.14 的 async with 坑**：`start_as_current_observation()` 返回 `_AgnosticContextManager`，**不支持** **`async with`**（会抛 TypeError）；async 代码用同步 `with` 包住 `await` 即可（OTEL context 基于 contextvars，await 期间当前 span 不变；asyncio.gather 子任务会复制 contextvars，Worker 嵌套观察仍挂在父 span 下）
@@ -205,8 +190,6 @@ docker-compose up -d
 
 - **collections 版 embedding 接口是** **`aembed_text/aembed_texts`**（不是旧版的 embed\_query/embed\_documents）；`ProjectEmbeddings` 已同时实现两套，新增 embedding 包装时注意
 
-- **运维场景语义特性**：「诊断意图 → 枚举知识」问答下 answer\_relevancy 曾有 0.4-0.6 偏低的记录，但语言漂移修复后实测 **0.78+（常规样本 0.81）**——原结论大部分是英文反向问题造成的假象，该指标已可正常参考；事实性仍看 faithfulness、检索看 context\_precision/context\_recall、诊断链路看 run\_eval\_ops.py 根因命中率
-
 ## 新增文件放置规则
 
 | 类型           | 位置                                                                                                                 | 命名                                                                                                    |
@@ -214,23 +197,17 @@ docker-compose up -d
 | API 路由       | `backend/app/api/`                                                                                                 | 功能名.py                                                                                                |
 | Agent        | `backend/app/agents/`                                                                                              | 功能名.py                                                                                                |
 | 核心逻辑         | `backend/app/core/`                                                                                                | 功能名.py 或子包                                                                                            |
-| 运维数据源接口      | `backend/app/core/ops/base.py`                                                                                     | OpsDataSource ABC（async）                                                                              |
-| 运维数据源实现      | `backend/app/core/ops/mock_source.py` / `real_source.py`                                                           | Mock / Prometheus+ELK                                                                                 |
-| 运维数据源门面      | `backend/app/core/ops/data_source.py`                                                                              | 配置切换 + 降级（消费方 import 此处）                                                                              |
-| 运维诊断流水线      | `backend/app/core/ops/pipeline.py`                                                                                 | 计划/采集/分析（Agent 编排与 SSE 流式共用，agents/ops\_supervisor 只留 LangGraph 壳）                                    |
 | 电商数据源实现      | `backend/app/core/mall/mock_source.py` / `real_source.py`                                                          | Mock / PostgreSQL                                                                                     |
 | 电商数据源门面      | `backend/app/core/mall/data_source.py`                                                                             | 配置切换（消费方 import 此处）                                                                                   |
 | 实体识别         | `backend/app/core/mall/entity_extractor.py`                                                                        | 规则抽取 + 工具参数补填映射                                                                                       |
 | 电商业务模型       | `backend/app/models/mall.py`                                                                                       | MallProduct/Order/OrderItem/Logistics/Refund                                                          |
 | 电商数据 seed    | `backend/scripts/seed_mall_db.py`                                                                                  | 从 mock\_source 常量导入（单一数据来源，幂等）                                                                        |
-| 可观测客户端       | `backend/app/core/infra/`                                                                                          | prometheus.py / elasticsearch.py / alertmanager.py                                                    |
-| 指标表达式映射      | `backend/app/data/`                                                                                                | ops\_metric\_exprs.json（外置，热加载）                                                                       |
 | 测试           | `backend/tests/`                                                                                                   | test\_功能名.py                                                                                          |
 | 前端页面         | `frontend/src/views/页面名/`                                                                                          | index.vue                                                                                             |
 | 前端 Store     | `frontend/src/stores/`                                                                                             | 功能名.js                                                                                                |
 | 前端 API       | `frontend/src/api/`                                                                                                | 功能名.js                                                                                                |
-| 知识库文档        | `knowledge/`                                                                                                       | 按来源分子目录（ops/ 运维手册、mall/ 商城文档）                                                                         |
-| 知识库灌库        | `backend/app/core/rag/seeder.py`（公共逻辑）+ `backend/scripts/`（seed\_ops\_kb.py / seed\_mall\_kb.py，仅保留文档加载与 metadata） | 结构感知切分，--reset 幂等；upsert 用确定性 uuid5 id（doc\_id:chunk\_index），重复 seed 不翻倍                              |
+| 知识库文档        | `knowledge/`                                                                                                       | 按来源分子目录（mall/ 商城文档）                                                                                   |
+| 知识库灌库        | `backend/app/core/rag/seeder.py`（公共逻辑）+ `backend/scripts/`（seed\_mall\_kb.py，仅保留文档加载与 metadata） | 结构感知切分，--reset 幂等；upsert 用确定性 uuid5 id（doc\_id:chunk\_index），重复 seed 不翻倍                              |
 | 意图路由配置       | `backend/app/data/`                                                                                                | intent\_routes.json                                                                                   |
 | RQ 异步任务      | `backend/app/core/tasks/`                                                                                          | 队列 + 任务函数（enqueue\_task / rebuild\_knowledge\_base / export\_badcases / run\_evaluation / fetch\_job） |
 | 任务状态路由       | `backend/app/api/jobs.py`                                                                                          | GET /api/v1/jobs/{job\_id}（queued/started/finished/failed + result/error）                             |
@@ -239,8 +216,8 @@ docker-compose up -d
 | 语音播报路由       | `backend/app/api/tts.py`                                                                                           | POST /api/v1/tts/speak → audio/mpeg（首块预取，失败 503）                                                      |
 | 人格库          | `backend/app/data/personas.json` + `backend/app/core/personas.py`                                                  | 外置配置（mtime 热加载）+ load/list/persona\_prompt                                                            |
 | 前端语音封装       | `frontend/src/utils/speech.js` + `frontend/src/api/tts.js`                                                         | TTS 两级降级（后端 edge-tts → 浏览器合成）/ 云端合成请求（原生 fetch 二进制）                                                   |
-| 评估脚本         | `backend/scripts/`                                                                                                 | run\_eval.py（RAGAS 评估）/ run\_eval\_ops.py（OPS 根因命中率）                                                  |
-| 评估数据集        | `backend/app/data/`                                                                                                | eval\_qa.json（OPS）/ eval\_mall\_qa.json（mall），question / ground\_truth / adversarial 字段               |
+| 评估脚本         | `backend/scripts/`                                                                                                 | run\_eval.py（RAGAS 评估）                                                                                |
+| 评估数据集        | `backend/app/data/`                                                                                                | eval\_mall\_qa.json（mall），question / ground\_truth / adversarial 字段                                   |
 
 ## 测试规范
 

@@ -3,11 +3,11 @@
 用法（在 backend/ 下）：
     venv\\Scripts\\python.exe scripts/run_eval.py [数据集路径]
 
-- 数据集路径缺省为 backend/app/data/eval_qa.json，也可传入自定义 JSON
+- 数据集路径缺省为 backend/app/data/eval_mall_qa.json，也可传入自定义 JSON
   （字段：question / ground_truth / adversarial），便于跑部分样本做冒烟验证
 
 流程：
-1. 读取 backend/app/data/eval_qa.json（字段：question / ground_truth / adversarial），
+1. 读取 backend/app/data/eval_mall_qa.json（字段：question / ground_truth / adversarial），
    校验每条含非空 question / ground_truth，非法条目跳过并打印 warning
 2. 逐条跑 RAG 链路：复用 app.core.rag.engine 的 retrieve() + generate()，
    得到检索片段（contexts）与模型回答（answer），不重复实现检索/生成逻辑
@@ -24,7 +24,7 @@
   0  评估完成（含部分 NaN 行）
   1  数据集缺失 / 格式错误 / 无有效条目
   2  LLM 不可用（未配置 API Key 或 DeepSeek/Ollama 均失败）
-  3  知识来源完全不可用（Qdrant 不可达且本地 knowledge/ops 无文档）
+  3  知识来源完全不可用（Qdrant 不可达且本地 knowledge/mall 无文档）
   4  评估未产生任何有效得分（评分调用全部失败）
   5  ragas 不可导入（评估依赖缺失，如环境未按锁安装 pillow）
 
@@ -123,10 +123,10 @@ from app.core.rag.embedding import embed_sync  # noqa: E402
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# backend/scripts/run_eval.py → backend/app/data/eval_qa.json
-DATASET_PATH = os.path.join(os.path.dirname(__file__), "..", "app", "data", "eval_qa.json")
-# backend/scripts/run_eval.py → 仓库根 knowledge/ops（Qdrant 不可用时的 BM25 兜底来源）
-KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "knowledge", "ops")
+# backend/scripts/run_eval.py → backend/app/data/eval_mall_qa.json
+DATASET_PATH = os.path.join(os.path.dirname(__file__), "..", "app", "data", "eval_mall_qa.json")
+# backend/scripts/run_eval.py → 仓库根 knowledge/mall（Qdrant 不可用时的 BM25 兜底来源）
+KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "knowledge", "mall")
 
 # RAGAS 指标（aevaluate 批处理部分）。answer_relevancy 单独走 collections 新版
 # （循环采样 3 个反向问题取均值，不依赖 LLM 的 n 参数；旧版在 Instructor LLM 下
@@ -205,7 +205,7 @@ def _select_metrics(rows: list[dict]) -> list:
 
 
 def _load_knowledge_docs() -> list[dict]:
-    """读取 knowledge/ops/*.md 并分块（与 scripts/seed_ops_kb.py 一致）。"""
+    """读取 knowledge/mall/*.md 并分块（与 scripts/seed_mall_kb.py 一致）。"""
     docs: list[dict] = []
     for path in sorted(glob.glob(os.path.join(KNOWLEDGE_DIR, "*.md"))):
         doc_id = os.path.splitext(os.path.basename(path))[0]
@@ -216,8 +216,8 @@ def _load_knowledge_docs() -> list[dict]:
             metadata={
                 "doc_id": doc_id,
                 "title": doc_id,
-                "source": f"knowledge/ops/{doc_id}.md",
-                "category": "ops",
+                "source": f"knowledge/mall/{doc_id}.md",
+                "category": "mall",
                 "security_group": ["user", "agent", "admin"],
             },
         )
@@ -229,7 +229,7 @@ async def build_bm25_index() -> tuple[bool, int]:
     """构建 BM25 内存索引（与 app/main.py 启动逻辑一致）。
 
     - Qdrant 可用：从全量向量库 scroll_all 构建（与线上一致）
-    - Qdrant 不可用：降级从 knowledge/ops 源文档构建（BM25 一等公民兜底）
+    - Qdrant 不可用：降级从 knowledge/mall 源文档构建（BM25 一等公民兜底）
 
     Returns:
         (qdrant_ok, 索引文档数)
@@ -244,7 +244,7 @@ async def build_bm25_index() -> tuple[bool, int]:
         return True, len(all_docs)
 
     # Qdrant 不可用：用源文档构建本地 BM25（降级，仍可评估）
-    logger.warning("[Eval] Qdrant 不可用，降级为仅 BM25（从 knowledge/ops 源文档构建索引）")
+    logger.warning("[Eval] Qdrant 不可用，降级为仅 BM25（从 knowledge/mall 源文档构建索引）")
     docs = _load_knowledge_docs()
     get_bm25().build(docs)
     logger.info("[Eval] BM25 索引构建 %d 文档（源文档降级模式）", len(docs))

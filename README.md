@@ -1,6 +1,6 @@
 # AssistMind —— 电商智能客服系统
 
-> 电商智能客服系统：RAG + Agent，覆盖**电商客服问答**（商品咨询 / 订单查询 / 物流查询 / 售后申请）与**智能运维诊断**两大场景。
+> 电商智能客服系统：RAG + Agent，覆盖**电商客服问答**（商品咨询 / 订单查询 / 物流查询 / 售后申请）与**转人工 / 工单闭环**。
 > 知识库素材取自开源项目 [macrozheng/mall](https://github.com/macrozheng/mall) 的文档与表结构，业务数据为项目自建（见[知识来源与致谢](#知识来源与致谢)）。
 
 **目录**：[界面预览](#界面预览) · [功能特性](#功能特性) · [核心场景](#核心场景) · [快速开始](#快速开始) · [配置说明](#配置说明) · [设计细节](#设计细节) · [技术栈](#技术栈) · [评估](#评估) · [项目结构](#项目结构) · [知识来源与致谢](#知识来源与致谢) · [License](#license)
@@ -28,15 +28,14 @@
 - **查询改写**：Multi-Query 默认启用（3 变体并行召回）+ HyDE 可选 + CRAG 低分被动改写
 - **结构感知切块**：Markdown 标题 / fenced 代码块整体保留 / 表格不拆行 / mall_tables.sql 按 CREATE TABLE 表级切块
 - **Agent 工具调用**：ToolAgent（ReAct）经 MCP 调用工具完成订单校验 → 售后申请 → 工单创建，每步以 SSE 事件推送到前端
-- **MCP Server + Client**：FastMCP 实现 Server（13 个工具）+ Client，ToolAgent 与工具实现解耦
+- **MCP Server + Client**：FastMCP 实现 Server（8 个工具）+ Client，ToolAgent 与工具实现解耦
 - **三级意图路由**：规则 → 语义 → LLM，4 类意图（faq / task / chat / unclear），配置外置热加载
 - **失败降级体系**：断路器 + 全链路降级表，BM25 为一等公民（Qdrant 挂掉仍可答）
 - **异步任务队列（RQ）**：知识库重建 / 坏例回流 / 评估运行收编为 Redis 异步任务，HTTP 秒回 job_id、独立 worker 进程消费、失败自动重试、状态可轮询
 - **语音 AI**：ASR 用浏览器 Web Speech API（本地识别）+ TTS 两级降级（后端 edge-tts 云端音色 → 浏览器合成兜底）
 - **角色语气定制**：人格库外置 `personas.json`（专业/温柔/活泼），mtime 热加载，提示词层实现语气切换，无需 GPU 微调
-- **智能运维诊断**（独立后端 API）：Supervisor Agent 多源证据编排 + SSE 实时诊断流 + 自动建故障工单
-- **可观测性**：Langfuse 全链路 trace（LLM 单点埋点 + 诊断链路编排）
-- **评估体系**：RAGAS 4 指标（65 条双数据集含 9 条对抗样本）+ 诊断根因命中率 3/3
+- **可观测性**：Langfuse 全链路 trace（LLM 单点埋点 + FAQ 会话级 trace）
+- **评估体系**：RAGAS 4 指标（mall 数据集 40 条，含 5 条对抗样本）
 - **Bad Case 回归**：用户反馈 → Langfuse 会话级证据链 → 管理端可视化追溯 → 低分样本自动回流评估集回归（详见 `docs/rag-iteration.md`）
 - **CI/CD**：GitHub Actions（ruff + pytest + vitest）+ husky pre-commit
 
@@ -70,16 +69,6 @@
 每一步的工具调用都以 `tool_call` / `tool_result` SSE 事件实时推送到前端，用户可见"正在查订单 → 正在申请售后 → 已创建售后工单"的过程。
 
 > 说明：订单 / 物流 / 售后数据默认走内存 mock（零依赖）；配置 `MALL_DATA_SOURCE=real` 后可落 PostgreSQL 持久化（含售后单跨进程幂等），见[配置说明](#配置说明)。
-
-### 智能运维诊断
-
-智能运维诊断复用同一套底座（RAG + Agent + MCP + 可观测），以独立后端 API 提供：
-
-> 以"下单失败"类故障为例（直调独立后端 API）→
-> 1. 调用 POST `/api/v1/ops/diagnose`（需 JWT）→ 进入 SSE 诊断流（start → planning → collecting → analyzing → incident → done）；
-> 2. **Supervisor Agent 多源证据编排**（LangGraph 三节点：supervisor → collect → analyze）：并行采集指标（Prometheus）/ 日志（ELK 可选）/ 变更记录 / 告警 / 知识库手册，并关联**相似历史工单**（模糊检索）与**受影响服务的主机拓扑**（CMDB 风格数据源接口 `list_hosts`）；
-> 3. **根因推理**：LLM 基于证据链生成根因报告 + 置信度评估，逐证据项标注 degraded 降级状态；
-> 4. **自动建故障工单**：报告产出根因后自动创建 incident 类工单（可在开关中关闭）。
 
 ## 快速开始
 
@@ -115,8 +104,6 @@ docker-compose up -d
 | redis | smart-cs-redis | 6379 | 缓存 / 语义缓存 |
 | postgres | smart-cs-postgres | 5432 | 元数据库（用户/工单/反馈） |
 | langfuse-db / langfuse | smart-cs-langfuse-* | 3001 | 可观测平台（可选，开发环境默认启动） |
-| ops-exporter | smart-cs-ops-exporter | 9100 | 演示业务指标 exporter（纯标准库，5 指标 × 5 服务） |
-| prometheus | smart-cs-prometheus | 9090 | 真实 Prometheus（采集 exporter 指标） |
 
 > 应用层 backend / frontend / **worker** 由 `docker-compose.app.yml` 定义（与根 `docker-compose.yml` 叠加，`start-demo.ps1` 或 `docker compose -f docker-compose.yml -f docker-compose.app.yml up -d` 全量启动）。其中 **worker** 消费 RQ 异步任务队列（知识库重建等），rebuild 入队后需该进程执行——手动开发模式下请单独启动（见下节）。
 
@@ -135,8 +122,6 @@ venv\Scripts\python.exe scripts/seed_mall_db.py
 # 电商知识库（knowledge/mall/：官方文档 + 自建业务规则，结构感知切块）
 venv\Scripts\python.exe scripts/seed_mall_kb.py --reset
 
-# 运维知识库（knowledge/ops/：4 篇排查手册）
-venv\Scripts\python.exe scripts/seed_ops_kb.py --reset
 ```
 
 ### 4. 启动开发服务器
@@ -161,7 +146,6 @@ npm run dev
 - 前端：http://localhost:5173
 - 后端 API 文档：http://localhost:8002/docs
 - Langfuse：http://localhost:3001
-- Prometheus：http://localhost:9090
 - 测试账号：admin/admin123（管理员）· agent/agent123（客服）· user/user123（普通用户）
 
 ### 6. 一键启动与部署
@@ -172,8 +156,6 @@ npm run dev
 ## 配置说明
 
 ### 数据源模式
-
-`OPS_DATA_SOURCE` 配置运维数据源模式：`auto`（默认，配置了 `PROMETHEUS_URL` 且健康探测通过则用真实数据，否则降级 mock）/ `mock` / `real`。未配置 `ALERTMANAGER_URL` / `ELASTICSEARCH_URL` 时，告警与日志证据返回空并标记 degraded。
 
 `MALL_DATA_SOURCE` 配置电商业务数据源模式：`mock`（默认，内存演示清单，零依赖）/ `real`（PostgreSQL，先跑 init_db + seed_mall_db）/ `auto`（`SELECT 1` 健康探测通过则用 real，否则降级 mock）。real 模式下售后单（apply_refund）落库持久化，跨进程幂等（order_sn 唯一约束）。
 
@@ -207,18 +189,16 @@ npm run dev
 ### Agent
 
 - **ToolAgent（电商客服 Agent）**：LangGraph StateGraph 驱动的 ReAct 循环（think → act → …），含 Loop Breaker（迭代上限熔断）、参数缺失澄清（`CLARIFY:` 追问）、**实体识别参数补填**（规则抽取订单号/商品 ID → 自动补填 query_order 等工具参数，减少 LLM 编造与追问，多轮对话从历史回溯实体）、MCP 不可用降级。设计原则 **Retrieval Before Agency**：Agent 在已排序检索结果之上工作，不取代检索。
-- **OpsSupervisorAgent（运维诊断 Agent）**：LangGraph 三节点编排（supervisor 规划 → collect 多源证据采集 → analyze 根因推理），输出根因报告 + 置信度 + 证据清单（含 degraded 标注），联动自动建单。
 
 ### MCP Server + Client
 
-FastMCP（Python 官方 SDK）实现 **Server（AssistOps，13 个工具）+ Client**，ToolAgent 不直接调本地工具函数，一律通过 MCP Client → Server 协议调用，工具实现与 Agent 完全解耦：
+FastMCP（Python 官方 SDK）实现 **Server（AssistMind-MCP，8 个工具）+ Client**，ToolAgent 不直接调本地工具函数，一律通过 MCP Client → Server 协议调用，工具实现与 Agent 完全解耦：
 
 | 分组 | 工具 |
 |---|---|
 | 知识检索（1） | `search_knowledge` |
 | 电商业务操作（4） | `query_order` / `query_logistics` / `query_product` / `apply_refund` |
-| 运维数据（4） | `query_metric` / `search_log` / `query_change` / `get_alerts` |
-| 工单（4） | `create_ticket` / `create_incident` / `transfer_human` / `get_ticket_status` |
+| 工单（3） | `create_ticket` / `transfer_human` / `get_ticket_status` |
 
 ### 降级体系（全链路降级表）
 
@@ -233,18 +213,16 @@ FastMCP（Python 官方 SDK）实现 **Server（AssistOps，13 个工具）+ Cli
 | Reranker 失败 | 跳过重排，用 RRF 结果 |
 | Redis 缓存失败 | 跳过缓存直查 |
 | PostgreSQL 失败 | 工单类返回 503，聊天类不受影响 |
-| Prometheus 失败 | 指标返回空 + degraded；auto 模式下整体降级 mock |
-| Elasticsearch / Alertmanager 失败 | 日志/变更/告警返回空 + degraded |
 | edge-tts TTS 失败 | 后端返回 503 + warning；前端回落浏览器 speechSynthesis（两级降级） |
 
 ### 可观测性
 
-- Langfuse 全链路 trace：**LLM 单点埋点**（所有 LLM 调用统一走 `llm_factory.call_llm`，每次调用一个 `llm.call` span），调用方只负责编排级 span（如 `ops_diagnose` 诊断链路、`chat_faq` FAQ 问答链路），避免重复埋点；
+- Langfuse 全链路 trace：**LLM 单点埋点**（所有 LLM 调用统一走 `llm_factory.call_llm`，每次调用一个 `llm.call` span），调用方只负责编排级 span（如 `chat_faq` FAQ 问答链路），避免重复埋点；
 - **FAQ 会话级 trace**：每条 FAQ 问答创建 `chat_faq` 根 trace，`query → 检索来源 → 回答` 形成可按会话归因的证据链，`trace_id` 随 SSE done 事件回传并写入反馈表（bad case 归因入口）。
 
 ### 前端
 
-Vue 3 + Element Plus + Pinia（JavaScript），原生 fetch 解析 SSE 流（`POST /api/v1/chat/ask`，事件：start / retrieving / rewriting / generating / delta / tool_call / tool_result / done / error，其中 delta 为生成阶段逐 chunk 文本，驱动前端打字机效果），意图分流过程可视化（改写提示、工具调用步骤、知识来源、诊断阶段标签）。内置**语音交互**（麦克风识别 + 云端音色播报，TTS 两级降级）与**客服人格选择器**（专业/温柔/活泼，随 SSE 请求体传 `persona`）。
+Vue 3 + Element Plus + Pinia（JavaScript），原生 fetch 解析 SSE 流（`POST /api/v1/chat/ask`，事件：start / retrieving / rewriting / generating / delta / tool_call / tool_result / done / error，其中 delta 为生成阶段逐 chunk 文本，驱动前端打字机效果），意图分流过程可视化（改写提示、工具调用步骤、知识来源）。内置**语音交互**（麦克风识别 + 云端音色播报，TTS 两级降级）与**客服人格选择器**（专业/温柔/活泼，随 SSE 请求体传 `persona`）。
 
 ## 技术栈
 
@@ -261,7 +239,6 @@ Vue 3 + Element Plus + Pinia（JavaScript），原生 fetch 解析 SSE 流（`PO
 | 语音 | Web Speech API（ASR）+ edge-tts（TTS 云端神经音色，免费无 key） |
 | MCP | FastMCP（Python 官方 SDK） |
 | 可观测 | Langfuse |
-| 运维数据 | Prometheus（演示 exporter 提供真实指标）/ 预置场景模拟（mock） |
 | 评估 | RAGAS |
 | CI/CD | GitHub Actions + husky pre-commit（ruff + pytest + vitest） |
 
@@ -269,29 +246,25 @@ Vue 3 + Element Plus + Pinia（JavaScript），原生 fetch 解析 SSE 流（`PO
 
 | 评估项 | 脚本 / 数据 | 口径 |
 |---|---|---|
-| RAG 质量 | `scripts/run_eval.py` + RAGAS 4 指标（faithfulness / answer_relevancy / context_precision / context_recall） | **65 条双数据集**（DeepSeek 评分）：`eval_qa.json`（25 条，含 4 条对抗）+ `eval_mall_qa.json`（40 条，含 5 条对抗），对抗样本单独分组。实测（常规样本）：OPS faithfulness 0.811 / context_precision 0.883 / context_recall 0.952 / answer_relevancy 0.767；Mall faithfulness 0.941 / context_precision 0.895 / context_recall 0.859 / answer_relevancy 0.887 |
+| RAG 质量 | `scripts/run_eval.py` + RAGAS 4 指标（faithfulness / answer_relevancy / context_precision / context_recall） | **40 条 mall 数据集**（DeepSeek 评分）：`eval_mall_qa.json`（含 5 条对抗，对抗样本单独分组）。实测（常规样本）：faithfulness 0.941 / context_precision 0.895 / context_recall 0.859 / answer_relevancy 0.887 |
 | Agent 工具调用 | 单测覆盖（`tests/unit/test_tool_agent.py` 等）：task 意图触发工具、Retrieval Before Agency、参数缺失澄清、MCP 不可用降级、循环熔断 | 工具调用路径行为由测试保障 |
 | Agent 端到端成功率 | `scripts/run_eval_agent.py --entity-fill both`：9 个多轮客服任务（查单/查物流/多轮物流/商品/退货流程/退款被拒/未找到订单/服务承诺/退款时限），进程内 MCP + BM25 兜底，逐任务断言工具链与回答 | 实测 **9/9（100%）**，含实体识别 on/off 对比 |
-| 诊断根因命中率 | `scripts/run_eval_ops.py`：3 个预置故障场景（连接池耗尽 / 慢 SQL / 内存泄漏）强制 mock 数据源，报告 root_cause 与预期关键词比对 | 目标 3/3 命中 |
 | Bad Case 回归 | `scripts/export_feedback_badcases.py`（低分反馈 score<=2 → `app/data/eval_feedback.json`）+ `scripts/run_eval.py app/data/eval_feedback.json`（无 ground_truth 模式自动跳过 context_recall） | 线上差评回流为对抗回归样本，改造前后 A/B diff 归因防回退，见 `docs/rag-iteration.md` |
 
-已知限制：`answer_relevancy` 对「诊断意图 → 枚举知识」型问答天然偏低（约 0.4-0.6），因反向生成的问题聚焦回答中的高密度实体而非原问题意图——属指标语义特性，不作为质量闸门；事实性看 faithfulness、检索质量看 context_precision / context_recall、诊断链路看根因命中率。
+已知限制：`answer_relevancy` 受反向生成问题与原问题意图偏差影响存在波动——属指标语义特性，不作为质量闸门；事实性看 faithfulness、检索质量看 context_precision / context_recall。
 
 评估命令：
 
 ```powershell
 cd backend
 
-# RAGAS 评估（默认 eval_qa.json，也可传自定义数据集路径）
+# RAGAS 评估（默认 eval_mall_qa.json，也可传自定义数据集路径）
 venv\Scripts\python.exe scripts/run_eval.py
-venv\Scripts\python.exe scripts/run_eval.py app/data/eval_mall_qa.json
 
 # Bad Case 回归：低分反馈（score<=2）回流评估集，跑无 ground_truth 模式（自动跳过 context_recall）
 venv\Scripts\python.exe scripts/export_feedback_badcases.py [--limit 50]
 venv\Scripts\python.exe scripts/run_eval.py app/data/eval_feedback.json
 
-# 诊断根因命中率评估（3 个预置故障场景，强制 mock 数据源）
-venv\Scripts\python.exe scripts/run_eval_ops.py
 ```
 
 运行要求：`.env` 配置 `DEEPSEEK_API_KEY`；Qdrant 已启动并灌库（不可用时自动降级仅 BM25）。脚本以非 0 退出码区分失败原因（LLM 不可用 / 知识来源不可用 / 无有效得分）。
@@ -302,23 +275,22 @@ venv\Scripts\python.exe scripts/run_eval_ops.py
 AssistMind/
 ├── backend/
 │   ├── app/
-│   │   ├── api/            # FastAPI 路由（chat/auth/knowledge/jobs/ticket/feedback/ops/mall/admin/tts/health）
-│   │   ├── agents/         # ToolAgent（LangGraph ReAct）+ OpsSupervisorAgent（三节点编排）
+│   │   ├── api/            # FastAPI 路由（chat/auth/knowledge/jobs/ticket/feedback/mall/admin/tts/health）
+│   │   ├── agents/         # ToolAgent（LangGraph ReAct）
 │   │   ├── core/
 │   │   │   ├── rag/        # RAG 引擎（召回+RRF 融合+重排+CRAG）+ 文档解析（parsers：pdf/docx ETL）
 │   │   │   ├── router/     # 意图路由（规则→语义→LLM，4 类意图）
 │   │   │   ├── cache/      # L2 语义缓存（Redis 版本号失效）
 │   │   │   ├── dialog/     # 对话上下文管理（裁剪/提取/格式化 + 槽位状态机）
-│   │   │   ├── infra/      # Qdrant/Redis/PostgreSQL/LLM/Prometheus/ES/Alertmanager/Langfuse/TTS/断路器
-│   │   │   ├── mcp/        # MCP Server（13 工具）+ Client
+│   │   │   ├── infra/      # Qdrant/Redis/PostgreSQL/LLM/Langfuse/TTS/断路器
+│   │   │   ├── mcp/        # MCP Server（8 工具）+ Client
 │   │   │   ├── mall/       # 电商业务数据源（门面 + mock/real 双实现 + 实体识别，字段锚定 mall.sql）
-│   │   │   ├── ops/        # 运维数据源（门面 + mock/real 双实现 + 预置场景）
 │   │   │   ├── tasks/      # RQ 异步任务队列（rebuild_knowledge_base / export_badcases / run_evaluation）
 │   │   │   └── security/   # JWT + RBAC
 │   │   ├── models/         # SQLAlchemy 模型（user/ticket/feedback/mall 业务表）
 │   │   ├── schemas/        # Pydantic 模型
-│   │   └── data/           # intent_routes.json / personas.json / eval_qa.json / eval_mall_qa.json / eval_feedback.json / ops_metric_exprs.json
-│   ├── scripts/            # init_db / seed_mall_db / seed_mall_kb / seed_ops_kb / run_eval / run_eval_ops / run_worker / export_feedback_badcases / check_kb_quality / ops_exporter
+│   │   └── data/           # intent_routes.json / personas.json / eval_mall_qa.json / eval_feedback.json
+│   ├── scripts/            # init_db / seed_mall_db / seed_mall_kb / run_eval / run_worker / export_feedback_badcases / check_kb_quality
 │   └── tests/              # 单元 + 集成测试
 ├── frontend/
 │   └── src/
@@ -326,10 +298,10 @@ AssistMind/
 │       ├── stores/         # Pinia（auth/chat/knowledge/ticket/persona）
 │       ├── api/            # axios 封装；chat/tts 为原生 fetch（SSE 流 / 二进制音频）
 │       └── utils/          # speech.js（ASR 识别 + TTS 两级降级播报）
-├── knowledge/              # 知识库源文档（mall/ 官方取材 + 自建业务规则；ops/ 排查手册）
+├── knowledge/              # 知识库源文档（mall/ 官方取材 + 自建业务规则）
 ├── docs/                   # 项目文档（架构说明/迭代记录等）
 ├── deploy/                 # 云端部署脚本与说明
-├── docker-compose.yml      # 基础设施（qdrant/redis/postgres/langfuse/prometheus/ops-exporter）
+├── docker-compose.yml      # 基础设施（qdrant/redis/postgres/langfuse）
 ├── docker-compose.app.yml  # 应用层（backend/frontend/worker 叠加编排）
 └── AGENTS.md               # AI 编码规则
 ```
@@ -337,7 +309,6 @@ AssistMind/
 ## 知识来源与致谢
 
 - **[macrozheng/mall](https://github.com/macrozheng/mall)**：电商知识库素材（`knowledge/mall/` 下的官方 README、部署文档、配置文件与 `mall_tables.sql` 表结构节选）取材自该项目，取材范围见 `knowledge/mall/SOURCES.md`。业务规则文档（`knowledge/mall/business/`）为本项目自建，字段锚定 mall.sql 官方表结构。
-- 运维诊断的 3 个预置故障场景（连接池耗尽 / 慢 SQL / 内存泄漏）为受控演示数据，数据源支持 mock/real 双实现（real 对接 Prometheus / Alertmanager / Elasticsearch）。
 
 ## License
 

@@ -50,9 +50,8 @@ if [ "${AUTO_SEED_KB}" = "true" ]; then
     if [ "${count}" -gt 0 ] 2>/dev/null; then
         echo "[entrypoint] Qdrant 已有 ${count} 条文档，跳过灌库（秒起）"
     else
-        echo "[entrypoint] 首次启动：灌入电商+运维知识库（含 embedding，约 1-3 分钟）…"
+        echo "[entrypoint] 首次启动：灌入电商知识库（含 embedding，约 1-3 分钟）…"
         python scripts/seed_mall_kb.py --reset
-        python scripts/seed_ops_kb.py --reset
     fi
 fi
 

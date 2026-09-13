@@ -193,30 +193,6 @@ class Settings(BaseSettings):
     # 走一次 LLM 兜底（fast=True 快速失败；失败/非法输出回落反问 + logger.warning）
     DISAMBIG_LLM_FALLBACK: bool = False
 
-    # ===== 运维数据源（Prometheus / ELK）=====
-    # auto: 配置了 PROMETHEUS_URL 用真实数据源，未配置或整体不可用降级 mock
-    # mock: 恒用预置故障场景模拟数据
-    # real: 恒用真实数据源（单源失败走各方法降级 + degraded 标记）
-    OPS_DATA_SOURCE: str = "auto"
-    PROMETHEUS_URL: str = ""
-    PROMETHEUS_TIMEOUT: int = 10
-    PROMETHEUS_SERVICE_LABEL: str = "service"
-    ALERTMANAGER_URL: str = ""
-    ELASTICSEARCH_URL: str = ""
-    ELASTICSEARCH_USERNAME: str | None = None
-    ELASTICSEARCH_PASSWORD: str | None = None
-    ELASTICSEARCH_INDEX: str = "logs-*"
-    ELASTICSEARCH_CHANGE_INDEX: str = "changes-*"
-    ELASTICSEARCH_TIMEOUT: int = 10
-
-    # 运维数据源断路器
-    CB_PROMETHEUS_FAIL_THRESHOLD: int = 5
-    CB_PROMETHEUS_OPEN_SECONDS: int = 60
-    CB_ELASTICSEARCH_FAIL_THRESHOLD: int = 5
-    CB_ELASTICSEARCH_OPEN_SECONDS: int = 60
-    CB_ALERTMANAGER_FAIL_THRESHOLD: int = 3
-    CB_ALERTMANAGER_OPEN_SECONDS: int = 60
-
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
     @property

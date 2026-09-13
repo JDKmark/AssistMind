@@ -93,7 +93,7 @@
 | **G3** | **httpx 客户端未复用** | `core/rag/reranker.py:105` 每次调用 `async with httpx.AsyncClient(...)`；`mcp/client.py:80` 同类写法 | 每次请求新建连接池，无 keep-alive，TLS/连接开销重复付，且连接数无统一管控 |
 | **G4** | **无 TTFT 埋点** | `llm_factory` 只有 `duration_ms`（全长），无首 token 时刻 | 流式体验的核心指标不可度量，"优化 TTFT"无法验证 |
 | **G5** | **无缓存击穿保护** | `semantic_cache.py` 无 single-flight、无 `SETNX` 互斥 | 热点问题（如"退货政策"）并发首访同时 miss → 同时打 LLM，瞬间放大 |
-| **G6** | **应用自身无 Prometheus 指标** | 无 `prometheus_client`；`api/ops.py:205` 的 `/ops/metrics/...` 是业务查询接口，**不是 exporter** | 有 Prometheus 容器却无应用指标可采，压测只能看外部黑盒数据 |
+| **G6** | **应用自身无 Prometheus 指标** | 无 `prometheus_client`；已有 `/api/v1/*` 业务查询接口，**不是 exporter** | 有监控体系却无应用指标可采，压测只能看外部黑盒数据 |
 | **G7** | **RQ worker 无并发上限** | `scripts/run_worker.py` | 重任务（知识库重建 / 65 条 RAGAS 评估）可与在线请求抢 CPU / 内存 |
 | **G8** | **实际运行配置是低吞吐组合（最重要）** | `config.py:40` `RERANKER_PROVIDER: str = "local"` 且全仓无覆盖；`tests/conftest.py:121-122` 明确"本机 .env 已切 `LLM_PROVIDER=ollama`" | **默认即"本机 CPU 重排（单次 1–2 分钟）+ 本机 Ollama 推理"**。不先切云端，压测测的是本机 CPU 而不是系统架构能力，结论无意义 |
 
@@ -116,7 +116,7 @@
 
 **改动点**
 - 新增 `core/infra/concurrency.py`：进程级 `asyncio.Semaphore(settings.MAX_INFLIGHT_REQUESTS)`
-- 在 `api/chat.py` 与 `/ops/diagnose` 入口获取槽位；获取超时 `INFLIGHT_ACQUIRE_TIMEOUT`（默认 5s）后返回 503 + `Retry-After`
+- 在 `api/chat.py` 等入口获取槽位；获取超时 `INFLIGHT_ACQUIRE_TIMEOUT`（默认 5s）后返回 503 + `Retry-After`
 - 新增配置：`MAX_INFLIGHT_REQUESTS`（默认 50）、`INFLIGHT_ACQUIRE_TIMEOUT`（默认 5）
 - 槽位占用/排队深度需暴露给 T5 的指标
 
@@ -182,7 +182,7 @@
 
 ### T5 应用级 Prometheus 指标（P0，压测前提）
 
-**背景**：G6。项目已有 `prometheus` + `ops-exporter` 容器，但应用自身没有 exporter。
+**背景**：G6。基础设施层有监控容器，但应用自身没有 exporter。
 
 **改动点**
 - 引入 `prometheus_client`，新增 `GET /metrics`（**不在** `/api/v1` 下，或按现有约定挂载；不与 `/api/v1/health` 冲突）
@@ -201,7 +201,7 @@
 | `assistmind_llm_upstream_errors_total` | Counter | provider、status |
 | `assistmind_rate_limited_total` | Counter | scope |
 
-- 加进 `docker-compose.yml` 的 Prometheus scrape 配置；不开 Prometheus 时应用侧能力不受影响
+- 由外部 Prometheus 抓取 `/metrics`；不开 Prometheus 时应用侧能力不受影响
 
 **验收标准**
 - `curl localhost:8002/metrics` 返回上述指标，且在压测中数值随之变化
@@ -264,7 +264,7 @@
 | JMeter | 有 SSE Sampler | JSR223 断言 | 原生分布式 | HTML Dashboard | GUI 上手快，但脚本难评审、CI 不友好 |
 | hey / wrk / vegeta | 不支持 | 无 | 简单负载 | 简单 | 只用于静态接口（如 `/health`、`/metrics`）冒烟 |
 
-**推荐组合**：**Locust 为主**（场景编排 + 混合流量 + SSE/TTFT 采集），**k6 或简单脚本做 CI 门禁冒烟**，`hey` 打静态接口做基准，`Prometheus + Grafana` 做实时观测（容器已有），`Toxiproxy` 做故障注入。
+**推荐组合**：**Locust 为主**（场景编排 + 混合流量 + SSE/TTFT 采集），**k6 或简单脚本做 CI 门禁冒烟**，`hey` 打静态接口做基准，`Prometheus + Grafana` 做实时观测（可选，自行接入应用 `/metrics`），`Toxiproxy` 做故障注入。
 
 ### 3.2 目录结构
 
@@ -295,7 +295,7 @@ backend/tests/load/
 
 ### 3.3 压测语料（复用已有资产，不要另造数据）
 
-**语料直接用项目已有的 65 条评估集**：`app/data/eval_qa.json`（25 条，含 4 条对抗）+ `app/data/eval_mall_qa.json`（40 条，含 5 条对抗），再补一组高频 FAQ（退货政策 / 运费谁出 / 优惠券叠加）用于 S1 缓存命中场景。
+**语料直接用项目已有的 40 条评估集**：`app/data/eval_mall_qa.json`（含 5 条对抗），再补一组高频 FAQ（退货政策 / 运费谁出 / 优惠券叠加）用于 S1 缓存命中场景。
 
 **这个选择的双重价值**：① 请求语义真实，不是 `test-1-2-3` 这种假数据；② 压测后可顺手复跑 RAGAS，验证"压力下触发的降级是否拖低了答案质量"——**性能与质量双闸门**。
 
@@ -367,7 +367,7 @@ POST /api/v1/chat/ask  (headers: Authorization, Accept: text/event-stream)
 | 吞吐 | QPS（分场景）、峰值小时请求量 | Locust |
 | 延迟 | p50/p95/p99 总时长、**TTFT**、排队等待时长 | Locust + `assistmind_ttft_seconds` |
 | 稳定性 | 错误率（拆 4xx/429/503/超时）、SSE 中断率、降级触发数、断路器开合、队列积压 | Locust + `assistmind_*` |
-| 资源与成本 | CPU/内存/协程数、DB 连接 active&waiting、Redis 连接数、上游 RPM/TPM 与 429 率、每千次问答 token 成本 | Prometheus + Grafana + PG 侧查询 |
+| 资源与成本 | CPU/内存/协程数、DB 连接 active&waiting、Redis 连接数、上游 RPM/TPM 与 429 率、每千次问答 token 成本 | 应用 `/metrics` + PG 侧查询 |
 
 ### 3.10 CI 门禁
 

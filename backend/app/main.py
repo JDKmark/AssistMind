@@ -22,17 +22,13 @@ from app.api import (
     jobs,
     knowledge,
     mall,
-    ops,
     ticket,
     tts,
 )
 from app.config import get_settings
 from app.core.infra import metrics as app_metrics
-from app.core.infra.alertmanager import get_alertmanager
 from app.core.infra.circuit_breaker import init_breakers
-from app.core.infra.elasticsearch import get_elasticsearch
 from app.core.infra.langfuse import get_langfuse, is_langfuse_enabled
-from app.core.infra.prometheus import get_prometheus
 from app.core.infra.qdrant import get_qdrant
 from app.core.infra.rate_limit import RateLimitMiddleware
 from app.core.infra.redis import get_redis
@@ -72,14 +68,6 @@ async def lifespan(app: FastAPI):
             logger.warning("[Main] Qdrant 连接失败，检索降级为仅 BM25（BM25 索引可能为空）")
     except Exception as e:
         logger.warning("[Main] Qdrant/BM25 初始化失败: %s", e)
-
-    # 初始化运维数据源客户端（Prometheus / Elasticsearch / Alertmanager）
-    # 客户端创建无 I/O 不阻塞；真实数据源健康探测在 auto 模式首次访问时惰性执行
-    for getter in (get_prometheus, get_elasticsearch, get_alertmanager):
-        try:
-            await getter().connect()
-        except Exception as e:
-            logger.warning("[Main] 运维数据源客户端初始化失败: %s", e)
 
     # 初始化 Langfuse 客户端（LLM 可观测性；未配置 key 时跳过，不阻塞启动）
     try:
@@ -123,13 +111,6 @@ async def lifespan(app: FastAPI):
 
     await redis.close()
 
-    # 关闭运维数据源客户端
-    for getter in (get_prometheus, get_elasticsearch, get_alertmanager):
-        try:
-            await getter().close()
-        except Exception as e:
-            logger.warning("[Main] 运维数据源客户端关闭失败: %s", e)
-
 
 def create_app() -> FastAPI:
     """创建 FastAPI 应用实例。"""
@@ -162,7 +143,6 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
     app.include_router(ticket.router, prefix="/api/v1/ticket", tags=["ticket"])
     app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"])
-    app.include_router(ops.router, prefix="/api/v1/ops", tags=["ops"])
     app.include_router(mall.router, prefix="/api/v1/mall", tags=["mall"])
     app.include_router(tts.router, prefix="/api/v1/tts", tags=["tts"])
 

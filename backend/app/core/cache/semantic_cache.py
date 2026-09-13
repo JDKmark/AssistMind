@@ -252,7 +252,7 @@ async def invalidate() -> None:
 
 
 async def purge() -> None:
-    """运维兜底：清空所有缓存（SCAN 全清，仅在重建索引时使用）。"""
+    """兜底：清空所有缓存（SCAN 全清，仅在重建索引时使用）。"""
     redis = get_redis()
     if not redis.is_connected:
         return

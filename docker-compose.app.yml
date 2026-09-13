@@ -1,5 +1,5 @@
 # AssistMind 应用层 overlay —— 与根目录 docker-compose.yml 叠加使用。
-# 基础设施（qdrant/redis/postgres/langfuse/prometheus/ops-exporter）由 docker-compose.yml 定义，
+# 基础设施（qdrant/redis/postgres/langfuse）由 docker-compose.yml 定义，
 # 本文件只新增 backend + frontend 两层，同一 project 网络内按服务名互通。
 #
 # 用法：

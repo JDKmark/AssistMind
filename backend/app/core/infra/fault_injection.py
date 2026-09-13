@@ -92,7 +92,7 @@ def qdrant_mode() -> str:
     return _read("FAULT_QDRANT", "ok", VALID_QDRANT)
 
 
-# ===== 测试 / 运维辅助：运行时开关（不重启进程）=====
+# ===== 测试辅助：运行时开关（不重启进程）=====
 
 
 def set_fault(name: str, value: str) -> None:

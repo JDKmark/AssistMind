@@ -110,7 +110,7 @@ def test_chunk_metadata_merge():
     metadata = {
         "doc_id": "d1",
         "title": "t",
-        "source": "knowledge/ops/d1.md",
+        "source": "knowledge/mall/d1.md",
         "category": "ops",
         "security_group": ["user", "agent", "admin"],
     }
