@@ -25,7 +25,7 @@ import json
 import logging
 
 from app.config import get_settings
-from app.core.dialog.manager import trim_history
+from app.core.dialog.manager import SUMMARY_MARK, trim_history
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm
 from app.core.infra.redis import RedisClient, get_redis
 
@@ -77,6 +77,15 @@ class DialogStore:
         self._injected = redis_client
         # 后台摘要任务强引用集（防 GC；done 回调自动清理）
         self._bg_tasks: set[asyncio.Task] = set()
+        # 摘要合并串行化锁（按 skey）：防并发双触发 last-write-wins 丢批次事实
+        self._summary_locks: dict[str, asyncio.Lock] = {}
+
+    def _summary_lock(self, skey: str) -> asyncio.Lock:
+        lock = self._summary_locks.get(skey)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._summary_locks[skey] = lock
+        return lock
 
     def _client(self) -> RedisClient | None:
         client = self._injected or get_redis()
@@ -111,7 +120,7 @@ class DialogStore:
             if summary:
                 await client.expire(skey, settings.MEMORY_TTL_SECONDS)
                 trimmed = [
-                    {"role": "assistant", "content": f"（此前对话摘要：{summary}）"},
+                    {"role": "assistant", "content": f"{SUMMARY_MARK}{summary}）"},
                     *trimmed,
                 ]
         return trimmed
@@ -122,15 +131,18 @@ class DialogStore:
         conversation_id: str,
         history: list[dict[str, str]] | None,
     ) -> bool:
-        """用客户端携带的历史作种子写入（仅 key 不存在时，防伪造覆写服务端记录）。
+        """用客户端携带的历史作种子写入（仅该会话从未有过任何写入时）。
 
-        并发首轮双 seed 的竞态是良性的：两份内容相同，LTRIM 窗口后仍为同一份历史。
+        SETNX 哨兵保证原子性：exists+rpush 的 check-then-act 有竞态窗口，且
+        append 之后的迟到 seed 会把旧历史插到新鲜轮次之后（随后的窗口裁剪
+        可能挤出刚落的轮次）——哨兵两者都防，任何写入方（seed/append）都会置位。
         """
         client = self._client()
         if client is None or not conversation_id or not history:
             return False
         key = history_key(username, conversation_id)
-        if await client.exists(key):
+        marker = f"{key}:seeded"
+        if not await client.set(marker, "1", ttl=settings.MEMORY_TTL_SECONDS, nx=True):
             return False
         payload = [
             _dump_message(h.get("role", "user"), h.get("content", ""))
@@ -140,6 +152,7 @@ class DialogStore:
             return False
         await client.ltrim(key, -settings.MEMORY_WINDOW, -1)
         await client.expire(key, settings.MEMORY_TTL_SECONDS)
+        await client.expire(marker, settings.MEMORY_TTL_SECONDS)
         logger.info(
             "[DialogStore] 会话热态种子写入: conv=%s 条数=%d", conversation_id, len(payload)
         )
@@ -166,7 +179,21 @@ class DialogStore:
         )
         if not ok:
             return False
+        # 首次写入即置哨兵（幂等）：此后迟到 seed 不再把旧历史插到新鲜轮次之后
+        await client.set(
+            f"{key}:seeded", "1", ttl=settings.MEMORY_TTL_SECONDS, nx=True
+        )
         total = await client.llen(key)
+        if total <= 0:
+            # rpush 刚成功而 llen=0：只可能是 llen 查询失败（异常被吞返回 0）——
+            # 兜底硬裁剪防「永不触发窗口裁剪、列表无限增长」
+            await client.ltrim(
+                key,
+                -(settings.MEMORY_WINDOW + settings.MEMORY_SUMMARY_THRESHOLD),
+                -1,
+            )
+            await client.expire(key, settings.MEMORY_TTL_SECONDS)
+            return True
         overflow = total - settings.MEMORY_WINDOW
         if overflow > 0:
             if settings.MEMORY_SUMMARY_ENABLED:
@@ -200,7 +227,17 @@ class DialogStore:
             self.summarize_trimmed(username, conversation_id, raw_trimmed)
         )
         self._bg_tasks.add(task)
-        task.add_done_callback(self._bg_tasks.discard)
+
+        def _on_done(done: asyncio.Task) -> None:
+            self._bg_tasks.discard(done)
+            # summarize_trimmed 自身已全量捕获异常；此处兜底防「未取回异常」静默
+            if not done.cancelled() and done.exception() is not None:
+                logger.warning(
+                    "[DialogStore] 摘要后台任务异常（已忽略，纯滑动窗口）: %s",
+                    done.exception(),
+                )
+
+        task.add_done_callback(_on_done)
 
     async def summarize_trimmed(
         self, username: str, conversation_id: str, raw_messages: list[str]
@@ -208,6 +245,8 @@ class DialogStore:
         """把被窗口挤出的最老消息压缩进摘要（后台任务入口；失败仅 warning）。
 
         已有摘要时增量合并（prompt 要求在旧摘要基础上补充，不丢已有事实）。
+        读-合并-写全程持有 skey 锁：并发双触发时后写者基于先写者的摘要合并，
+        而非 last-write-wins 覆盖丢批次。
         """
         client = self._client()
         if client is None or not conversation_id or not raw_messages:
@@ -220,24 +259,25 @@ class DialogStore:
             f"{'用户' if m['role'] == 'user' else '客服'}: {m['content']}"
             for m in messages
         )
-        try:
-            prev = await client.get(skey)
-            existing = (
-                f"已有摘要（在其基础上补充合并，不要丢失已有事实）：\n{prev}\n\n"
-                if prev
-                else ""
-            )
-            summary = await call_llm(
-                _SUMMARY_PROMPT.format(existing=existing, messages=transcript),
-                system="你是对话摘要助手。只输出摘要正文。",
-                fast=True,  # 失败可降级（无摘要），不拖住后台任务与主链路
-            )
-        except LLMUnavailableError as e:
-            logger.warning("[DialogStore] 摘要压缩降级（LLM 不可用，纯滑动窗口）: %s", e)
-            return False
-        except Exception as e:
-            logger.warning("[DialogStore] 摘要压缩失败（忽略，纯滑动窗口）: %s", e)
-            return False
+        async with self._summary_lock(skey):
+            try:
+                prev = await client.get(skey)
+                existing = (
+                    f"已有摘要（在其基础上补充合并，不要丢失已有事实）：\n{prev}\n\n"
+                    if prev
+                    else ""
+                )
+                summary = await call_llm(
+                    _SUMMARY_PROMPT.format(existing=existing, messages=transcript),
+                    system="你是对话摘要助手。只输出摘要正文。",
+                    fast=True,  # 失败可降级（无摘要），不拖住后台任务与主链路
+                )
+            except LLMUnavailableError as e:
+                logger.warning("[DialogStore] 摘要压缩降级（LLM 不可用，纯滑动窗口）: %s", e)
+                return False
+            except Exception as e:
+                logger.warning("[DialogStore] 摘要压缩失败（忽略，纯滑动窗口）: %s", e)
+                return False
         summary = summary.strip()
         if not summary:
             return False

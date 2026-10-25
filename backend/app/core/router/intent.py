@@ -12,7 +12,7 @@ import json
 import logging
 import os
 
-from app.core.dialog import format_history
+from app.core.dialog import format_history, split_summary
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm
 from app.core.router import confidence, semantic
 
@@ -67,7 +67,10 @@ def _build_llm_prompt(
 ) -> str:
     if not history:
         return f"用户问题：{query}\n请输出分类 JSON："
-    history_text = format_history(history[-_LLM_HISTORY_TURNS:])
+    # 头部摘要消息恒保留（先分离再切窗口，防 [-N:] 切片把摘要裁掉）
+    summary, rest = split_summary(history)
+    recent = rest[-_LLM_HISTORY_TURNS:]
+    history_text = format_history([summary, *recent] if summary else recent)
     return (
         f"最近对话（供参考，用于理解最后一条用户消息中的指代）：\n"
         f"{history_text}\n\n"

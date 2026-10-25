@@ -244,3 +244,109 @@ async def test_summary_merges_with_existing(monkeypatch):
     assert len(prompts) == 2
     assert "已有摘要" in prompts[1]
     assert "合并后的摘要。" in prompts[1]
+
+
+async def test_summary_bg_task_exception_never_propagates(monkeypatch, caplog):
+    """后台任务自身异常（理论路径）：不外泄、落 warning（新状态三问收口）。
+
+    summarize_trimmed 内部已全量捕获；此用例钉住 done_callback 兜底：
+    即便任务逃逸出异常也不传播、可观测。
+    """
+    import asyncio
+    import logging
+
+    store, _ = _make_store()
+
+    async def _boom(username, conversation_id, raw_messages):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(store, "summarize_trimmed", _boom)
+    for i in range(8):
+        await store.append_round("tester", "conv-s6", f"q{i}", f"a{i}")
+    tasks = list(store._bg_tasks)
+    assert tasks, "超窗应调度后台任务"
+    with caplog.at_level(logging.WARNING, logger="app.core.dialog.store"):
+        await asyncio.gather(*tasks, return_exceptions=True)
+    assert any("摘要后台任务异常" in r.message for r in caplog.records)
+
+
+async def test_seed_marker_blocks_late_seed_after_append():
+    """SETNX 哨兵（复审 B1）：任何写入方置位，append 后的迟到种子不再插入。"""
+    store, rc = _make_store()
+    await store.seed("tester", "conv-m1", [{"role": "user", "content": "种子"}])
+    assert await rc._client.exists(history_key("tester", "conv-m1") + ":seeded")
+    await store.append_round("tester", "conv-m1", "新问题", "新答案")
+    assert await store.seed("tester", "conv-m1", [{"role": "user", "content": "迟到种子"}]) is False
+    loaded = await store.load("tester", "conv-m1")
+    assert "迟到种子" not in [m["content"] for m in loaded]
+
+
+async def test_concurrent_summaries_merge_serially(monkeypatch):
+    """并发双摘要（复审 B2）：读-合并-写持有 skey 锁串行——后写者基于先写者合并，
+    不再 last-write-wins 丢批次事实。
+    """
+    import asyncio
+
+    store, _ = _make_store()
+    prompts: list[str] = []
+    gate = asyncio.Event()
+
+    async def _slow_llm(prompt, system=None, fast=False):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            await gate.wait()  # 挂住第一个任务，让第二个并发到达
+            return "第一批摘要"
+        return "第二批摘要"
+
+    monkeypatch.setattr("app.core.dialog.store.call_llm", _slow_llm)
+    raw1 = ['{"role": "user", "content": "批次一消息"}']
+    raw2 = ['{"role": "user", "content": "批次二消息"}']
+    t1 = asyncio.create_task(store.summarize_trimmed("tester", "conv-c1", raw1))
+    await asyncio.sleep(0)
+    t2 = asyncio.create_task(store.summarize_trimmed("tester", "conv-c1", raw2))
+    await asyncio.sleep(0.05)
+    assert len(prompts) == 1, "第二个任务必须在锁外等待，不得并发读旧摘要"
+    gate.set()
+    results = await asyncio.gather(t1, t2)
+    assert results == [True, True]
+    assert len(prompts) == 2
+    assert "第一批摘要" in prompts[1]
+
+
+async def test_llen_failure_falls_back_to_hard_trim(monkeypatch):
+    """llen 持续失败（复审 D1，吞异常返回 0）：兜底硬裁剪防列表无限增长。"""
+    store, rc = _make_store()
+
+    async def broken_llen(key):
+        return 0
+
+    monkeypatch.setattr(rc, "llen", broken_llen)
+    for i in range(15):
+        await store.append_round("tester", "conv-d1", f"q{i}", f"a{i}")
+    final_len = await rc._client.llen(history_key("tester", "conv-d1"))
+    assert final_len <= settings.MEMORY_WINDOW + settings.MEMORY_SUMMARY_THRESHOLD
+
+
+async def test_extract_skips_summary_message_in_backtrack():
+    """实体回溯跳过摘要消息（复审 D2）：摘要保留的单号不作跨话题陈旧回填。"""
+    from app.core.mall.entity_extractor import extract
+
+    result = extract(
+        "物流到哪了",
+        history=[
+            {
+                "role": "assistant",
+                "content": "（此前对话摘要：用户咨询过订单 20260801001 的退款）",
+            },
+            {"role": "user", "content": "帮我看看今天有什么优惠"},
+        ],
+    )
+    assert result["order_sn"] is None
+    # 真实轮次中的单号仍可回溯
+    result2 = extract(
+        "物流到哪了",
+        history=[
+            {"role": "user", "content": "订单 20260801001 什么时候发货"},
+        ],
+    )
+    assert result2["order_sn"] == "20260801001"

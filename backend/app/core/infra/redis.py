@@ -26,7 +26,12 @@ class RedisClient:
     async def connect(self) -> None:
         try:
             self._pool = redis.ConnectionPool.from_url(
-                settings.REDIS_URL, decode_responses=True
+                settings.REDIS_URL,
+                decode_responses=True,
+                # 快速失败护栏：连接黑洞时 try/except 救不了（不抛异常只是不返回），
+                # 语义缓存/限流/会话热态的降级链都依赖「Redis 故障时快速感知」
+                socket_timeout=2,
+                socket_connect_timeout=2,
             )
             self._client = redis.Redis(connection_pool=self._pool)
             await self._client.ping()
@@ -61,10 +66,15 @@ class RedisClient:
             logger.warning("[Redis] GET %s 失败: %s", key, e)
             return None
 
-    async def set(self, key: str, value: str, ttl: int | None = None) -> bool:
+    async def set(
+        self, key: str, value: str, ttl: int | None = None, nx: bool = False
+    ) -> bool:
+        """SET；nx=True 时仅 key 不存在才写入（返回 False 表示已存在）。"""
         if not self._client:
             return False
         try:
+            if nx:
+                return bool(await self._client.set(key, value, ex=ttl, nx=True))
             await self._client.set(key, value, ex=ttl)
             return True
         except Exception as e:

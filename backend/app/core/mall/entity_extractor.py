@@ -19,6 +19,7 @@ import re
 from typing import Any
 
 from app.config import get_settings
+from app.core.dialog.manager import is_summary_message
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm
 
 logger = logging.getLogger(__name__)
@@ -72,10 +73,12 @@ def extract(query: str, history: list[dict[str, str]] | None = None) -> dict[str
     entities = _extract_from_text(query)
 
     # 当前问题未命中 → 从历史中回溯（多轮上下文，如「订单号是 20240801001」「物流到哪了？」）
+    # 跳过摘要消息：摘要特意保留单号等关键事实，参与回填会让陈旧实体
+    # 跨话题长驻（越过窗口轮换存活到 TTL），确定性回填只认真实轮次
     if not entities and history:
         for msg in reversed(history):
             content = msg.get("content", "") if isinstance(msg, dict) else ""
-            if not isinstance(content, str):
+            if not isinstance(content, str) or is_summary_message(msg):
                 continue
             hist_entities = _extract_from_text(content)
             if hist_entities:
