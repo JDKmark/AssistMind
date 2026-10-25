@@ -668,3 +668,14 @@ async def test_ticket_status_multiturn_backfills_ticket_id(mock_call):
     prompt = mock_call.await_args_list[0].args[0]
     assert "工单号 TK-202609131030001234567" in prompt
     assert result["degraded"] is False
+
+
+def test_guess_intent_create_verb_overrides_ticket_status_keyword():
+    """建单动词排除（复审 A2）：ticket_status 是宽子串关键词，含建单动词时判 ticket。"""
+    assert (
+        ToolAgent._guess_intent("上一个工单处理太慢了，再帮我建个工单") == "ticket"
+    )
+    assert ToolAgent._guess_intent("我的工单处理得太慢，帮我创建一个新工单") == "ticket"
+    # 查单正例不受动词排除影响
+    assert ToolAgent._guess_intent("我的工单处理得怎么样了") == "ticket_status"
+    assert ToolAgent._guess_intent("工单进度查询") == "ticket_status"

@@ -119,6 +119,10 @@ _INTENT_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("ticket", ("工单", "建单")),
 ]
 
+# 建单动作词：命中时不得判 ticket_status——「上一个工单处理太慢，再帮我建个工单」
+# 含「工单处理」但真实意图是建单（ticket_status 关键词是宽子串，需动词排除兜底）
+_TICKET_CREATE_VERBS = ("创建", "提交", "建", "开个", "提个")
+
 # 会话注入工具：创建工单时程序化补填 conversation_id（转人工工单关联会话，
 # 复用实体补填先例，LLM 不感知、不生成该参数）
 _CONVERSATION_TOOLS = {"create_ticket", "transfer_human"}
@@ -304,9 +308,17 @@ class ToolAgent(BaseReActAgent):
 
     @staticmethod
     def _guess_intent(query: str) -> str | None:
-        """从 query 关键词粗判当前意图（退款 > 物流 > 订单 > 工单；无法判断返回 None）。"""
+        """从 query 关键词粗判当前意图（退款 > 物流 > 订单 > 查工单 > 工单；无法判断返回 None）。
+
+        ticket_status 是宽子串关键词（如「工单处理」「我的工单」），query 含建单
+        动作词时不判查单——防止「再帮我建个工单」被误判为查询而索要工单号。
+        """
         for intent, keywords in _INTENT_KEYWORDS:
             if any(keyword in query for keyword in keywords):
+                if intent == "ticket_status" and any(
+                    verb in query for verb in _TICKET_CREATE_VERBS
+                ):
+                    continue
                 return intent
         return None
 
