@@ -128,6 +128,8 @@ docker-compose up -d
 
 - **历史进路由与改写（仅 LLM 层）**：`intent.route(query, history=None)` 与 `query_rewriter.rewrite(query, history=None)` 的 history 只被 LLM 分类层 / 改写 prompt 消费（消解「它/那个」类指代追问，跟进问句不再误判 unclear、变体先还原指代再产出）；规则/语义快路径不消费历史保持毫秒级；`engine.retrieve(history=)` 只透传给首检索改写（CRAG 重检索用已消解变体，不带）；参数向后兼容，None = 原行为
 
+- **工单号（ticket_id）实体抽取**：`entity_extractor` 的 `_TICKET_ID_RE`（`TK-` + ≥21 位数字、大小写不敏感、`(?<![\w-])` 左边界防粘连）与 order\_sn/product\_id 同链路（历史倒序回溯 + `ENTITY_TO_TOOLS` 补填 `get_ticket_status`）；tool\_agent `_INTENT_KEYWORDS` 里 ticket\_status（查工单）必须排在 ticket（建单）之前——查工单缺的槽位是 ticket\_id 而非 title/description；system prompt 规则 10 禁止对已有工单重复 create\_ticket；**机器人对工单只读**（建/查/转人工），无 update 写工具，状态/优先级变更走人工端点
+
 ### 前端
 
 - **JavaScript 不是 TypeScript**：不要添加 `.ts` 文件或类型注解

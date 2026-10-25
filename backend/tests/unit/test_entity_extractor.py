@@ -44,9 +44,9 @@ def test_extract_both_entities():
 
 
 def test_extract_no_entity():
-    """无实体返回两个 None。"""
+    """无实体返回三个 None（订单号/商品 ID/工单号）。"""
     result = extract("你们有退货政策吗")
-    assert result == {"order_sn": None, "product_id": None}
+    assert result == {"order_sn": None, "product_id": None, "ticket_id": None}
 
 
 def test_extract_phone_number_not_matched():
@@ -214,14 +214,14 @@ async def test_extract_with_llm_llm_unavailable_returns_empty(monkeypatch):
 
     await _patch_llm(monkeypatch, broken)
     result = await extract_with_llm("你们运费怎么算")
-    assert result == {"order_sn": None, "product_id": None}
+    assert result == {"order_sn": None, "product_id": None, "ticket_id": None}
 
 
 async def test_extract_with_llm_malformed_json_returns_empty(monkeypatch):
     """LLM 返回非 JSON：解析失败 → 空实体 + 不抛异常。"""
     await _patch_llm(monkeypatch, lambda prompt: "抱歉，我没法提取订单信息")
     result = await extract_with_llm("帮我查下售后进度")
-    assert result == {"order_sn": None, "product_id": None}
+    assert result == {"order_sn": None, "product_id": None, "ticket_id": None}
 
 
 async def test_extract_with_llm_rejects_phone_number_from_llm(monkeypatch):
@@ -247,7 +247,7 @@ async def test_extract_with_llm_disabled_never_calls_llm(monkeypatch):
 
     monkeypatch.setattr("app.core.mall.entity_extractor.call_llm", spy)
     result = await extract_with_llm("帮我看下我买的那个东西到哪了")
-    assert result == {"order_sn": None, "product_id": None}
+    assert result == {"order_sn": None, "product_id": None, "ticket_id": None}
     assert calls == []
 
 
@@ -270,3 +270,79 @@ async def test_extract_with_llm_uses_fast_mode(monkeypatch):
     result = await extract_with_llm("帮我看下我买的那个东西到哪了")
     assert result["order_sn"] == "20260801001"
     assert seen == [True]
+
+
+# ---------- 工单号（ticket_id）抽取：TK- 正则 + 历史回溯 + get_ticket_status 补填 ----------
+# 背景：查工单进度此前没有 TK 号抽取与参数补填链路，LLM 只能编号或反复 CLARIFY；
+# 「提过工单后再问进度」的多轮指代完全依赖 LLM 自觉。
+
+
+def test_extract_ticket_id_from_query():
+    """当前消息含 TK- 工单号（14 位时间戳 + 7 位随机 = 21 位）直接抽取。"""
+    result = extract("帮我查一下工单 TK-202609131030001234567 的进度")
+    assert result["ticket_id"] == "TK-202609131030001234567"
+
+
+def test_extract_ticket_id_lowercase_normalized():
+    """小写 tk- 抽取后归一为大写（LLM 回显场景）。"""
+    result = extract("tk-202609131030001234567 怎么样了")
+    assert result["ticket_id"] == "TK-202609131030001234567"
+
+
+def test_extract_ticket_id_longer_suffix():
+    """随机后缀位数调大（TICKET_ID_RANDOM_SUFFIX>7）仍可抽取。"""
+    result = extract("工单 TK-2026091310300012345678901 的状态")
+    assert result["ticket_id"] == "TK-2026091310300012345678901"
+
+
+def test_extract_ticket_id_boundary_guards():
+    """边界防护：粘连字母/连字符前缀不误匹配，普通 TK 开头数字串过短不匹配。"""
+    assert extract("xxTK-202609131030001234567")["ticket_id"] is None
+    assert extract("ATK-202609131030001234567")["ticket_id"] is None
+    # 20 位（时间戳 14 + 随机 6）低于 21 位下限：不匹配
+    assert extract("TK-20260913103000123456")["ticket_id"] is None
+    # 后缀含非数字不匹配
+    assert extract("TK-20260913103000AB123")["ticket_id"] is None
+
+
+def test_extract_ticket_id_from_history_backtrack():
+    """「我那个工单怎么样了」无 TK 号，从历史倒序回溯提取。"""
+    result = extract(
+        "我那个工单怎么样了",
+        history=[
+            {"role": "user", "content": "我提了个工单 TK-202609131030001234567"},
+            {"role": "assistant", "content": "已收到您的工单，正在处理。"},
+        ],
+    )
+    assert result["ticket_id"] == "TK-202609131030001234567"
+
+
+def test_fill_tool_args_get_ticket_status():
+    """get_ticket_status 缺 ticket_id 时由实体补填（ENTITY_TO_TOOLS 映射）。"""
+    from app.core.mall.entity_extractor import fill_tool_args
+
+    filled, filled_flag = fill_tool_args(
+        "get_ticket_status", {}, {"ticket_id": "TK-202609131030001234567"}
+    )
+    assert filled == {"ticket_id": "TK-202609131030001234567"}
+    assert filled_flag is True
+
+
+async def test_parse_llm_entities_accepts_ticket_id():
+    """LLM 兜底返回工单号：规则正则校验通过后保留（大小写归一）。"""
+    from app.core.mall.entity_extractor import _parse_llm_entities
+
+    result = _parse_llm_entities(
+        '{"order_sn": null, "product_id": null, "ticket_id": "tk-202609131030001234567"}'
+    )
+    assert result["ticket_id"] == "TK-202609131030001234567"
+
+
+async def test_parse_llm_entities_rejects_bad_ticket_id():
+    """LLM 兜底返回非法工单号（过短/带字母）：正则校验拦截。"""
+    from app.core.mall.entity_extractor import _parse_llm_entities
+
+    result = _parse_llm_entities(
+        '{"order_sn": null, "product_id": null, "ticket_id": "TK-123"}'
+    )
+    assert result["ticket_id"] is None

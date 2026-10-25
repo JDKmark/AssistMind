@@ -610,3 +610,61 @@ def test_get_tools_declares_conversation_id_for_ticket_tools():
     assert "conversation_id" not in tools["query_order"]["input_schema"]
     assert "conversation_id" not in tools["get_ticket_status"]["input_schema"]
 
+
+
+# ---------- 工单多轮指代闭环（TK 号抽取 + 防重复建单规则）----------
+
+
+def test_guess_intent_ticket_status_precedes_ticket_create():
+    """查工单意图（ticket_status）优先于建单意图（ticket）判定。"""
+    assert ToolAgent._guess_intent("我的工单怎么样了") == "ticket_status"
+    assert ToolAgent._guess_intent("查一下工单") == "ticket_status"
+    assert ToolAgent._guess_intent("工单进度查询") == "ticket_status"
+    # 建单场景不受影响
+    assert ToolAgent._guess_intent("我要创建工单") == "ticket"
+    assert ToolAgent._guess_intent("帮我建单") == "ticket"
+
+
+def test_system_prompt_has_anti_duplicate_ticket_rule():
+    """system prompt 含防重复建单规则：查已有工单一律 get_ticket_status，严禁重复 create_ticket。"""
+    from app.agents.tool_agent import DEFAULT_SYSTEM_PROMPT
+
+    assert "get_ticket_status" in DEFAULT_SYSTEM_PROMPT
+    assert "create_ticket 重复建单" in DEFAULT_SYSTEM_PROMPT
+    assert "已有对话" in DEFAULT_SYSTEM_PROMPT
+
+
+@patch("app.agents.base.call_llm", new_callable=AsyncMock)
+async def test_ticket_status_multiturn_backfills_ticket_id(mock_call):
+    """「我那个工单怎么样了」（纯工单操作直通检索）从历史回溯 TK 号，
+    get_ticket_status 缺参时自动补填 ticket_id——多轮指代不依赖 LLM 编号。
+    """
+    mcp = _make_mcp_mock(
+        call_tool_return={
+            "ticket_id": "TK-202609131030001234567",
+            "status": "in_progress",
+        }
+    )
+    mock_call.side_effect = [
+        "Action: get_ticket_status\nAction Input: {}",
+        "Final Answer: 您的工单 TK-202609131030001234567 当前状态：处理中。",
+    ]
+    agent = ToolAgent(mcp_client=mcp)
+
+    result = await agent.run(
+        "工单进度查询一下",
+        history=[
+            {"role": "user", "content": "我提了个工单 TK-202609131030001234567"},
+            {"role": "assistant", "content": "已收到您的工单，正在处理。"},
+        ],
+    )
+
+    # get_ticket_status 被调用且参数由实体补填（LLM 只给了空参数）
+    mcp.call_tool.assert_any_await(
+        "get_ticket_status", {"ticket_id": "TK-202609131030001234567"}
+    )
+    assert any(tc["name"] == "get_ticket_status" for tc in result["tool_calls"])
+    # 实体提示注入了工单号
+    prompt = mock_call.await_args_list[0].args[0]
+    assert "工单号 TK-202609131030001234567" in prompt
+    assert result["degraded"] is False

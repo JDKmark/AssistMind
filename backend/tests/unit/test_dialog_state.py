@@ -107,3 +107,34 @@ def test_missing_slots_none_values():
 def test_missing_slots_unknown_intent():
     """未知意图无必需槽位 → 空列表。"""
     assert missing_slots("unknown_intent", {}) == []
+
+
+# ---------- 工单状态查询意图（ticket_status）：TK 号槽位 ----------
+
+
+def test_required_slots_ticket_status():
+    """ticket_status 必需槽位为 ticket_id（与建单意图 ticket 的 title/description 区分）。"""
+    assert required_slots("ticket_status") == ["ticket_id"]
+
+
+def test_extract_slots_ticket_id_from_history():
+    """「我那个工单怎么样了」无 TK 号，从历史回溯提取 ticket_id 槽位。"""
+    slots = extract_slots(
+        "我那个工单怎么样了",
+        history=[{"role": "user", "content": "我提了个工单 TK-202609131030001234567"}],
+    )
+    assert slots["ticket_id"] == "TK-202609131030001234567"
+    assert missing_slots("ticket_status", slots) == []
+
+
+def test_extract_slots_ticket_id_missing():
+    """当前与历史都没有 TK 号：ticket_status 缺 ticket_id。"""
+    slots = extract_slots("查一下工单进度", history=None)
+    assert slots["ticket_id"] is None
+    assert missing_slots("ticket_status", slots) == ["ticket_id"]
+
+
+def test_extract_slots_ticket_id_from_current_query():
+    """当前消息直接带 TK 号：优先当前消息。"""
+    slots = extract_slots("帮我看看 TK-202609131030001234567 到哪一步了", history=None)
+    assert slots["ticket_id"] == "TK-202609131030001234567"

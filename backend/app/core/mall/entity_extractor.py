@@ -1,4 +1,4 @@
-"""电商业务实体识别：从用户问题（+多轮历史）抽取订单号 / 商品 ID。
+"""电商业务实体识别：从用户问题（+多轮历史）抽取订单号 / 商品 ID / 工单号。
 
 设计：规则层确定性优先（零 LLM 成本、无幻觉），LLM 兜底仅在规则未命中时可选启用
 （配置 ENTITY_LLM_FALLBACK=True，默认关闭——规则层在评估中已 9/9 全过，兜底只作
@@ -29,11 +29,16 @@ settings = get_settings()
 _ORDER_SN_RE = re.compile(r"(?<!\d)20\d{9}(?!\d)")
 # 商品 ID：P + 3 位数字（P001-P005 及未来扩展）
 _PRODUCT_ID_RE = re.compile(r"(?<!\w)P\d{3}(?!\w)")
+# 工单号：TK- + 14 位时间戳 + ≥7 位随机数字（TICKET_ID_RANDOM_SUFFIX 可调大，
+# 故取 21 位下限）；大小写不敏感（LLM 可能回显小写）；左侧边界 (?<![\w-])
+# 防「xxTK-123…」粘连误匹配（中文环境 \b 不生效）
+_TICKET_ID_RE = re.compile(r"(?<![\w-])TK-\d{21,}(?!\d)", re.IGNORECASE)
 
 # 实体 → 可用工具映射（ToolAgent.execute_tool 参数补填用）
 ENTITY_TO_TOOLS: dict[str, list[str]] = {
     "order_sn": ["query_order", "query_logistics", "apply_refund"],
     "product_id": ["query_product"],
+    "ticket_id": ["get_ticket_status"],
 }
 
 
@@ -46,6 +51,9 @@ def _extract_from_text(text: str) -> dict[str, str]:
     m = _PRODUCT_ID_RE.search(text)
     if m:
         entities["product_id"] = m.group(0)
+    m = _TICKET_ID_RE.search(text)
+    if m:
+        entities["ticket_id"] = m.group(0).upper()
     return entities
 
 
@@ -58,7 +66,8 @@ def extract(query: str, history: list[dict[str, str]] | None = None) -> dict[str
             依赖上文订单号的多轮场景——当前问题未命中时从历史取最早提供的实体。
 
     Returns:
-        {"order_sn": str | None, "product_id": str | None}（未命中为 None）
+        {"order_sn": str | None, "product_id": str | None, "ticket_id": str | None}
+        （未命中为 None）
     """
     entities = _extract_from_text(query)
 
@@ -77,6 +86,7 @@ def extract(query: str, history: list[dict[str, str]] | None = None) -> dict[str
     return {
         "order_sn": entities.get("order_sn"),
         "product_id": entities.get("product_id"),
+        "ticket_id": entities.get("ticket_id"),
     }
 
 
@@ -86,10 +96,11 @@ _LLM_SYSTEM_PROMPT = "你是电商订单实体抽取助手。只输出 JSON，�
 _LLM_EXTRACT_PROMPT = """从用户消息中提取业务实体，规则如下：
 - order_sn：11 位数字、以 20 开头的订单号（如 20240801001）；手机号（1 开头）不是订单号，不要提取
 - product_id：大写 P + 3 位数字的商品 ID（如 P001）
+- ticket_id：工单号，TK- 开头 + 21 位以上数字（如 TK-202609131030001234567），大小写不敏感
 - 没有找到对应实体时填 null
 
 输出严格 JSON（不要 markdown 代码块）：
-{"order_sn": "..." 或 null, "product_id": "..." 或 null}
+{"order_sn": "..." 或 null, "product_id": "..." 或 null, "ticket_id": "..." 或 null}
 
 用户消息：
 {query}"""
@@ -110,22 +121,25 @@ def _parse_llm_entities(raw: str) -> dict[str, str | None]:
         # 二次尝试：截取首个 { ... } 片段（LLM 可能夹带解释文字）
         m = re.search(r"\{.*\}", text, re.DOTALL)
         if not m:
-            return {"order_sn": None, "product_id": None}
+            return {"order_sn": None, "product_id": None, "ticket_id": None}
         try:
             data = json.loads(m.group(0))
         except (json.JSONDecodeError, ValueError):
-            return {"order_sn": None, "product_id": None}
+            return {"order_sn": None, "product_id": None, "ticket_id": None}
 
     if not isinstance(data, dict):
-        return {"order_sn": None, "product_id": None}
+        return {"order_sn": None, "product_id": None, "ticket_id": None}
 
     order_sn = data.get("order_sn")
     product_id = data.get("product_id")
-    entities: dict[str, str | None] = {"order_sn": None, "product_id": None}
+    ticket_id = data.get("ticket_id")
+    entities: dict[str, str | None] = {"order_sn": None, "product_id": None, "ticket_id": None}
     if isinstance(order_sn, str) and _ORDER_SN_RE.fullmatch(order_sn):
         entities["order_sn"] = order_sn
     if isinstance(product_id, str) and _PRODUCT_ID_RE.fullmatch(product_id):
         entities["product_id"] = product_id
+    if isinstance(ticket_id, str) and _TICKET_ID_RE.fullmatch(ticket_id):
+        entities["ticket_id"] = ticket_id.upper()
     return entities
 
 
@@ -139,7 +153,7 @@ async def extract_with_llm(
       degraded 语义，绝不抛异常、不阻塞 Agent 主链路
     """
     entities = extract(query, history)
-    if entities["order_sn"] or entities["product_id"]:
+    if entities["order_sn"] or entities["product_id"] or entities["ticket_id"]:
         return entities
 
     if not settings.ENTITY_LLM_FALLBACK:
@@ -161,7 +175,7 @@ async def extract_with_llm(
         return entities
 
     llm_entities = _parse_llm_entities(raw)
-    if llm_entities["order_sn"] or llm_entities["product_id"]:
+    if llm_entities["order_sn"] or llm_entities["product_id"] or llm_entities["ticket_id"]:
         logger.info("[MallEntity] LLM 兜底提取实体: %s", llm_entities)
         return llm_entities
     logger.info("[MallEntity] LLM 兜底未提取到实体（保持规则层结果）")

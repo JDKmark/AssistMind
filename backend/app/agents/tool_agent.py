@@ -48,6 +48,11 @@ DEFAULT_SYSTEM_PROMPT = """你是 AssistMind 电商智能客服，帮用户处�
 8. 多轮对话：用户已在上文提供过的关键信息（如订单号）不要重复索要，优先从「已有对话」中提取；apply_refund 只需订单号与退款原因，用户已给出时直接调用工具，不要按知识库表单流程索要会员账号、商品明细、凭证等额外信息。
 9. 实体预填：系统可能已自动识别用户问题中的订单号/商品 ID 并补填到工具参数（query_order / query_logistics / apply_refund 的 order_sn、query_product 的 product_id）；调用工具时以补填后的参数为准，不要重复索要或编造。
 
+10. 已有工单查询：用户提及已有工单（提供 TK- 开头工单号，或用「我那个工单/它的进度」
+指代上文提过的工单）时，调用 get_ticket_status 查询；工单号优先从「已有对话」中提取
+（系统也可能已自动识别补填 ticket_id），上文与当前消息都没有工单号时输出
+"CLARIFY: <追问内容>" 索要。严禁在用户只是查询/追问已有工单时调用 create_ticket 重复建单。
+
 执行示例（订单/物流/退款必须照此调用工具）：
 用户：查一下订单 20260801001
 助手：Action: query_order
@@ -72,6 +77,15 @@ Action Input: {"order_sn": "20260801001"}
 Action Input: {"order_sn": "999999"}
 （收到工具返回「订单不存在」后）Final Answer: 未查询到该订单，建议您转人工客服进一步核实。
 
+用户：我刚才提的工单处理得怎么样了？
+助手：Action: get_ticket_status
+Action Input: {"ticket_id": "TK-202609131030001234567"}
+（收到工具返回后）Final Answer: 您的工单 TK-202609131030001234567 当前状态：处理中……
+
+用户：帮我看看我那个工单
+（上文与当前消息都没有工单号）
+助手：CLARIFY: 好的，请提供一下您的工单号（TK- 开头），我帮您查询处理进度。
+
 输出格式：
 - 调用工具：Action: <工具名>\\nAction Input: <JSON参数>
 - 给出答案：Final Answer: <答案>
@@ -94,11 +108,14 @@ _TICKET_ACTION_VERBS = ("创建", "提交", "建", "查", "查询", "转", "转�
 # 前置检索只会叠加改写/embedding/召回/重排/CRAG 的等待时间，且不贡献回答依据
 _BUSINESS_KEYWORDS = ("订单", "物流", "快递", "退款", "退货")
 
-# 意图粗判关键词（按优先级：退款 > 物流 > 订单 > 工单；无法判断则跳过）
+# 意图粗判关键词（按优先级：退款 > 物流 > 订单 > 查工单 > 工单；无法判断则跳过）
+# 查工单（ticket_status）必须排在建单（ticket）之前：「我的工单怎么样了」不能被
+# 误判为建单意图去索要 title/description
 _INTENT_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("refund", ("退", "退款", "退货")),
     ("logistics", ("物流", "快递", "到哪")),
     ("order", ("查订单", "订单")),
+    ("ticket_status", ("工单进度", "工单状态", "工单怎么样", "工单处理", "查工单", "查一下工单", "查下工单", "我的工单")),
     ("ticket", ("工单", "建单")),
 ]
 
@@ -271,6 +288,8 @@ class ToolAgent(BaseReActAgent):
                 hints.append(f"订单号 {self._entities['order_sn']}")
             if self._entities.get("product_id"):
                 hints.append(f"商品 ID {self._entities['product_id']}")
+            if self._entities.get("ticket_id"):
+                hints.append(f"工单号 {self._entities['ticket_id']}")
             if hints:
                 note = f"（系统实体识别：已从用户问题提取 {'、'.join(hints)}，可直接用于工具参数"
                 # 顺带注入缺失槽位提示（确定性规则）：意图可判且还缺槽位时追加

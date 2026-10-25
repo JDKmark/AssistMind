@@ -2,7 +2,7 @@
 
 纯函数、无 session 存储、无状态：
 - extract_slots(query, history)：从当前问题 + 历史确定性提取槽位
-  （order_sn / product_id / reason / title / description），规则优先、零 LLM 成本
+  （order_sn / product_id / ticket_id / reason / title / description），规则优先、零 LLM 成本
 - required_slots(intent)：意图 → 必需槽位清单（未知意图返回空列表）
 - missing_slots(intent, slots)：还缺哪些槽位（缺失 = None / 空串 / 不在 dict）
 
@@ -46,6 +46,7 @@ REQUIRED_SLOTS: dict[str, list[str]] = {
     "logistics": ["order_sn"],  # 查物流
     "order": ["order_sn"],  # 查订单
     "ticket": ["title", "description"],  # 创建工单
+    "ticket_status": ["ticket_id"],  # 查已有工单进度/状态
 }
 
 
@@ -89,13 +90,14 @@ def extract_slots(
             用于「物流到哪了」等依赖上文订单号的多轮场景。
 
     Returns:
-        {"order_sn", "product_id", "reason", "title", "description"}
+        {"order_sn", "product_id", "ticket_id", "reason", "title", "description"}
         （未命中为 None）
     """
     entities = extract(query, history)
     slots: dict[str, str | None] = {
         "order_sn": entities.get("order_sn"),
         "product_id": entities.get("product_id"),
+        "ticket_id": entities.get("ticket_id"),
         "reason": None,
         "title": None,
         "description": None,
