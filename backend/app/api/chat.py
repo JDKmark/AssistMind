@@ -36,7 +36,7 @@ from app.agents.tool_agent import DEFAULT_SYSTEM_PROMPT, TASK_PERSONA_GUARD, Too
 from app.api.deps import get_current_user
 from app.core.cache import semantic_cache
 from app.core.conversation_service import save_round
-from app.core.dialog import trim_history
+from app.core.dialog import dialog_store, trim_history
 from app.core.infra import metrics
 from app.core.infra.langfuse import get_langfuse
 from app.core.infra.llm_factory import LLMUnavailableError, stream_llm
@@ -197,11 +197,17 @@ async def _persist_round_safe(
     """done 路径持久化一轮问答（旁路逻辑）。
 
     持久化失败（PG 故障等）只记 warning，不影响 SSE 响应——spec 硬性降级要求。
+    同步把本轮问答写进会话热态记忆（Redis，服务端短期记忆收口）：与 PG 互相独立，
+    任一失败只 warning 不影响响应；热态失败时下一轮回落请求内 history（降级链）。
     """
     try:
         await save_round(conversation_id, user_id, query, answer, intent=intent)
     except Exception:
         logger.warning("[Chat] 会话持久化失败（不影响响应）", exc_info=True)
+    try:
+        await dialog_store.append_round(user_id, conversation_id, query, answer)
+    except Exception:
+        logger.warning("[Chat] 会话热态记忆写入失败（不影响响应）", exc_info=True)
 
 
 def _safe_span_update(span: Any, **kwargs: Any) -> None:
@@ -325,10 +331,11 @@ async def _event_stream(
     username: str = "",
     user_id: str = "",
 ) -> AsyncIterator[str]:
-    """SSE 事件生成器：意图路由 → 产品消歧（faq/task）→ 分流处理 → 流式返回。
+    """SSE 事件生成器：会话身份/历史解析 → 意图路由 → 产品消歧（faq/task）→ 分流处理 → 流式返回。
 
     异常时发送 error 事件并结束流（不抛 500，因为流已开始无法改 status code）。
-    username 透传给各意图处理器：done 路径持久化问答轮次时归属会话；
+    username 透传给各意图处理器：done 路径持久化问答轮次时归属会话（同时写
+    服务端热态记忆，key 按 username+conversation_id 隔离）；
     user_id/username 透传消歧订单层（requester 身份）。
 
     T3 埋点（旁路）：t0=进入、t_first_delta=首个 delta 写出（TTFT）、t_done=流结束；
@@ -348,6 +355,22 @@ async def _event_stream(
         return chunk
 
     try:
+        # 0. 会话身份与历史解析（服务端短期记忆收口）：conversation_id 先定，
+        #    历史优先取服务端热态记忆（Redis，读时续期）；无记录时用客户端回传的
+        #    history 作种子写入（仅首次，防伪造覆写）。Redis 失败自然回落客户端
+        #    history——降级链「服务端记忆失败 → 请求内上下文」。
+        conversation_id = req.conversation_id or str(uuid.uuid4())
+        client_history = trim_history(
+            [h.model_dump() for h in req.history] if req.history else None
+        )
+        server_history = await dialog_store.load(username, conversation_id)
+        if server_history:
+            history = server_history
+        else:
+            history = client_history
+            if client_history:
+                await dialog_store.seed(username, conversation_id, client_history)
+
         # 1. 意图路由
         _t_route = time.monotonic()
         route_result = await route(req.query)
@@ -356,7 +379,6 @@ async def _event_stream(
 
         # 2. start 事件（conversation_id 供前端反馈关联本条问答；
         #    请求携带 conversation_id 时归属原会话，否则新建）
-        conversation_id = req.conversation_id or str(uuid.uuid4())
         yield _sse_event(
             "start",
             {
@@ -368,10 +390,6 @@ async def _event_stream(
                 "role": role,
             },
         )
-
-        history = [h.model_dump() for h in req.history] if req.history else None
-        # 记忆窗口裁剪：统一由 DialogManager 处理（chat/faq/task 同语义）
-        history = trim_history(history)
 
         # 人格语气指令（可选）：拼在既有 system 之后，只改语气不改职责；
         # 未知 persona 已在 persona_prompt 内 warning 并返回 None（回落默认）

@@ -127,6 +127,53 @@ class RedisClient:
             logger.warning("[Redis] HGETALL %s 失败: %s", name, e)
             return {}
 
+    async def rpush(self, key: str, *values: str) -> bool:
+        if not self._client:
+            return False
+        try:
+            await self._client.rpush(key, *values)
+            return True
+        except Exception as e:
+            logger.warning("[Redis] RPUSH %s 失败: %s", key, e)
+            return False
+
+    async def lrange(self, key: str, start: int, end: int) -> list[str]:
+        if not self._client:
+            return []
+        try:
+            return await self._client.lrange(key, start, end)  # type: ignore[return-value]
+        except Exception as e:
+            logger.warning("[Redis] LRANGE %s 失败: %s", key, e)
+            return []
+
+    async def ltrim(self, key: str, start: int, end: int) -> bool:
+        if not self._client:
+            return False
+        try:
+            await self._client.ltrim(key, start, end)
+            return True
+        except Exception as e:
+            logger.warning("[Redis] LTRIM %s 失败: %s", key, e)
+            return False
+
+    async def llen(self, key: str) -> int:
+        if not self._client:
+            return 0
+        try:
+            return int(await self._client.llen(key))
+        except Exception as e:
+            logger.warning("[Redis] LLEN %s 失败: %s", key, e)
+            return 0
+
+    async def exists(self, key: str) -> bool:
+        if not self._client:
+            return False
+        try:
+            return bool(await self._client.exists(key))
+        except Exception as e:
+            logger.warning("[Redis] EXISTS %s 失败: %s", key, e)
+            return False
+
 
 _redis_client: RedisClient | None = None
 

@@ -144,6 +144,12 @@ class Settings(BaseSettings):
     # ===== 对话记忆 =====
     MEMORY_WINDOW: int = 10
     MEMORY_SUMMARY_THRESHOLD: int = 6
+    # 服务端热态记忆（DialogStore）滑动 TTL：读时续期，30 分钟无往来即过期
+    MEMORY_TTL_SECONDS: int = 1800
+    # 摘要压缩：会话消息超过 窗口+阈值 时，把将被挤出窗口的最老消息 LLM 压缩成
+    # 摘要（后台任务，fast=True），注入 prompt 时作为「此前对话摘要」前缀；
+    # 关闭则超窗消息直接丢弃（纯滑动窗口）
+    MEMORY_SUMMARY_ENABLED: bool = True
 
     # ===== MCP =====
     MCP_SERVER_ENABLED: bool = True

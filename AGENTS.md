@@ -122,6 +122,10 @@ docker-compose up -d
 
 - **角色语气（人格库）**：语气配置外置 `app/data/personas.json`（mtime 热加载，与 intent\_routes.json 同模式），由 `core/personas.py` 提供 load/list/persona\_prompt；**人格只改语气**，拼在既有 system prompt 之后，不覆盖客服职责与 RAG 事实约束；未知 persona 回落默认 + `logger.warning`
 
+- **服务端会话热态记忆（短期记忆收口）**：`core/dialog/store.py` 的 DialogStore 把「推理用最近窗口」落 Redis list（key `assistmind:conv:{username}:{conversation_id}:history`，与 PG 会话归属同身份双键隔离，防跨用户读取）；`/ask` 历史解析顺序 = 服务端热态 → 客户端 history（仅 key 不存在时作种子写入，防伪造覆写）→ None；done 路径经 `_persist_round_safe` 同时写 PG（持久化）与热态（`append_round`），两者互相独立降级；Redis 失败回落请求内 history（降级表「Redis 记忆失败 → 用请求内上下文」的实现）。滑动 TTL=MEMORY\_TTL\_SECONDS（默认 1800s）读/写时续期；**不要引 langgraph-checkpoint-redis**（需 Redis Stack，且 ReAct 图单请求内构建、无跨请求续跑需求，见 docs/architecture-upgrade-assessment.md §三）
+
+- **超窗历史摘要压缩**：会话消息超窗后暂存攒批，溢出满 MEMORY\_SUMMARY\_THRESHOLD 条时后台任务（asyncio.create\_task，不阻塞 SSE）LLM（fast=True）压缩成摘要写 `...:summary` key；load 时头部注入「此前对话摘要」assistant 消息（在 trim 之后拼接，不占窗口槽位）；MEMORY\_SUMMARY\_ENABLED=False 回退纯滑动窗口；摘要 LLM 失败仅 warning，不丢窗口内容
+
 ### 前端
 
 - **JavaScript 不是 TypeScript**：不要添加 `.ts` 文件或类型注解
