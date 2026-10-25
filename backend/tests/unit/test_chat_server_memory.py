@@ -194,7 +194,10 @@ async def test_client_history_seeds_server_memory(monkeypatch):
 
 async def test_redis_down_falls_back_to_request_history(monkeypatch):
     """Redis 不可用：回落请求内 history，流正常完成（降级链不中断）。"""
-    # 不注入 fakeredis：chat_api.dialog_store 为未连接 Redis 驱动的真实单例
+    # 显式注入未连接的 RedisClient（不依赖全局单例的连接状态，测试契约自洽）
+    monkeypatch.setattr(
+        chat_api, "dialog_store", DialogStore(redis_client=RedisClient())
+    )
     captured: dict = {}
 
     async def _fake_stream(prompt, system=None, generation=False, **kw):

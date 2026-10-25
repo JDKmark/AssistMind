@@ -21,6 +21,7 @@ SSE 事件类型：
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -200,14 +201,20 @@ async def _persist_round_safe(
     同步把本轮问答写进会话热态记忆（Redis，服务端短期记忆收口）：与 PG 互相独立，
     任一失败只 warning 不影响响应；热态失败时下一轮回落请求内 history（降级链）。
     """
-    try:
-        await save_round(conversation_id, user_id, query, answer, intent=intent)
-    except Exception:
-        logger.warning("[Chat] 会话持久化失败（不影响响应）", exc_info=True)
-    try:
-        await dialog_store.append_round(user_id, conversation_id, query, answer)
-    except Exception:
-        logger.warning("[Chat] 会话热态记忆写入失败（不影响响应）", exc_info=True)
+    async def _persist_pg() -> None:
+        try:
+            await save_round(conversation_id, user_id, query, answer, intent=intent)
+        except Exception:
+            logger.warning("[Chat] 会话持久化失败（不影响响应）", exc_info=True)
+
+    async def _append_hot() -> None:
+        try:
+            await dialog_store.append_round(user_id, conversation_id, query, answer)
+        except Exception:
+            logger.warning("[Chat] 会话热态记忆写入失败（不影响响应）", exc_info=True)
+
+    # PG 与热态互相独立降级：并行写，任一失败不影响另一路与响应
+    await asyncio.gather(_persist_pg(), _append_hot())
 
 
 def _safe_span_update(span: Any, **kwargs: Any) -> None:
@@ -366,6 +373,15 @@ async def _event_stream(
         server_history = await dialog_store.load(username, conversation_id)
         if server_history:
             history = server_history
+            if client_history:
+                # 服务端命中即以服务端为准（客户端可能缺轮/伪造）；正常前端每轮
+                # 都回传 history，debug 记录长度供观测，不刷 warning
+                logger.debug(
+                    "[Chat] 服务端热态命中，忽略客户端 history: conv=%s server=%d client=%d",
+                    conversation_id,
+                    len(server_history),
+                    len(client_history),
+                )
         else:
             history = client_history
             if client_history:
