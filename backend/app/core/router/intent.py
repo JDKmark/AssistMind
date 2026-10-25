@@ -12,6 +12,7 @@ import json
 import logging
 import os
 
+from app.core.dialog import format_history
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm
 from app.core.router import confidence, semantic
 
@@ -52,13 +53,26 @@ _LLM_SYSTEM = (
     "- task：需要执行操作（例如创建工单、转人工、查询状态、申请开通）\n"
     "- chat：闲聊、问候、致谢、告别\n"
     "- unclear：意图不明或信息不足\n"
+    "若最后一条用户消息含指代词（它/那个/这个/刚才），结合最近对话判断其真实意图。\n"
     "仅输出 JSON，不要输出其它内容，格式："
     '{"intent": "faq|task|chat|unclear", "confidence": 0.0到1.0的数字}'
 )
 
+# LLM 分类层带历史的最大条数：只供消解指代（它/那个），规则/语义快路径不带历史
+_LLM_HISTORY_TURNS = 6
 
-def _build_llm_prompt(query: str) -> str:
-    return f"用户问题：{query}\n请输出分类 JSON："
+
+def _build_llm_prompt(
+    query: str, history: list[dict[str, str]] | None = None
+) -> str:
+    if not history:
+        return f"用户问题：{query}\n请输出分类 JSON："
+    history_text = format_history(history[-_LLM_HISTORY_TURNS:])
+    return (
+        f"最近对话（供参考，用于理解最后一条用户消息中的指代）：\n"
+        f"{history_text}\n\n"
+        f"用户问题：{query}\n请输出分类 JSON："
+    )
 
 
 def _parse_llm_response(resp: str) -> dict:
@@ -89,14 +103,22 @@ def _parse_llm_response(resp: str) -> dict:
     return {"intent": "unclear", "confidence": 0.7}
 
 
-async def _llm_classify(query: str) -> dict:
+async def _llm_classify(
+    query: str, history: list[dict[str, str]] | None = None
+) -> dict:
     # fast=True：意图分类失败可降级 unclear，用流式快速超时避免商汤故障时拖住整条流
-    resp = await call_llm(_build_llm_prompt(query), _LLM_SYSTEM, fast=True)
+    resp = await call_llm(_build_llm_prompt(query, history), _LLM_SYSTEM, fast=True)
     return _parse_llm_response(resp)
 
 
-async def route(query: str) -> dict:
+async def route(
+    query: str, history: list[dict[str, str]] | None = None
+) -> dict:
     """三级路由主入口。
+
+    history（可选）：最近对话 [{role, content}]，仅 LLM 分类层消费（消解
+    「它/那个」类指代追问）；规则/语义层不消费——保持毫秒级快路径语义。
+    缺省 None 时行为与原版完全一致（向后兼容）。
 
     Returns:
         {"intent": str, "confidence": float, "source": str, "low_confidence": bool}
@@ -132,7 +154,7 @@ async def route(query: str) -> dict:
 
     # 3. LLM 层
     try:
-        llm_result = await _llm_classify(query)
+        llm_result = await _llm_classify(query, history)
         conf = confidence.compute("llm", llm_result["confidence"])
         return {
             "intent": llm_result["intent"],

@@ -191,7 +191,7 @@ def test_chat_faq_stream_sequence():
     assert ed["done"]["degraded"] == []
 
     # retrieve/generate_stream 调用参数正确；登录角色（admin）透传进 faq 检索
-    mock_engine.retrieve.assert_awaited_once_with("如何配置系统", role="admin")
+    mock_engine.retrieve.assert_awaited_once_with("如何配置系统", role="admin", history=None)
     assert gen_calls["count"] == 1
 
 
@@ -1290,7 +1290,7 @@ def test_chat_faq_resolved_uses_annotated_query_and_confirm_hint():
 
     # 检索与生成均以注记 query 进行
     mock_engine.retrieve.assert_awaited_once_with(
-        "我的 S1 Pro 不吸了 贝亲 S1 Pro 电动吸奶器", role="admin"
+        "我的 S1 Pro 不吸了 贝亲 S1 Pro 电动吸奶器", role="admin", history=None
     )
     assert gen_kwargs["query"] == "我的 S1 Pro 不吸了 贝亲 S1 Pro 电动吸奶器"
     # system 追加产品确认指令

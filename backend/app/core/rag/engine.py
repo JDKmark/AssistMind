@@ -133,8 +133,12 @@ async def retrieve(
     query: str,
     role: str = "user",
     top_k: int | None = None,
+    history: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """RAG 检索主入口（不含生成）。
+
+    history（可选）：最近对话，透传给查询改写消解指代（「它的价格」→
+    「AssistMind 的价格」）；缺省 None 时行为与原版一致。
 
     Returns:
         {
@@ -155,7 +159,7 @@ async def retrieve(
 
     # 1. 查询改写
     _t = time.monotonic()
-    rewrite_result = await rewrite_query(query)
+    rewrite_result = await rewrite_query(query, history=history)
     stage_ms["rewrite_ms"] = round((time.monotonic() - _t) * 1000)
     metrics.safe(metrics.observe_stage, "rewrite", stage_ms["rewrite_ms"] / 1000)
     if rewrite_result["degraded"]:
@@ -561,7 +565,7 @@ async def answer(
         }
     """
     # 1. 检索
-    retrieval = await retrieve(query, role=role)
+    retrieval = await retrieve(query, role=role, history=history)
 
     # 2. CRAG 决策（no_result 短路 / rewrite_retry 二次检索，与 chat SSE 链路共用 resolve_retrieval）
     contexts, crag, degraded = await resolve_retrieval(query, role, retrieval)

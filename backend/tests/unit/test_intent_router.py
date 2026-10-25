@@ -209,3 +209,67 @@ def test_low_confidence_flags():
     rule = confidence.compute("rule", 0.0)
     assert rule["confidence"] == 1.0
     assert rule["low_confidence"] is False
+
+
+# ---------- 历史进 LLM 分类层（消解「它/那个」类指代追问）----------
+# 背景：路由此前只看当前 query，「那它多少钱」这类指代追问落到 LLM 层时缺上文
+# 被误判 unclear。LLM 层 prompt 注入最近对话；规则/语义快路径不消费历史。
+
+
+async def test_llm_prompt_includes_history_for_coreference():
+    """route 带 history：LLM 层 prompt 含最近对话（指代消解依据），分类正常返回。"""
+    history = [
+        {"role": "user", "content": "AssistMind 支持私有化部署吗"},
+        {"role": "assistant", "content": "支持，企业版可私有化"},
+    ]
+    captured: dict = {}
+
+    async def _capture_llm(prompt, system=None, fast=False):
+        captured["prompt"] = prompt
+        return '{"intent": "faq", "confidence": 0.9}'
+
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)), patch(
+        "app.core.router.intent.call_llm", new=_capture_llm
+    ):
+        result = await intent.route("那它呢", history=history)
+
+    assert result["intent"] == "faq"
+    assert result["source"] == "llm"
+    assert "AssistMind 支持私有化部署吗" in captured["prompt"]
+    assert "那它呢" in captured["prompt"]
+    assert "最近对话" in captured["prompt"]
+
+
+async def test_route_without_history_prompt_unchanged():
+    """向后兼容：不带 history 时 LLM prompt 保持原形状（无历史段）。"""
+    captured: dict = {}
+
+    async def _capture_llm(prompt, system=None, fast=False):
+        captured["prompt"] = prompt
+        return '{"intent": "chat", "confidence": 0.9}'
+
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)), patch(
+        "app.core.router.intent.call_llm", new=_capture_llm
+    ):
+        await intent.route("随便聊点什么都行")
+
+    assert "最近对话" not in captured["prompt"]
+    assert captured["prompt"].startswith("用户问题：")
+
+
+async def test_llm_history_window_capped():
+    """历史超过 _LLM_HISTORY_TURNS 时只取最近几条进 prompt。"""
+    history = [{"role": "user", "content": f"历史消息{i}"} for i in range(10)]
+    captured: dict = {}
+
+    async def _capture_llm(prompt, system=None, fast=False):
+        captured["prompt"] = prompt
+        return '{"intent": "faq", "confidence": 0.9}'
+
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)), patch(
+        "app.core.router.intent.call_llm", new=_capture_llm
+    ):
+        await intent.route("那它呢", history=history)
+
+    assert "历史消息0" not in captured["prompt"]
+    assert "历史消息9" in captured["prompt"]

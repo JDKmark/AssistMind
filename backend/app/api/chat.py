@@ -371,9 +371,10 @@ async def _event_stream(
             if client_history:
                 await dialog_store.seed(username, conversation_id, client_history)
 
-        # 1. 意图路由
+        # 1. 意图路由（带最近对话：LLM 分类层消解「它/那个」类指代追问；
+        #    规则/语义快路径不消费历史，保持毫秒级）
         _t_route = time.monotonic()
-        route_result = await route(req.query)
+        route_result = await route(req.query, history=history)
         stage_ms["intent_ms"] = round((time.monotonic() - _t_route) * 1000)
         intent = route_result.get("intent", "unclear")
 
@@ -596,7 +597,7 @@ async def _handle_faq(
             return
         _metric(metrics.inc_cache_hit, "miss", role)
 
-        retrieval = await rag_engine.retrieve(query, role=role)
+        retrieval = await rag_engine.retrieve(query, role=role, history=history)
         retrieve_ms = round((time.monotonic() - _t_start) * 1000)
         # 阶段耗时回填（T3）：rewrite/embed/recall/rerank/crag
         _merge_retrieval_stage_ms(_sm, retrieval)

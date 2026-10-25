@@ -131,7 +131,7 @@ async def test_answer_rewrite_retry_no_result_after_retry():
     }
 
     call_count = [0]
-    async def _mock_retrieve(query, role="user", top_k=8):
+    async def _mock_retrieve(query, role="user", top_k=8, history=None):
         call_count[0] += 1
         return first_retrieval if call_count[0] == 1 else second_retrieval
 

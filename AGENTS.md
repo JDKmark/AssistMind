@@ -126,6 +126,8 @@ docker-compose up -d
 
 - **超窗历史摘要压缩**：会话消息超窗后暂存攒批，溢出满 MEMORY\_SUMMARY\_THRESHOLD 条时后台任务（asyncio.create\_task，不阻塞 SSE）LLM（fast=True）压缩成摘要写 `...:summary` key；load 时头部注入「此前对话摘要」assistant 消息（在 trim 之后拼接，不占窗口槽位）；MEMORY\_SUMMARY\_ENABLED=False 回退纯滑动窗口；摘要 LLM 失败仅 warning，不丢窗口内容
 
+- **历史进路由与改写（仅 LLM 层）**：`intent.route(query, history=None)` 与 `query_rewriter.rewrite(query, history=None)` 的 history 只被 LLM 分类层 / 改写 prompt 消费（消解「它/那个」类指代追问，跟进问句不再误判 unclear、变体先还原指代再产出）；规则/语义快路径不消费历史保持毫秒级；`engine.retrieve(history=)` 只透传给首检索改写（CRAG 重检索用已消解变体，不带）；参数向后兼容，None = 原行为
+
 ### 前端
 
 - **JavaScript 不是 TypeScript**：不要添加 `.ts` 文件或类型注解
