@@ -354,7 +354,7 @@ async function loadDocs() {
     docs.value = data.docs || []
     total.value = data.total || 0
     error.value = data.error || ''
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
   } finally {
     loading.value = false
@@ -368,7 +368,7 @@ async function handleDelete(row) {
     await deleteDoc(row.doc_id)
     ElMessage.success(`已删除文档 ${row.doc_id}`)
     await loadDocs()
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
   } finally {
     deletingDocId.value = ''
@@ -525,7 +525,7 @@ async function handleToggle(row, target) {
     await toggleDoc(row.doc_id, target)
     row.enabled = target
     ElMessage.success(target ? '已恢复检索' : '已停用检索')
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示；开关回滚到服务端状态
     await loadDocs()
   } finally {
@@ -587,7 +587,7 @@ async function openDetail(row) {
   try {
     const data = await getDocChunks(row.doc_id)
     detailChunks.value = data.chunks || []
-  } catch (e) {
+  } catch {
     // 404/503 已由 request 拦截器统一提示，抽屉内显示空态
     detailChunks.value = null
   } finally {
@@ -629,7 +629,7 @@ async function runSearchTest() {
     const data = await searchTest({ query, top_k: testTopK.value })
     testResult.value = data
     testDegraded.value = data.degraded || []
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
   } finally {
     testRunning.value = false

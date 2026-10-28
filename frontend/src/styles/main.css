@@ -63,8 +63,9 @@
   --am-glow-ring: rgba(35, 82, 197, 0.1);
 
   /* 字体 */
-  --am-font-sans: 'Sora', -apple-system, BlinkMacSystemFont, 'PingFang SC',
-    'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+  --am-font-sans:
+    'Sora', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue',
+    sans-serif;
   --am-font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, Menlo, monospace;
 
   /* 覆盖 Element Plus 主题变量 */
@@ -133,11 +134,7 @@ a {
 
 /* 蓝图点阵纹理：内容区/品牌面板底纹（商用质感：降噪到 0.06） */
 .am-grid-bg {
-  background-image: radial-gradient(
-    circle,
-    rgba(35, 82, 197, 0.06) 1px,
-    transparent 1px
-  );
+  background-image: radial-gradient(circle, rgba(35, 82, 197, 0.06) 1px, transparent 1px);
   background-size: 22px 22px;
 }
 
@@ -157,7 +154,9 @@ a {
 
 /* 商用 hover：卡片边框过渡到浅蓝，无位移（Linear 式克制反馈） */
 .panel-card {
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 .panel-card:hover {
   border-color: var(--am-blue-200);
@@ -221,7 +220,9 @@ a {
 
 /* 页面切换动效（MainLayout router-view 包一层 <transition>） */
 .am-fade-enter-active {
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
 }
 .am-fade-leave-active {
   transition: opacity 0.08s ease;

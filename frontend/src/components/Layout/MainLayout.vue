@@ -1,7 +1,11 @@
 <template>
   <el-container class="main-layout">
     <!-- 响应式侧栏：≥1024 完整展开 / 768-1023 折叠图标栏 / <768 固定定位抽屉（汉堡按钮开合） -->
-    <el-aside :width="sidebarWidth" class="sidebar" :class="{ 'is-collapsed': collapsed, 'is-open': navDrawerOpen }">
+    <el-aside
+      :width="sidebarWidth"
+      class="sidebar"
+      :class="{ 'is-collapsed': collapsed, 'is-open': navDrawerOpen }"
+    >
       <div class="brand">
         <div class="brand-mark">
           <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -41,12 +45,7 @@
           <el-icon><Document /></el-icon>
           <span>知识库</span>
         </el-menu-item>
-        <el-badge
-          :value="ticketUnread"
-          :hidden="ticketUnread === 0"
-          :max="99"
-          class="ticket-badge"
-        >
+        <el-badge :value="ticketUnread" :hidden="ticketUnread === 0" :max="99" class="ticket-badge">
           <el-menu-item index="/tickets">
             <el-icon><Tickets /></el-icon>
             <span>工单</span>
@@ -64,11 +63,7 @@
       </div>
     </el-aside>
     <!-- 移动端抽屉遮罩 -->
-    <div
-      v-if="isMobile && navDrawerOpen"
-      class="nav-backdrop"
-      @click="navDrawerOpen = false"
-    ></div>
+    <div v-if="isMobile && navDrawerOpen" class="nav-backdrop" @click="navDrawerOpen = false"></div>
     <el-container class="body-wrap">
       <el-header class="header">
         <div class="header-left">
@@ -167,9 +162,7 @@ watch(
 
 const roleText = computed(() => roleLabel(auth.role))
 
-const avatarChar = computed(() =>
-  (auth.user?.username || 'guest').charAt(0).toUpperCase(),
-)
+const avatarChar = computed(() => (auth.user?.username || 'guest').charAt(0).toUpperCase())
 
 function canAccess(name) {
   // 路由名为大写（Admin/Knowledge），调用处传小写——大小写不敏感匹配，
@@ -230,12 +223,16 @@ function handleCommand(cmd) {
     z-index: 1000;
     transform: translateX(-100%);
     visibility: hidden;
-    transition: transform 0.22s ease, visibility 0s linear 0.22s;
+    transition:
+      transform 0.22s ease,
+      visibility 0s linear 0.22s;
   }
   .sidebar.is-open {
     transform: translateX(0);
     visibility: visible;
-    transition: transform 0.22s ease, visibility 0s;
+    transition:
+      transform 0.22s ease,
+      visibility 0s;
     box-shadow: 0 0 40px rgba(8, 20, 38, 0.35);
   }
   .user-name,
@@ -332,7 +329,9 @@ function handleCommand(cmd) {
   border-radius: 8px;
   color: #9db0d4;
   font-size: 14px;
-  transition: background-color 0.18s ease, color 0.18s ease;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
 }
 /* 挂角指示条：hover 时左侧浮现蓝色细条（Linear 式导航反馈） */
 .sidebar :deep(.el-menu-item)::before {

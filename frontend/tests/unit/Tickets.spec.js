@@ -41,7 +41,10 @@ const stubs = {
   'el-table': {
     props: ['data'],
     setup(props) {
-      provide('amTableRows', computed(() => props.data || []))
+      provide(
+        'amTableRows',
+        computed(() => props.data || []),
+      )
     },
     template: '<div class="el-table-stub"><slot /></div>',
   },
@@ -135,7 +138,8 @@ const TICKETS = [
 const TICKET_DETAIL = {
   id: 'TK-20260820001',
   title: '无法登录',
-  description: '从昨天下午开始，APP 和网页端都无法登录，提示 token 过期，重置密码后仍然无效，请尽快协助处理。',
+  description:
+    '从昨天下午开始，APP 和网页端都无法登录，提示 token 过期，重置密码后仍然无效，请尽快协助处理。',
   priority: 'high',
   status: 'open',
   category: 'account',

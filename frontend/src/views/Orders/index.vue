@@ -18,44 +18,51 @@
 
       <!-- 窄屏容器内横滚（P0-3）：页面不横向溢出，表格可滑动查看 -->
       <div class="table-scroll">
-      <el-table :data="orders" style="width: 100%">
-        <el-table-column type="expand">
-          <template #default="{ row }">
-            <div class="items-box">
-              <div v-for="(item, i) in row.items || []" :key="i" class="item-line">
-                <span class="item-name">{{ item.name }}</span>
-                <span class="item-spec">{{ item.spec || '-' }}</span>
-                <span class="item-price am-mono">¥{{ fmtAmount(item.price) }}</span>
-                <span class="item-qty">×{{ item.quantity }}</span>
+        <el-table :data="orders" style="width: 100%">
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <div class="items-box">
+                <div v-for="(item, i) in row.items || []" :key="i" class="item-line">
+                  <span class="item-name">{{ item.name }}</span>
+                  <span class="item-spec">{{ item.spec || '-' }}</span>
+                  <span class="item-price am-mono">¥{{ fmtAmount(item.price) }}</span>
+                  <span class="item-qty">×{{ item.quantity }}</span>
+                </div>
+                <div v-if="!(row.items && row.items.length)" class="empty-items">暂无商品明细</div>
               </div>
-              <div v-if="!(row.items && row.items.length)" class="empty-items">暂无商品明细</div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="order_sn" label="订单号" min-width="170">
-          <template #default="{ row }">
-            <span class="am-mono">{{ row.order_sn }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="110">
-          <template #default="{ row }">
-            <el-tag :type="statusTagType(row.status)" size="small" effect="plain" class="am-tag-pill">
-              {{ row.status }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="实付金额" width="110" align="right">
-          <template #default="{ row }">
-            <span class="am-mono amount-cell">¥{{ fmtAmount(row.pay_amount) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="物流单号" min-width="150">
-          <template #default="{ row }"><span class="am-mono">{{ row.logistics_no || '-' }}</span></template>
-        </el-table-column>
-        <el-table-column label="下单时间" width="170">
-          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-        </el-table-column>
-      </el-table>
+            </template>
+          </el-table-column>
+          <el-table-column prop="order_sn" label="订单号" min-width="170">
+            <template #default="{ row }">
+              <span class="am-mono">{{ row.order_sn }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="110">
+            <template #default="{ row }">
+              <el-tag
+                :type="statusTagType(row.status)"
+                size="small"
+                effect="plain"
+                class="am-tag-pill"
+              >
+                {{ row.status }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="实付金额" width="110" align="right">
+            <template #default="{ row }">
+              <span class="am-mono amount-cell">¥{{ fmtAmount(row.pay_amount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="物流单号" min-width="150">
+            <template #default="{ row }"
+              ><span class="am-mono">{{ row.logistics_no || '-' }}</span></template
+            >
+          </el-table-column>
+          <el-table-column label="下单时间" width="170">
+            <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+          </el-table-column>
+        </el-table>
       </div>
 
       <div class="pagination-wrap">
@@ -116,7 +123,7 @@ async function loadOrders() {
     const data = await listMyOrders(params)
     orders.value = data.orders || []
     total.value = data.total != null ? data.total : orders.value.length
-  } catch (e) {
+  } catch {
     orders.value = []
     total.value = 0
     ElMessage.error('我的订单加载失败')

@@ -34,7 +34,7 @@ request.interceptors.request.use(
     }
     return config
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 )
 
 // 响应拦截：统一错误处理
@@ -66,7 +66,7 @@ request.interceptors.response.use(
       showErrorToast(msg)
     }
     return Promise.reject(error)
-  }
+  },
 )
 
 export default request

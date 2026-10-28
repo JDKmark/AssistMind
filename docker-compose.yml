@@ -4,13 +4,13 @@ services:
     image: qdrant/qdrant:v1.12.4
     container_name: smart-cs-qdrant
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - '6333:6333'
+      - '6334:6334'
     volumes:
       - qdrant-data:/qdrant/storage
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6333/healthz"]
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:6333/healthz']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -20,13 +20,13 @@ services:
     image: redis:7-alpine
     container_name: smart-cs-redis
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
       - redis-data:/data
     restart: unless-stopped
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,7 +36,7 @@ services:
     image: postgres:15-alpine
     container_name: smart-cs-postgres
     ports:
-      - "5432:5432"
+      - '5432:5432'
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -45,7 +45,7 @@ services:
       - pg-data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -58,7 +58,7 @@ services:
     command: redis-server --appendonly yes --requirepass langfuse-dev --maxmemory 512mb --maxmemory-policy noeviction
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a langfuse-dev ping | grep PONG"]
+      test: ['CMD-SHELL', 'redis-cli -a langfuse-dev ping | grep PONG']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -74,7 +74,7 @@ services:
       - langfuse-db-data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      test: ['CMD-SHELL', 'pg_isready -U langfuse']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -92,7 +92,7 @@ services:
       - ./deploy/langfuse-clickhouse-listen.xml:/etc/clickhouse-server/config.d/zzz-listen.xml:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/ping || exit 1"]
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8123/ping || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -108,7 +108,7 @@ services:
       - langfuse-minio-data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -126,7 +126,7 @@ services:
       mc mb -p lf/langfuse-media 2>/dev/null || true;
       exit 0
       "
-    restart: "no"
+    restart: 'no'
 
   langfuse:
     # 服务端 v3 稳定线（SDK 4.14 OTLP 原生支持，单容器无独立 worker、
@@ -144,7 +144,7 @@ services:
       langfuse-redis:
         condition: service_healthy
     ports:
-      - "3001:3000"
+      - '3001:3000'
     environment:
       DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
       SALT: changeme-langfuse-salt
@@ -152,12 +152,12 @@ services:
       ENCRYPTION_KEY: 56ab419a89bf882ae16f24bb3be465a4372c1e4187188f380255d0e1c8d790d7
       NEXTAUTH_SECRET: changeme-langfuse-secret
       NEXTAUTH_URL: http://localhost:3001
-      TELEMETRY_ENABLED: "false"
+      TELEMETRY_ENABLED: 'false'
       CLICKHOUSE_URL: http://langfuse-clickhouse:8123
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@langfuse-clickhouse:9000
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse
-      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      CLICKHOUSE_CLUSTER_ENABLED: 'false'
       # 独立 Redis（带密码；官方变量名 REDIS_HOST/PORT/REDIS_AUTH）
       REDIS_HOST: langfuse-redis
       REDIS_PORT: 6379
@@ -167,13 +167,13 @@ services:
       LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
       LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
       LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
-      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: 'true'
       LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
       LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-media
       LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
       LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
       LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
-      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: 'true'
       LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
     restart: unless-stopped
 
@@ -195,12 +195,12 @@ services:
       SALT: changeme-langfuse-salt
       NEXTAUTH_SECRET: changeme-langfuse-secret
       NEXTAUTH_URL: http://localhost:3001
-      TELEMETRY_ENABLED: "false"
+      TELEMETRY_ENABLED: 'false'
       CLICKHOUSE_URL: http://langfuse-clickhouse:8123
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@langfuse-clickhouse:9000
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse
-      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      CLICKHOUSE_CLUSTER_ENABLED: 'false'
       REDIS_HOST: langfuse-redis
       REDIS_PORT: 6379
       REDIS_AUTH: langfuse-dev
@@ -209,13 +209,13 @@ services:
       LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
       LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
       LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
-      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: 'true'
       LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
       LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-media
       LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
       LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
       LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
-      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: 'true'
       LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
     restart: unless-stopped
 

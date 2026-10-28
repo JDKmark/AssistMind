@@ -18,60 +18,70 @@
         <el-button type="primary" @click="openCreateDialog">创建工单</el-button>
       </div>
 
-    <!-- 窄屏容器内横滚（P0-3）：页面不横向溢出，表格可滑动查看 -->
-    <div class="table-scroll">
-    <el-table :data="tickets" style="width: 100%">
-      <el-table-column prop="id" label="工单ID" width="175" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span class="am-mono ticket-id">{{ row.id }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column v-if="auth.role !== 'user'" prop="user_id" label="客户" width="110" />
-      <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
-      <el-table-column label="优先级" width="110">
-        <template #default="{ row }">
-          <el-tag :type="priorityTagType(row.priority)" size="small" effect="plain" class="am-tag-pill">
-            {{ priorityLabel(row.priority) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="110">
-        <template #default="{ row }">
-          <el-tag :type="statusTagType(row.status)" size="small" effect="plain" class="am-tag-pill">
-            {{ statusLabel(row.status) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="创建时间" width="180">
-        <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="250">
-        <template #default="{ row }">
-          <el-button size="small" type="primary" link @click="openDetail(row)">详情</el-button>
-          <el-button
-            v-if="auth.role === 'user' && row.status === 'resolved'"
-            type="primary"
-            size="small"
-            @click="confirmResolve(row)"
-          >
-            确认解决
-          </el-button>
-          <el-select
-            v-if="auth.role !== 'user'"
-            v-model="row.status"
-            size="small"
-            style="width: 140px; margin-left: 8px"
-            @change="(val) => handleStatusChange(row, val)"
-          >
-            <el-option label="待处理" value="open" />
-            <el-option label="处理中" value="in_progress" />
-            <el-option label="已解决" value="resolved" />
-            <el-option label="已关闭" value="closed" />
-          </el-select>
-        </template>
-      </el-table-column>
-    </el-table>
-    </div>
+      <!-- 窄屏容器内横滚（P0-3）：页面不横向溢出，表格可滑动查看 -->
+      <div class="table-scroll">
+        <el-table :data="tickets" style="width: 100%">
+          <el-table-column prop="id" label="工单ID" width="175" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span class="am-mono ticket-id">{{ row.id }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="auth.role !== 'user'" prop="user_id" label="客户" width="110" />
+          <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
+          <el-table-column label="优先级" width="110">
+            <template #default="{ row }">
+              <el-tag
+                :type="priorityTagType(row.priority)"
+                size="small"
+                effect="plain"
+                class="am-tag-pill"
+              >
+                {{ priorityLabel(row.priority) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="110">
+            <template #default="{ row }">
+              <el-tag
+                :type="statusTagType(row.status)"
+                size="small"
+                effect="plain"
+                class="am-tag-pill"
+              >
+                {{ statusLabel(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="创建时间" width="180">
+            <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="250">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" link @click="openDetail(row)">详情</el-button>
+              <el-button
+                v-if="auth.role === 'user' && row.status === 'resolved'"
+                type="primary"
+                size="small"
+                @click="confirmResolve(row)"
+              >
+                确认解决
+              </el-button>
+              <el-select
+                v-if="auth.role !== 'user'"
+                v-model="row.status"
+                size="small"
+                style="width: 140px; margin-left: 8px"
+                @change="(val) => handleStatusChange(row, val)"
+              >
+                <el-option label="待处理" value="open" />
+                <el-option label="处理中" value="in_progress" />
+                <el-option label="已解决" value="resolved" />
+                <el-option label="已关闭" value="closed" />
+              </el-select>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </div>
 
     <el-dialog v-model="dialogVisible" title="创建工单" width="560px">
@@ -80,12 +90,7 @@
           <el-input v-model="form.title" placeholder="请输入工单标题" maxlength="200" />
         </el-form-item>
         <el-form-item label="描述" prop="description">
-          <el-input
-            v-model="form.description"
-            type="textarea"
-            :rows="4"
-            placeholder="请描述问题"
-          />
+          <el-input v-model="form.description" type="textarea" :rows="4" placeholder="请描述问题" />
         </el-form-item>
         <el-form-item label="优先级" prop="priority">
           <el-select v-model="form.priority" style="width: 100%">
@@ -102,11 +107,7 @@
       </template>
     </el-dialog>
 
-    <el-drawer
-      v-model="detailVisible"
-      title="工单详情"
-      :size="isMobile ? '100%' : '560px'"
-    >
+    <el-drawer v-model="detailVisible" title="工单详情" :size="isMobile ? '100%' : '560px'">
       <div v-loading="detailLoading" class="detail-body">
         <el-descriptions v-if="currentTicket" :column="1" border>
           <el-descriptions-item label="工单ID">
@@ -118,12 +119,22 @@
           <el-descriptions-item label="标题">{{ currentTicket.title }}</el-descriptions-item>
           <el-descriptions-item label="描述">{{ currentTicket.description }}</el-descriptions-item>
           <el-descriptions-item label="优先级">
-            <el-tag :type="priorityTagType(currentTicket.priority)" size="small" effect="plain" class="am-tag-pill">
+            <el-tag
+              :type="priorityTagType(currentTicket.priority)"
+              size="small"
+              effect="plain"
+              class="am-tag-pill"
+            >
               {{ priorityLabel(currentTicket.priority) }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="statusTagType(currentTicket.status)" size="small" effect="plain" class="am-tag-pill">
+            <el-tag
+              :type="statusTagType(currentTicket.status)"
+              size="small"
+              effect="plain"
+              class="am-tag-pill"
+            >
               {{ statusLabel(currentTicket.status) }}
             </el-tag>
           </el-descriptions-item>
@@ -152,7 +163,11 @@
             <div v-if="conversation.length" class="conv-list">
               <div v-for="(m, i) in conversation" :key="i" class="conv-msg">
                 <div class="conv-msg-meta">
-                  <el-tag size="small" :type="m.role === 'user' ? 'info' : 'success'" effect="plain">
+                  <el-tag
+                    size="small"
+                    :type="m.role === 'user' ? 'info' : 'success'"
+                    effect="plain"
+                  >
                     {{ m.role === 'user' ? '用户' : 'AI' }}
                   </el-tag>
                   <span class="conv-msg-time">{{ formatShortTime(m.created_at) }}</span>
@@ -191,9 +206,11 @@
               type="textarea"
               :rows="2"
               maxlength="2000"
-              :placeholder="auth.role === 'user'
-                ? '补充说明或回复客服…'
-                : '以人工身份回复（open 工单将自动转为处理中）'"
+              :placeholder="
+                auth.role === 'user'
+                  ? '补充说明或回复客服…'
+                  : '以人工身份回复（open 工单将自动转为处理中）'
+              "
             />
             <el-button
               type="primary"
@@ -213,7 +230,15 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { listTickets, createTicket, updateTicketStatus, getTicket, listReplies, addReply, getTicketConversation } from '@/api/ticket'
+import {
+  listTickets,
+  createTicket,
+  updateTicketStatus,
+  getTicket,
+  listReplies,
+  addReply,
+  getTicketConversation,
+} from '@/api/ticket'
 import { useAuthStore } from '@/stores/auth'
 import { useBreakpoint } from '@/utils/useBreakpoint'
 
@@ -314,7 +339,7 @@ async function loadTickets() {
   try {
     const data = await listTickets(filterStatus.value)
     tickets.value = data.tickets || []
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
   } finally {
     loading.value = false
@@ -325,7 +350,7 @@ async function handleStatusChange(row, newStatus) {
   try {
     await updateTicketStatus(row.id, newStatus)
     ElMessage.success(`状态已更新为 ${statusLabel(newStatus)}`)
-  } catch (e) {
+  } catch {
     // 非法状态流转或权限不足：重新加载恢复服务器真实状态（错误提示由 request 拦截器处理）
     await loadTickets()
   }
@@ -344,7 +369,7 @@ async function openDetail(row) {
     const [data, replyData] = await Promise.all([getTicket(row.id), listReplies(row.id)])
     currentTicket.value = data
     replies.value = replyData.replies || []
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
     currentTicket.value = null
   } finally {
@@ -396,7 +421,7 @@ async function confirmResolve(row) {
     await updateTicketStatus(row.id, 'closed')
     ElMessage.success('已确认解决，工单关闭')
     await loadTickets()
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
   }
 }
@@ -419,7 +444,7 @@ async function submitCreate() {
     ElMessage.success('工单创建成功')
     dialogVisible.value = false
     await loadTickets()
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
   } finally {
     submitting.value = false

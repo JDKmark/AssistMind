@@ -45,7 +45,7 @@ vi.stubGlobal(
       this.voice = null
       speechApi.utterances.push(this)
     }
-  }
+  },
 )
 
 // ---------- 云端音频路径 mock（Audio 元素 + objectURL） ----------
@@ -86,10 +86,13 @@ function stubBrowserOnly() {
 function stubBackendPath() {
   vi.stubGlobal('fetch', vi.fn())
   vi.stubGlobal('Audio', FakeAudio)
-  vi.stubGlobal('URL', class extends URL {
-    static createObjectURL = objectUrl.create
-    static revokeObjectURL = objectUrl.revoke
-  })
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = objectUrl.create
+      static revokeObjectURL = objectUrl.revoke
+    },
+  )
 }
 
 describe('speech 语音工具（ASR 浏览器识别 + TTS 两级降级）', () => {
@@ -117,7 +120,7 @@ describe('speech 语音工具（ASR 浏览器识别 + TTS 两级降级）', () =
           this.voice = null
           speechApi.utterances.push(this)
         }
-      }
+      },
     )
   })
 
@@ -140,10 +143,7 @@ describe('speech 语音工具（ASR 浏览器识别 + TTS 两级降级）', () =
     expect(recognizer.lang).toBe('zh-CN')
 
     recognizer.onresult({
-      results: [
-        [{ transcript: ' 查一下订单 ' }],
-        [{ transcript: ' 20260801001 ' }],
-      ],
+      results: [[{ transcript: ' 查一下订单 ' }], [{ transcript: ' 20260801001 ' }]],
     })
     expect(onResult).toHaveBeenCalledWith('查一下订单 20260801001')
   })

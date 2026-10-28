@@ -44,7 +44,7 @@ function releaseAudio() {
   if (audioEl) {
     try {
       audioEl.pause()
-    } catch (e) {
+    } catch {
       // 已失效的音频元素，忽略
     }
     audioEl = null
@@ -52,7 +52,7 @@ function releaseAudio() {
   if (audioUrl) {
     try {
       URL.revokeObjectURL(audioUrl)
-    } catch (e) {
+    } catch {
       // objectURL 已失效，忽略
     }
     audioUrl = null
@@ -110,7 +110,7 @@ async function speakViaBackend(text, lang, seq) {
       // 合成期间播报已被打断/停止：丢弃本次音频（revoke 防泄漏），不发声
       try {
         URL.revokeObjectURL(url)
-      } catch (e) {
+      } catch {
         // objectURL 已失效，忽略
       }
       return

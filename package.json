@@ -1,0 +1,37 @@
+{
+  "name": "assistmind",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AssistMind 仓库级工程化配置（前端 lint / 格式化 / Git 钩子）；业务依赖见 frontend/package.json",
+  "scripts": {
+    "prepare": "husky",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint:backend": "cd backend && uv run --frozen --extra dev ruff check .",
+    "test:frontend": "npm --prefix frontend run test:unit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-vue": "^10.12.0",
+    "globals": "^15.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.3.0"
+  },
+  "lint-staged": {
+    "frontend/**/*.{js,vue}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "frontend/**/*.{css,scss,json}": [
+      "prettier --write"
+    ],
+    "*.{json,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}

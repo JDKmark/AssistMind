@@ -29,7 +29,7 @@ export const usePersonaStore = defineStore('persona', () => {
         console.warn('[Persona] 人格选择持久化失败', e)
       }
     },
-    { flush: 'sync' }
+    { flush: 'sync' },
   )
 
   function setPersona(id) {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { nextTick, reactive, ref } from 'vue'
+import { nextTick, ref } from 'vue'
 
 // ---------- mock 依赖 ----------
 
@@ -12,18 +12,7 @@ vi.mock('@/utils/ticketPolling', () => ({
   resetTicketPolling: vi.fn(),
 }))
 
-import {
-  ticketUnread,
-  startTicketPolling,
-  stopTicketPolling,
-  resetTicketPolling,
-} from '@/utils/ticketPolling'
-
-// auth store 用 reactive：组件内 watch(() => auth.token) 才能触发
-const authMock = vi.hoisted(() => {
-  // vitest ESM 下从 vue 取 reactive（hoisted 阶段可安全 import）
-  return null
-})
+import { ticketUnread, startTicketPolling } from '@/utils/ticketPolling'
 
 vi.mock('@/stores/auth', async () => {
   const { reactive } = await import('vue')

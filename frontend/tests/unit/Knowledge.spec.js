@@ -48,8 +48,7 @@ const stubs = {
   },
   'el-popconfirm': {
     props: ['title'],
-    template:
-      '<div class="el-popconfirm-stub" :title="title"><slot name="reference" /></div>',
+    template: '<div class="el-popconfirm-stub" :title="title"><slot name="reference" /></div>',
   },
   'el-switch': {
     props: ['modelValue', 'loading'],
@@ -69,7 +68,13 @@ const stubs = {
 
 const DOCS = [
   { doc_id: 'ops-1', title: '运维手册', source: 'ops/manual.md', category: 'ops', chunk_count: 2 },
-  { doc_id: 'mall-1', title: '商城文档', source: 'mall/guide.md', category: 'mall', chunk_count: 1 },
+  {
+    doc_id: 'mall-1',
+    title: '商城文档',
+    source: 'mall/guide.md',
+    category: 'mall',
+    chunk_count: 1,
+  },
 ]
 
 describe('Knowledge 组件', () => {
@@ -330,9 +335,7 @@ describe('Knowledge 组件', () => {
     const wrapper = mountKnowledge()
     await flushPromises()
 
-    const btn = wrapper
-      .findAll('button.el-button-stub')
-      .find((b) => b.text() === '重建索引')
+    const btn = wrapper.findAll('button.el-button-stub').find((b) => b.text() === '重建索引')
     expect(btn).toBeTruthy()
   })
 

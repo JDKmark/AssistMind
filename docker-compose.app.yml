@@ -18,7 +18,7 @@ services:
     env_file:
       - .env.prod
     ports:
-      - "8001:8001"
+      - '8001:8001'
     depends_on:
       qdrant:
         condition: service_healthy
@@ -29,9 +29,9 @@ services:
     healthcheck:
       test:
         [
-          "CMD",
-          "python",
-          "-c",
+          'CMD',
+          'python',
+          '-c',
           "import urllib.request;urllib.request.urlopen('http://localhost:8001/api/v1/health')",
         ]
       interval: 15s
@@ -48,7 +48,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: smart-cs-worker
-    entrypoint: ["python", "scripts/run_worker.py"]
+    entrypoint: ['python', 'scripts/run_worker.py']
     env_file:
       - .env.prod
     depends_on:
@@ -63,7 +63,7 @@ services:
       dockerfile: Dockerfile
     container_name: smart-cs-frontend
     ports:
-      - "80:80"
+      - '80:80'
     depends_on:
       backend:
         condition: service_healthy

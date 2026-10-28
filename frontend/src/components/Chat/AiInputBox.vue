@@ -17,7 +17,11 @@
         v-for="(b, i) in bars"
         :key="i"
         class="ai-bar"
-        :style="{ height: b.h + 'px', animationDuration: b.dur + 's', animationDelay: b.delay + 's' }"
+        :style="{
+          height: b.h + 'px',
+          animationDuration: b.dur + 's',
+          animationDelay: b.delay + 's',
+        }"
       />
       <span class="ai-elapsed">{{ elapsed }}</span>
     </div>
@@ -44,15 +48,38 @@
           data-tip="答案朗读"
           @click="$emit('speak-toggle')"
         >
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            viewBox="0 0 24 24"
+            width="17"
+            height="17"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M11 5 6 9H2v6h4l5 4V5z" />
             <path d="M15.5 8.5a5 5 0 0 1 0 7" />
             <path d="M18.5 5.5a9 9 0 0 1 0 13" />
           </svg>
         </button>
         <!-- 语音输入 -->
-        <button class="ai-icobtn ai-mic" :class="{ 'is-listening': listening }" data-tip="语音输入" @click="onMicClick">
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <button
+          class="ai-icobtn ai-mic"
+          :class="{ 'is-listening': listening }"
+          data-tip="语音输入"
+          @click="onMicClick"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="17"
+            height="17"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
             <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
             <line x1="12" y1="19" x2="12" y2="23" />
@@ -81,7 +108,17 @@
           >
             <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" />
           </svg>
-          <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            v-else
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M12 19V5" />
             <path d="m5 12 7-7 7 7" />
           </svg>
@@ -94,11 +131,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onDeactivated, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import {
-  isSpeechRecognitionSupported,
-  isSpeechSynthesisSupported,
-  stopSpeaking,
-} from '@/utils/speech'
+import { isSpeechSynthesisSupported, stopSpeaking } from '@/utils/speech'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -108,7 +141,6 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'send', 'stop', 'speak-toggle'])
 
 const inputRef = ref(null)
-const voiceSupported = isSpeechRecognitionSupported()
 const speakSupported = isSpeechSynthesisSupported()
 
 // ---------- 输入框：模型值 + 聆听态实时预览 ----------
@@ -140,7 +172,7 @@ const displayText = computed({
 })
 
 const canSend = computed(
-  () => (props.modelValue.trim().length > 0 || listening.value) && !props.streaming
+  () => (props.modelValue.trim().length > 0 || listening.value) && !props.streaming,
 )
 
 // ---------- 语音识别（Web Speech API，连续模式） ----------
@@ -222,7 +254,7 @@ function startListening() {
   startTimer()
   try {
     rec.start()
-  } catch (e) {
+  } catch {
     listening.value = false
     stopTimer()
     ElMessage.warning('语音启动失败，请重试')
@@ -399,11 +431,15 @@ onDeactivated(() => {
   padding: 10px 12px 8px;
   color: var(--ai-text);
   box-shadow: var(--ai-shadow);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 .ai-input:focus-within {
   border-color: var(--ai-primary);
-  box-shadow: var(--ai-shadow-focus), 0 0 0 3px var(--ai-glow);
+  box-shadow:
+    var(--ai-shadow-focus),
+    0 0 0 3px var(--ai-glow);
 }
 
 /* textarea 融入容器（去 el-input 内边框） */
@@ -486,8 +522,12 @@ onDeactivated(() => {
   cursor: pointer;
   background: transparent;
   color: var(--ai-text-muted);
-  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease,
-    box-shadow 0.2s ease, opacity 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
 }
 .ai-icobtn:hover {
   background: var(--ai-primary-soft);
@@ -536,7 +576,9 @@ onDeactivated(() => {
   box-shadow: var(--ai-shadow);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
   z-index: 10;
 }
 .ai-icobtn:hover::after,

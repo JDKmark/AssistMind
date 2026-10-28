@@ -12,7 +12,10 @@ import request from './request'
 // 缺省时服务端新建会话，start 事件回带 conversation_id 供前端采纳。
 // 所有事件都会回调 onEvent(eventName, dataObj)；done 后回调 onDone(dataObj)；
 // 出错时回调 onError(message)，且仅回调一次。
-export async function chatStream(query, { history = [], persona = null, conversationId = '', signal, onEvent, onDone, onError } = {}) {
+export async function chatStream(
+  query,
+  { history = [], persona = null, conversationId = '', signal, onEvent, onDone, onError } = {},
+) {
   const auth = useAuthStore()
   let reported = false
   const reportError = (message) => {
@@ -27,7 +30,7 @@ export async function chatStream(query, { history = [], persona = null, conversa
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${auth.token}`,
+        Authorization: `Bearer ${auth.token}`,
       },
       body: JSON.stringify({
         query,
@@ -38,7 +41,7 @@ export async function chatStream(query, { history = [], persona = null, conversa
       signal,
     })
   } catch (e) {
-    reportError(e.name === 'AbortError' ? '发送已取消' : (e.message || '网络请求失败'))
+    reportError(e.name === 'AbortError' ? '发送已取消' : e.message || '网络请求失败')
     return
   }
 
@@ -56,7 +59,7 @@ export async function chatStream(query, { history = [], persona = null, conversa
     try {
       const data = await response.json()
       if (data && data.detail) message = data.detail
-    } catch (e) {
+    } catch {
       // 非 JSON 错误响应体，保留状态码消息
     }
     reportError(message)
@@ -83,7 +86,7 @@ export async function chatStream(query, { history = [], persona = null, conversa
     if (dataLines.length > 0) {
       try {
         dataObj = JSON.parse(dataLines.join('\n'))
-      } catch (e) {
+      } catch {
         dataObj = {}
       }
     }
@@ -121,9 +124,7 @@ export async function chatStream(query, { history = [], persona = null, conversa
     } else if (!reported) {
       // 流中断：后端（uvicorn --reload 重启 / 进程崩溃）或代理掐断连接时，浏览器侧通常是
       // TypeError（"Failed to fetch"），原始 message 对用户无意义 → 统一成友好文案
-      reportError(
-        e instanceof TypeError ? '连接中断，请重试' : (e.message || '对话流读取异常')
-      )
+      reportError(e instanceof TypeError ? '连接中断，请重试' : e.message || '对话流读取异常')
     } else {
       // onError 回调抛出的异常（调用方主动抛出），原样传播给调用方
       throw e

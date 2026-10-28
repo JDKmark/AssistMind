@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+# pre-push：跑单测做最后一道拦截（跳过需要外部依赖的 integration 用例）。
+# 临时跳过：HUSKY=0 git push，或 git push --no-verify。
+set -e
+
+# 后端：按优先级解析解释器，兼容 Windows(venv/Scripts) 与 *nix(venv/bin)
+if [ -x backend/venv/Scripts/python.exe ]; then
+  PY="backend/venv/Scripts/python.exe"
+elif [ -x backend/venv/bin/python ]; then
+  PY="backend/venv/bin/python"
+elif command -v uv >/dev/null 2>&1; then
+  PY="uv run --frozen --extra dev python"
+else
+  PY=""
+fi
+
+if [ -n "$PY" ]; then
+  echo "[pre-push] backend unit tests"
+  (cd backend && $PY -m pytest tests -q -k "not integration")
+else
+  echo "[pre-push] 未找到后端 Python 环境（backend/venv 或 uv），跳过后端单测" >&2
+fi
+
+if [ -d frontend/node_modules ]; then
+  echo "[pre-push] frontend unit tests"
+  (cd frontend && npx --no-install vitest run)
+else
+  echo "[pre-push] frontend/node_modules 不存在，跳过前端单测" >&2
+fi

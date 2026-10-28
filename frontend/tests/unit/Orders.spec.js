@@ -35,7 +35,10 @@ const stubs = {
   'el-table': {
     props: ['data'],
     setup(props) {
-      provide('amTableRows', computed(() => props.data || []))
+      provide(
+        'amTableRows',
+        computed(() => props.data || []),
+      )
     },
     template: '<div class="el-table-stub"><slot /></div>',
   },

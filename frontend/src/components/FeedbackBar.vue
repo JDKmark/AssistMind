@@ -61,7 +61,7 @@ async function handleSubmit() {
     ElMessage.success('感谢您的反馈！')
     form.score = 0
     form.comment = ''
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
   } finally {
     submitting.value = false

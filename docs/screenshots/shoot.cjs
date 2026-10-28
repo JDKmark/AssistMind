@@ -47,7 +47,7 @@ async function main() {
       log(`[send] "${q}" attempt ${attempt}`)
       try {
         await waitDone(page)
-      } catch (e) {
+      } catch {
         log(`[send] "${q}" wait timeout, retry...`)
         continue
       }

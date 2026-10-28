@@ -74,7 +74,7 @@ describe('AiInputBox（Trae 风格 AI 对话输入框）', () => {
   it('渲染：placeholder、Enter 提示、空输入发送按钮禁用', () => {
     const { wrapper } = makeHarness()
     expect(wrapper.find('.el-input-stub').attributes('placeholder')).toBe(
-      '输入你的问题，或点击麦克风开始语音输入...'
+      '输入你的问题，或点击麦克风开始语音输入...',
     )
     expect(wrapper.text()).toContain('Enter 发送 · Shift+Enter 换行')
     expect(wrapper.find('.ai-send').attributes('disabled')).toBeDefined()
@@ -181,9 +181,7 @@ describe('AiInputBox（Trae 风格 AI 对话输入框）', () => {
     vi.stubGlobal('speechSynthesis', { cancel: vi.fn(), speak: vi.fn() })
     const { wrapper } = makeHarness()
     await wrapper.find('.ai-mic').trigger('click')
-    expect(ElMessageMock.warning).toHaveBeenCalledWith(
-      expect.stringContaining('不支持语音识别')
-    )
+    expect(ElMessageMock.warning).toHaveBeenCalledWith(expect.stringContaining('不支持语音识别'))
     expect(wrapper.find('.ai-wave').exists()).toBe(false)
   })
 
@@ -193,9 +191,7 @@ describe('AiInputBox（Trae 风格 AI 对话输入框）', () => {
     await wrapper.find('.ai-mic').trigger('click')
     getLastRec().onerror({ error: 'not-allowed' })
     await nextTick()
-    expect(ElMessageMock.error).toHaveBeenCalledWith(
-      expect.stringContaining('麦克风权限')
-    )
+    expect(ElMessageMock.error).toHaveBeenCalledWith(expect.stringContaining('麦克风权限'))
     expect(wrapper.find('.ai-wave').exists()).toBe(false)
   })
 

@@ -1,17 +1,13 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
+# pre-commit：只对暂存文件做 lint/format，保证提交速度（全量测试见 pre-push 与 CI）。
+# 注意：本文件必须是 POSIX sh，不要混入 PowerShell 语法（$LASTEXITCODE、if (...)）。
+set -e
 
-echo "[pre-commit] lint-staged (Prettier)"
-npx lint-staged
+if [ ! -d node_modules/lint-staged ]; then
+  echo "[pre-commit] 未安装仓库级 devDependencies，跳过 lint-staged"
+  echo "[pre-commit] 首次使用请在仓库根目录执行：npm install"
+  exit 0
+fi
 
-echo "[pre-commit] backend unit tests"
-cd backend
-venv\Scripts\python.exe -m pytest tests -q -k "not integration"
-if ($LASTEXITCODE -ne 0) { exit 1 }
-cd ..
-
-echo "[pre-commit] frontend unit tests"
-cd frontend
-npx vitest run
-if ($LASTEXITCODE -ne 0) { exit 1 }
-cd ..
+echo "[pre-commit] lint-staged（ESLint + Prettier，仅暂存文件）"
+npx --no-install lint-staged

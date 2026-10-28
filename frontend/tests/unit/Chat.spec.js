@@ -169,8 +169,18 @@ describe('Chat 组件', () => {
     conversationApi.listMessages.mockResolvedValue({
       conversation_id: 'conv-1',
       messages: [
-        { role: 'user', content: '退货多久到账？', intent: 'faq', created_at: '2026-08-28T10:00:00' },
-        { role: 'assistant', content: '48 小时内原路退回。', intent: 'faq', created_at: '2026-08-28T10:00:05' },
+        {
+          role: 'user',
+          content: '退货多久到账？',
+          intent: 'faq',
+          created_at: '2026-08-28T10:00:00',
+        },
+        {
+          role: 'assistant',
+          content: '48 小时内原路退回。',
+          intent: 'faq',
+          created_at: '2026-08-28T10:00:05',
+        },
       ],
     })
     ticketApi.listReplies.mockResolvedValue({ ticket_id: '', replies: [] })
@@ -230,9 +240,7 @@ describe('Chat 组件', () => {
 
   it('点击快捷提问填充输入框', async () => {
     const wrapper = mountChat()
-    const btn = wrapper
-      .findAll('.el-button-stub')
-      .find((b) => b.text().includes('物流到哪了'))
+    const btn = wrapper.findAll('.el-button-stub').find((b) => b.text().includes('物流到哪了'))
     await btn.trigger('click')
     expect(wrapper.vm.inputText).toBe('物流到哪了')
   })
@@ -339,7 +347,15 @@ describe('Chat 组件', () => {
         result: {
           order_sn: '20260801001',
           status: '已发货',
-          items: [{ product_id: 'P001', name: '华为 Mate 70 Pro', spec: '256G 曜石黑', price: 6999, quantity: 1 }],
+          items: [
+            {
+              product_id: 'P001',
+              name: '华为 Mate 70 Pro',
+              spec: '256G 曜石黑',
+              price: 6999,
+              quantity: 1,
+            },
+          ],
           pay_amount: 6999,
           logistics_no: 'SF1234567890',
           created_at: '2026-08-01 09:30:00',
@@ -399,7 +415,10 @@ describe('Chat 组件', () => {
       chatApi.chatStream.mockImplementation((q, opts) => {
         emit = opts.onEvent
         opts.onEvent('start', { query: q, intent: 'task' })
-        opts.onEvent('tool_call', { tool_name: 'query_order', arguments: { order_sn: '20260801001' } })
+        opts.onEvent('tool_call', {
+          tool_name: 'query_order',
+          arguments: { order_sn: '20260801001' },
+        })
         return Promise.resolve()
       })
 
@@ -659,7 +678,7 @@ describe('Chat 组件', () => {
   })
 
   it('管理员诊断面板：流式中实时显示阶段，完成后展示事件时间线与后端阶段耗时', async () => {
-    chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
+    chatApi.chatStream.mockImplementation((q, { onEvent }) => {
       onEvent('start', { query: q, intent: 'faq', route_source: 'rule', role: 'admin' })
       // 流式未收口：不触发 done，模拟正在处理（定位"卡住"环节的场景）
       return Promise.resolve()
@@ -968,9 +987,7 @@ describe('Chat 组件', () => {
     // 规范：麦克风按钮保留，点击后弹提示（不静默隐藏）
     expect(wrapper.find('.ai-mic').exists()).toBe(true)
     await wrapper.find('.ai-mic').trigger('click')
-    expect(ElMessage.warning).toHaveBeenCalledWith(
-      expect.stringContaining('不支持语音识别')
-    )
+    expect(ElMessage.warning).toHaveBeenCalledWith(expect.stringContaining('不支持语音识别'))
     // 无 speechSynthesis：播报按钮隐藏；发送按钮不受影响
     expect(wrapper.find('.ai-speak').exists()).toBe(false)
     expect(wrapper.find('.ai-send').exists()).toBe(true)
@@ -1064,7 +1081,7 @@ describe('Chat 组件', () => {
           this.lang = ''
           this.voice = null
         }
-      }
+      },
     )
     chatApi.chatStream.mockImplementation((q, { onEvent, onDone }) => {
       onEvent('start', { query: q, intent: 'chat' })
@@ -1324,7 +1341,7 @@ describe('Chat 组件', () => {
     // 以商品名作为用户消息走既有发送链路（chatStream 首参 = 消息文本）
     expect(chatApi.chatStream).toHaveBeenLastCalledWith(
       '追觅 S1 Pro 扫地机器人',
-      expect.objectContaining({ history: expect.anything() })
+      expect.objectContaining({ history: expect.anything() }),
     )
     // 用户气泡展示了该商品名（既有链路渲染；取最后一条用户消息）
     const userBubbles = wrapper.findAll('.bubble.user')

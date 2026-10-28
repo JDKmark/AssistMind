@@ -1,0 +1,36 @@
+# 依赖与构建产物
+node_modules/
+frontend/dist/
+frontend/coverage/
+backend/venv/
+**/__pycache__/
+
+# 锁文件与生成物（避免无意义的大 diff）
+package-lock.json
+frontend/package-lock.json
+*.min.js
+*.min.css
+
+# 数据与运行产物
+backend/eval/reports/
+backend/tests/load/results/
+knowledge/uploads/
+qdrant-data/
+pg-data/
+langfuse-data/
+
+# 本地私有与临时文件
+private-notes/
+.workbuddy-ai/
+*.bak
+*.bak_*
+*.tmp
+README.preview*.pdf
+
+# 内容型文档：中文长文与知识库语料不参与格式化（重排会破坏段落与锚点）
+knowledge/
+docs/
+*.md
+
+# 后端整体交由 ruff 管理（含 app/data 下的评测与路由数据 JSON，手工维护）
+backend/
