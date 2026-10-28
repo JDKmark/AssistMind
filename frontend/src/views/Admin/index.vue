@@ -127,44 +127,50 @@
       </template>
       <!-- 窄屏容器内横滚（P0-3）：页面不横向溢出，表格可滑动查看 -->
       <div class="table-scroll">
-      <el-table :data="tickets" size="small" border empty-text="暂无工单">
-        <el-table-column prop="id" label="工单号" min-width="220" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span class="am-mono">{{ row.id }}</span>
-        </template>
-      </el-table-column>
-        <el-table-column prop="user_id" label="客户" width="110" />
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="ticketStatusTagType(row.status)" size="small" effect="plain" class="am-tag-pill">
-              {{ ticketStatusLabel(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="优先级" width="90">
-          <template #default="{ row }">
-            <el-tag :type="priorityTagType(row.priority)" size="small" effect="plain" class="am-tag-pill">
-              {{ priorityLabel(row.priority) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="80">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" link @click="openTicketDetail(row)">
-              详情
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+        <el-table :data="tickets" size="small" border empty-text="暂无工单">
+          <el-table-column prop="id" label="工单号" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span class="am-mono">{{ row.id }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="user_id" label="客户" width="110" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag
+                :type="ticketStatusTagType(row.status)"
+                size="small"
+                effect="plain"
+                class="am-tag-pill"
+              >
+                {{ ticketStatusLabel(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="优先级" width="90">
+            <template #default="{ row }">
+              <el-tag
+                :type="priorityTagType(row.priority)"
+                size="small"
+                effect="plain"
+                class="am-tag-pill"
+              >
+                {{ priorityLabel(row.priority) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="80">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" link @click="openTicketDetail(row)">
+                详情
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
     </el-card>
 
     <!-- 工单详情（管理员查看）：右侧抽屉 -->
-    <el-drawer
-      v-model="ticketDetailVisible"
-      title="工单详情"
-      :size="isMobile ? '100%' : '560px'"
-    >
+    <el-drawer v-model="ticketDetailVisible" title="工单详情" :size="isMobile ? '100%' : '560px'">
       <div v-loading="ticketDetailLoading" class="detail-body">
         <el-descriptions v-if="currentTicketDetail" :column="1" border>
           <el-descriptions-item label="工单号">
@@ -178,12 +184,22 @@
             {{ currentTicketDetail.description }}
           </el-descriptions-item>
           <el-descriptions-item label="优先级">
-            <el-tag :type="priorityTagType(currentTicketDetail.priority)" size="small" effect="plain" class="am-tag-pill">
+            <el-tag
+              :type="priorityTagType(currentTicketDetail.priority)"
+              size="small"
+              effect="plain"
+              class="am-tag-pill"
+            >
               {{ priorityLabel(currentTicketDetail.priority) }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="ticketStatusTagType(currentTicketDetail.status)" size="small" effect="plain" class="am-tag-pill">
+            <el-tag
+              :type="ticketStatusTagType(currentTicketDetail.status)"
+              size="small"
+              effect="plain"
+              class="am-tag-pill"
+            >
               {{ ticketStatusLabel(currentTicketDetail.status) }}
             </el-tag>
           </el-descriptions-item>
@@ -201,8 +217,18 @@
           <div v-if="ticketReplies.length" class="reply-list">
             <div v-for="r in ticketReplies" :key="r.id" class="reply-item">
               <div class="reply-meta">
-                <el-tag size="small" :type="r.sender_role === 'user' ? 'info' : 'warning'" effect="plain">
-                  {{ r.sender_role === 'admin' ? '管理员 ' : r.sender_role === 'agent' ? '客服 ' : '用户 ' }}{{ r.sender_username }}
+                <el-tag
+                  size="small"
+                  :type="r.sender_role === 'user' ? 'info' : 'warning'"
+                  effect="plain"
+                >
+                  {{
+                    r.sender_role === 'admin'
+                      ? '管理员 '
+                      : r.sender_role === 'agent'
+                        ? '客服 '
+                        : '用户 '
+                  }}{{ r.sender_username }}
                 </el-tag>
                 <span class="reply-time">{{ fmtTime(r.created_at) }}</span>
               </div>
@@ -248,19 +274,25 @@
         </el-table-column>
         <el-table-column label="操作">
           <template #default="{ row }">
-            <el-button v-if="row.role === 'user'" size="small" @click="changeUserRole(row, 'agent')">设为客服</el-button>
-            <el-button v-else-if="row.role === 'agent'" size="small" @click="changeUserRole(row, 'user')">设为用户</el-button>
+            <el-button v-if="row.role === 'user'" size="small" @click="changeUserRole(row, 'agent')"
+              >设为客服</el-button
+            >
+            <el-button
+              v-else-if="row.role === 'agent'"
+              size="small"
+              @click="changeUserRole(row, 'user')"
+              >设为用户</el-button
+            >
             <el-popconfirm
               v-if="row.role !== 'admin'"
-              :title="row.is_active ? `确认停用用户 ${row.username}？` : `确认启用用户 ${row.username}？`"
+              :title="
+                row.is_active ? `确认停用用户 ${row.username}？` : `确认启用用户 ${row.username}？`
+              "
               width="240"
               @confirm="toggleUser(row)"
             >
               <template #reference>
-                <el-button
-                  size="small"
-                  :type="row.is_active ? 'danger' : 'success'"
-                >
+                <el-button size="small" :type="row.is_active ? 'danger' : 'success'">
                   {{ row.is_active ? '停用' : '启用' }}
                 </el-button>
               </template>
@@ -277,17 +309,21 @@
         <el-table-column prop="order_sn" label="订单号" />
         <el-table-column prop="owner_username" label="用户" />
         <el-table-column prop="status" label="状态" width="96">
-        <template #default="{ row }">
-          <el-tag size="small" type="info" effect="plain" class="am-tag-pill">
-            {{ row.status }}
-          </el-tag>
-        </template>
-      </el-table-column>
+          <template #default="{ row }">
+            <el-tag size="small" type="info" effect="plain" class="am-tag-pill">
+              {{ row.status }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="操作">
           <template #default="{ row }">
             <template v-if="row.status === '处理中'">
-              <el-button size="small" type="success" @click="changeRefundStatus(row, '已通过')">通过</el-button>
-              <el-button size="small" type="danger" @click="changeRefundStatus(row, '已拒绝')">拒绝</el-button>
+              <el-button size="small" type="success" @click="changeRefundStatus(row, '已通过')"
+                >通过</el-button
+              >
+              <el-button size="small" type="danger" @click="changeRefundStatus(row, '已拒绝')"
+                >拒绝</el-button
+              >
             </template>
           </template>
         </el-table-column>
@@ -305,81 +341,7 @@
       </el-table>
     </el-card>
 
-    <!-- 商城订单：按归属用户/状态筛选，分页查看 -->
-    <el-card shadow="never" class="panel-card mall-card">
-      <template #header>
-        <div class="card-header">
-          <span class="card-title">商城订单</span>
-          <div class="mall-filters">
-            <el-input
-              v-model="orderOwnerFilter"
-              size="small"
-              style="width: 200px"
-              placeholder="按用户筛选，如 user1"
-              clearable
-              @keyup.enter="searchOrders"
-              @clear="searchOrders"
-            />
-            <el-select
-              v-model="orderStatusFilter"
-              size="small"
-              style="width: 120px"
-              placeholder="全部状态"
-              clearable
-              @change="searchOrders"
-            >
-              <el-option label="待付款" value="待付款" />
-              <el-option label="待发货" value="待发货" />
-              <el-option label="已发货" value="已发货" />
-              <el-option label="已完成" value="已完成" />
-            </el-select>
-            <el-button size="small" type="primary" :loading="orderLoading" @click="searchOrders">
-              查询
-            </el-button>
-          </div>
-        </div>
-      </template>
-
-      <!-- 窄屏容器内横滚（P0-3） -->
-      <div class="table-scroll">
-      <el-table :data="orders" size="small" border empty-text="暂无订单数据">
-        <el-table-column label="订单号" min-width="150">
-          <template #default="{ row }">{{ row.order_sn || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="用户" width="100">
-          <template #default="{ row }">{{ row.owner_username || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="orderStatusTagType(row.status)" size="small" effect="plain" class="am-tag-pill">
-              {{ row.status || '-' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="实付金额(¥)" width="110" align="right">
-          <template #default="{ row }">
-            <span class="am-mono amount-cell">{{ fmtAmount(row.pay_amount) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="物流单号" min-width="140">
-          <template #default="{ row }">{{ row.logistics_no || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="下单时间" width="150">
-          <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
-        </el-table-column>
-      </el-table>
-      </div>
-
-      <div class="mall-pagination">
-        <el-pagination
-          v-model:current-page="orderPage"
-          :total="orderTotal"
-          :page-size="ORDER_PAGE_SIZE"
-          layout="total, prev, pager, next"
-          @current-change="loadOrders"
-        />
-      </div>
-    </el-card>
+    <AdminOrders ref="ordersRef" />
 
     <!-- 反馈与追溯（Bad Case 归因）：差评列表 → 会话时间线抽屉，借鉴 agent harness 的步骤可视化 -->
     <el-card shadow="never" class="panel-card feedback-card">
@@ -387,12 +349,22 @@
         <div class="card-header">
           <span class="card-title">反馈与追溯</span>
           <div class="feedback-filters">
-            <el-select v-model="fbScoreFilter" size="small" style="width: 112px" @change="loadFeedback">
+            <el-select
+              v-model="fbScoreFilter"
+              size="small"
+              style="width: 112px"
+              @change="loadFeedback"
+            >
               <el-option label="全部评分" :value="0" />
               <el-option label="差评 1-2" :value="2" />
               <el-option label="好评 4-5" :value="4" />
             </el-select>
-            <el-select v-model="fbExportedFilter" size="small" style="width: 128px" @change="loadFeedback">
+            <el-select
+              v-model="fbExportedFilter"
+              size="small"
+              style="width: 128px"
+              @change="loadFeedback"
+            >
               <el-option label="全部状态" value="all" />
               <el-option label="已回流评估集" value="exported" />
               <el-option label="待回流" value="pending" />
@@ -409,32 +381,37 @@
 
       <!-- 窄屏容器内横滚（P0-3） -->
       <div class="table-scroll">
-      <el-table :data="feedbacks" size="small" border empty-text="暂无反馈数据">
-        <el-table-column label="评分" width="70">
-          <template #default="{ row }">
-            <el-tag :type="row.score <= 2 ? 'danger' : 'success'" size="small" effect="plain" class="am-tag-pill">
-              {{ row.score }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="问题" min-width="170">
-          <template #default="{ row }">{{ row.query || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="回答摘要" min-width="170">
-          <template #default="{ row }">{{ (row.answer || '').slice(0, 40) }}</template>
-        </el-table-column>
-        <el-table-column label="来源数" width="70">
-          <template #default="{ row }">{{ (row.sources || []).length }}</template>
-        </el-table-column>
-        <el-table-column label="时间" width="104">
-          <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" link @click="openTrace(row)">追溯</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+        <el-table :data="feedbacks" size="small" border empty-text="暂无反馈数据">
+          <el-table-column label="评分" width="70">
+            <template #default="{ row }">
+              <el-tag
+                :type="row.score <= 2 ? 'danger' : 'success'"
+                size="small"
+                effect="plain"
+                class="am-tag-pill"
+              >
+                {{ row.score }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="问题" min-width="170">
+            <template #default="{ row }">{{ row.query || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="回答摘要" min-width="170">
+            <template #default="{ row }">{{ (row.answer || '').slice(0, 40) }}</template>
+          </el-table-column>
+          <el-table-column label="来源数" width="70">
+            <template #default="{ row }">{{ (row.sources || []).length }}</template>
+          </el-table-column>
+          <el-table-column label="时间" width="104">
+            <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="80">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" link @click="openTrace(row)">追溯</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
       <div v-if="fbError" class="muted-text">{{ fbError }}</div>
     </el-card>
@@ -445,7 +422,9 @@
         <div class="trace-question">
           <div class="overview-title">问题</div>
           <div>{{ currentTrace.query || '-' }}</div>
-          <div class="muted-text">评分 {{ currentTrace.score }} · {{ fmtTime(currentTrace.created_at) }}</div>
+          <div class="muted-text">
+            评分 {{ currentTrace.score }} · {{ fmtTime(currentTrace.created_at) }}
+          </div>
         </div>
 
         <div class="timeline">
@@ -517,13 +496,15 @@ import { getHealth } from '@/api/health'
 import { listFeedback } from '@/api/feedback'
 import { listDocs } from '@/api/knowledge'
 import { listTickets } from '@/api/ticket'
-import { listOrders, listRefunds, updateRefundStatus } from '@/api/mall'
+import { listRefunds, updateRefundStatus } from '@/api/mall'
 import { getOverview, listUsers, updateUser, listAuditLogs } from '@/api/admin'
 import { getTicket, listReplies, addReply } from '@/api/ticket'
 import { triggerEvaluation } from '@/api/evaluate'
 import { getJobStatus } from '@/api/knowledge'
 import { backendStatus } from '@/api/request'
 import { useBreakpoint } from '@/utils/useBreakpoint'
+import { fmtTime } from '@/utils/datetime'
+import AdminOrders from '@/components/Admin/AdminOrders.vue'
 import {
   ticketStatusLabel,
   ticketStatusTagType,
@@ -534,6 +515,8 @@ import {
 } from '@/utils/labels'
 
 const health = ref(null)
+// 商城订单面板（子组件）：顶部「全部重试」需要触发它重新加载
+const ordersRef = ref(null)
 const healthLoading = ref(false)
 
 // 移动端抽屉全宽 / 表格横滚（P0-2 / P0-3）
@@ -650,7 +633,7 @@ async function loadHealth() {
   healthLoading.value = true
   try {
     health.value = await getHealth()
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
   } finally {
     healthLoading.value = false
@@ -684,7 +667,7 @@ async function retryAll() {
     loadOverview(),
     loadAdminData(),
     loadRefunds(),
-    loadOrders(),
+    ordersRef.value?.load(),
     loadFeedback(),
   ])
 }
@@ -730,7 +713,7 @@ async function openTicketDetail(row) {
     const [detail, replyData] = await Promise.all([getTicket(row.id), listReplies(row.id)])
     currentTicketDetail.value = detail
     ticketReplies.value = replyData.replies || []
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
     currentTicketDetail.value = null
   } finally {
@@ -812,62 +795,11 @@ async function loadOverview() {
     kbError.value = kb.error || ''
     tickets.value = ticketData.tickets || []
     ticketTotal.value = ticketData.total != null ? ticketData.total : tickets.value.length
-  } catch (e) {
+  } catch {
     kbError.value = '管理概览加载失败'
   } finally {
     dataLoading.value = false
   }
-}
-
-// ---------- 商城订单 ----------
-
-const ORDER_PAGE_SIZE = 10
-const ORDER_STATUS_TAG_TYPES = {
-  待付款: 'warning',
-  待发货: 'info',
-  已发货: 'primary',
-  已完成: 'success',
-}
-const orders = ref([])
-const orderTotal = ref(0)
-const orderPage = ref(1)
-const orderLoading = ref(false)
-const orderOwnerFilter = ref('')
-const orderStatusFilter = ref('')
-
-function orderStatusTagType(status) {
-  return ORDER_STATUS_TAG_TYPES[status] || 'info'
-}
-
-function fmtAmount(amount) {
-  const n = Number(amount)
-  return Number.isFinite(n) ? n.toFixed(2) : '-'
-}
-
-async function loadOrders() {
-  orderLoading.value = true
-  try {
-    const params = {
-      limit: ORDER_PAGE_SIZE,
-      offset: (orderPage.value - 1) * ORDER_PAGE_SIZE,
-    }
-    if (orderOwnerFilter.value.trim()) params.owner_username = orderOwnerFilter.value.trim()
-    if (orderStatusFilter.value) params.status = orderStatusFilter.value
-    const data = await listOrders(params)
-    orders.value = data.orders || []
-    orderTotal.value = data.total != null ? data.total : orders.value.length
-  } catch (e) {
-    // 后端不可用已由拦截器节流提示（页面横幅提示重试）；此处静默降级为空列表
-    orders.value = []
-    orderTotal.value = 0
-  } finally {
-    orderLoading.value = false
-  }
-}
-
-function searchOrders() {
-  orderPage.value = 1
-  loadOrders()
 }
 
 // ---------- 反馈与追溯 ----------
@@ -884,7 +816,7 @@ async function loadFeedback() {
     const data = await listFeedback(params)
     feedbacks.value = data.items || []
     langfuseHost.value = data.langfuse_host || ''
-  } catch (e) {
+  } catch {
     // 错误已由 request 拦截器统一提示
     fbError.value = '反馈数据加载失败'
   } finally {
@@ -954,11 +886,6 @@ async function pollEvalJob(jobId) {
   evalStatusText.value = '评估仍在后台执行，稍后刷新查看结果'
 }
 
-function fmtTime(iso) {
-  if (!iso) return ''
-  return String(iso).slice(0, 16).replace('T', ' ')
-}
-
 function fmtScore(score) {
   const n = Number(score)
   return Number.isFinite(n) ? n.toFixed(2) : ''
@@ -989,7 +916,7 @@ onMounted(() => {
   loadOverview()
   loadAdminData()
   loadRefunds()
-  loadOrders()
+  // 商城订单由 <AdminOrders> 自行挂载加载
   loadFeedback()
 })
 
@@ -1101,14 +1028,9 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
   .ticket-filters .el-select,
-  .mall-filters .el-select,
   .feedback-filters .el-select,
-  .ticket-filters .el-input,
-  .mall-filters .el-input {
+  .ticket-filters .el-input {
     width: 100% !important;
-  }
-  .mall-pagination {
-    justify-content: center;
   }
   .reply-input-row {
     flex-direction: column;
@@ -1154,21 +1076,12 @@ onUnmounted(() => {
   color: var(--am-text-2);
 }
 
-/* 商城订单 */
-.mall-card {
-  margin-top: 16px;
-}
-.mall-filters,
+/* 工单筛选 */
 .ticket-filters {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-.mall-pagination {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
 }
 
 /* 反馈与追溯 */

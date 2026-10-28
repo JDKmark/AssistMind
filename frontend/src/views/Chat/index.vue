@@ -8,7 +8,16 @@
             <span class="muted-text">可咨询商品、订单、物流与售后问题</span>
             <!-- 转人工：常驻入口（成熟 SaaS 客服台模式），点击直接发起转人工会话 -->
             <el-button size="small" plain class="human-btn" @click="handleTransferHuman">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <svg
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <path d="M4 13c0-4.4 3.6-8 8-8s8 3.6 8 8" />
                 <rect x="2.5" y="13" width="4" height="6" rx="1.5" />
                 <rect x="17.5" y="13" width="4" height="6" rx="1.5" />
@@ -42,372 +51,267 @@
       <div ref="listRef" class="chat-messages" @scroll="onListScroll">
         <div class="chat-thread">
           <div v-if="messages.length === 0" class="chat-empty">
-            <el-empty description="您好，我是 AssistMind 智能客服，请问有什么可以帮您？" :image-size="80" />
+            <el-empty
+              description="您好，我是 AssistMind 智能客服，请问有什么可以帮您？"
+              :image-size="80"
+            />
           </div>
 
-          <div
-            v-for="m in messages"
-            :key="m.id"
-            class="chat-row"
-            :class="m.role"
-          >
-          <div class="bubble" :class="m.role">
-            <template v-if="m.role === 'user'">
-              <div class="bubble-text">{{ m.content }}</div>
-            </template>
-            <template v-else>
-              <!-- 流式状态 -->
-              <div v-if="m.status !== 'done' && m.status !== 'error'" class="status-line">
-                <el-icon class="is-loading"><Loading /></el-icon>
-                <span>{{ stageText(m) }}</span>
-              </div>
+          <div v-for="m in messages" :key="m.id" class="chat-row" :class="m.role">
+            <div class="bubble" :class="m.role">
+              <template v-if="m.role === 'user'">
+                <div class="bubble-text">{{ m.content }}</div>
+              </template>
+              <template v-else>
+                <!-- 流式状态 -->
+                <div v-if="m.status !== 'done' && m.status !== 'error'" class="status-line">
+                  <el-icon class="is-loading"><Loading /></el-icon>
+                  <span>{{ stageText(m) }}</span>
+                </div>
 
-              <!-- 查询改写（内部机制：仅 staff 可见；普通用户只感知"正在检索"） -->
-              <div v-if="isStaff && m.rewrites && m.rewrites.length" class="rewrite-line">
-                <el-tag size="small" type="info" effect="plain">查询已改写</el-tag>
-                <span class="muted-text">已根据您的描述扩展检索</span>
-              </div>
+                <!-- 查询改写（内部机制：仅 staff 可见；普通用户只感知"正在检索"） -->
+                <div v-if="isStaff && m.rewrites && m.rewrites.length" class="rewrite-line">
+                  <el-tag size="small" type="info" effect="plain">查询已改写</el-tag>
+                  <span class="muted-text">已根据您的描述扩展检索</span>
+                </div>
 
-              <!-- 工具调用过程（task 意图）：
+                <!-- 工具调用过程（task 意图）：
                    过程行（工具名/参数 JSON）是内部机制，仅 staff 可见；
                    结果卡片（订单/物流/商品/售后）是业务结果，所有角色可见 -->
-              <div v-if="m.toolCalls.length" class="tool-section">
-                <div
-                  v-for="(tc, i) in m.toolCalls"
-                  :key="i"
-                  class="tool-item"
-                >
-                  <template v-if="isStaff">
-                    <el-tag size="small" type="warning">工具调用</el-tag>
-                    <span class="tool-name">调用 {{ toolLabel(tc.tool_name) }}</span>
-                    <span v-if="toolArgsText(tc)" class="tool-args">{{ toolArgsText(tc) }}</span>
-                  </template>
-
-                  <!-- 工具结果卡片（订单/物流/商品/售后）：白卡 + 左侧类型色条 -->
-                  <div v-if="cardOf(tc)" class="tool-result-card" :class="`card-type-${cardOf(tc).type}`">
-                    <!-- 订单卡片 -->
-                    <template v-if="cardOf(tc).type === 'order'">
-                      <el-descriptions :column="1" border size="small" class="card-desc">
-                        <el-descriptions-item label="订单号">
-                          {{ cardOf(tc).data.order_sn }}
-                        </el-descriptions-item>
-                        <el-descriptions-item label="状态">
-                          {{ cardOf(tc).data.status }}
-                        </el-descriptions-item>
-                        <el-descriptions-item label="实付金额">
-                          ¥{{ cardOf(tc).data.pay_amount }}
-                        </el-descriptions-item>
-                        <el-descriptions-item label="物流单号">
-                          {{ cardOf(tc).data.logistics_no || '未发货' }}
-                        </el-descriptions-item>
-                        <el-descriptions-item label="商品明细">
-                          <div v-for="(it, j) in cardOf(tc).data.items" :key="j">
-                            {{ it.name }}（{{ it.spec }}）×{{ it.quantity }} ¥{{ it.price }}
-                          </div>
-                        </el-descriptions-item>
-                      </el-descriptions>
+                <div v-if="m.toolCalls.length" class="tool-section">
+                  <div v-for="(tc, i) in m.toolCalls" :key="i" class="tool-item">
+                    <template v-if="isStaff">
+                      <el-tag size="small" type="warning">工具调用</el-tag>
+                      <span class="tool-name">调用 {{ toolLabel(tc.tool_name) }}</span>
+                      <span v-if="toolArgsText(tc)" class="tool-args">{{ toolArgsText(tc) }}</span>
                     </template>
 
-                    <!-- 物流轨迹卡片 -->
-                    <template v-else-if="cardOf(tc).type === 'logistics'">
-                      <el-timeline class="logistics-timeline">
-                        <el-timeline-item
-                          v-for="(t, j) in cardOf(tc).data"
-                          :key="j"
-                          :timestamp="t.ts"
-                          size="small"
-                        >
-                          {{ t.content }}
-                        </el-timeline-item>
-                      </el-timeline>
-                    </template>
+                    <!-- 工具结果卡片（订单/物流/商品/售后）：白卡 + 左侧类型色条 -->
+                    <div
+                      v-if="cardOf(tc)"
+                      class="tool-result-card"
+                      :class="`card-type-${cardOf(tc).type}`"
+                    >
+                      <!-- 订单卡片 -->
+                      <template v-if="cardOf(tc).type === 'order'">
+                        <el-descriptions :column="1" border size="small" class="card-desc">
+                          <el-descriptions-item label="订单号">
+                            {{ cardOf(tc).data.order_sn }}
+                          </el-descriptions-item>
+                          <el-descriptions-item label="状态">
+                            {{ cardOf(tc).data.status }}
+                          </el-descriptions-item>
+                          <el-descriptions-item label="实付金额">
+                            ¥{{ cardOf(tc).data.pay_amount }}
+                          </el-descriptions-item>
+                          <el-descriptions-item label="物流单号">
+                            {{ cardOf(tc).data.logistics_no || '未发货' }}
+                          </el-descriptions-item>
+                          <el-descriptions-item label="商品明细">
+                            <div v-for="(it, j) in cardOf(tc).data.items" :key="j">
+                              {{ it.name }}（{{ it.spec }}）×{{ it.quantity }} ¥{{ it.price }}
+                            </div>
+                          </el-descriptions-item>
+                        </el-descriptions>
+                      </template>
 
-                    <!-- 商品卡片 -->
-                    <template v-else-if="cardOf(tc).type === 'product'">
-                      <el-descriptions :column="1" border size="small" class="card-desc">
-                        <el-descriptions-item label="商品">{{ cardOf(tc).data.name }}</el-descriptions-item>
-                        <el-descriptions-item label="规格">{{ cardOf(tc).data.spec }}</el-descriptions-item>
-                        <el-descriptions-item label="价格">¥{{ cardOf(tc).data.price }}</el-descriptions-item>
-                        <el-descriptions-item label="库存">{{ cardOf(tc).data.stock }}</el-descriptions-item>
-                        <el-descriptions-item v-if="cardOf(tc).data.services && cardOf(tc).data.services.length" label="服务">
-                          <el-tag
-                            v-for="(s, k) in cardOf(tc).data.services"
-                            :key="k"
+                      <!-- 物流轨迹卡片 -->
+                      <template v-else-if="cardOf(tc).type === 'logistics'">
+                        <el-timeline class="logistics-timeline">
+                          <el-timeline-item
+                            v-for="(t, j) in cardOf(tc).data"
+                            :key="j"
+                            :timestamp="t.ts"
                             size="small"
-                            type="success"
-                            effect="plain"
-                            class="service-tag"
                           >
-                            {{ s }}
-                          </el-tag>
-                        </el-descriptions-item>
-                      </el-descriptions>
-                    </template>
+                            {{ t.content }}
+                          </el-timeline-item>
+                        </el-timeline>
+                      </template>
 
-                    <!-- 售后结果卡片 -->
-                    <template v-else-if="cardOf(tc).type === 'refund'">
-                      <el-descriptions :column="1" border size="small" class="card-desc">
-                        <el-descriptions-item label="售后单号">{{ cardOf(tc).data.refund_id }}</el-descriptions-item>
-                        <el-descriptions-item label="状态">{{ cardOf(tc).data.status }}</el-descriptions-item>
-                        <el-descriptions-item label="说明">{{ cardOf(tc).data.message }}</el-descriptions-item>
-                      </el-descriptions>
-                    </template>
+                      <!-- 商品卡片 -->
+                      <template v-else-if="cardOf(tc).type === 'product'">
+                        <el-descriptions :column="1" border size="small" class="card-desc">
+                          <el-descriptions-item label="商品">{{
+                            cardOf(tc).data.name
+                          }}</el-descriptions-item>
+                          <el-descriptions-item label="规格">{{
+                            cardOf(tc).data.spec
+                          }}</el-descriptions-item>
+                          <el-descriptions-item label="价格"
+                            >¥{{ cardOf(tc).data.price }}</el-descriptions-item
+                          >
+                          <el-descriptions-item label="库存">{{
+                            cardOf(tc).data.stock
+                          }}</el-descriptions-item>
+                          <el-descriptions-item
+                            v-if="cardOf(tc).data.services && cardOf(tc).data.services.length"
+                            label="服务"
+                          >
+                            <el-tag
+                              v-for="(s, k) in cardOf(tc).data.services"
+                              :key="k"
+                              size="small"
+                              type="success"
+                              effect="plain"
+                              class="service-tag"
+                            >
+                              {{ s }}
+                            </el-tag>
+                          </el-descriptions-item>
+                        </el-descriptions>
+                      </template>
+
+                      <!-- 售后结果卡片 -->
+                      <template v-else-if="cardOf(tc).type === 'refund'">
+                        <el-descriptions :column="1" border size="small" class="card-desc">
+                          <el-descriptions-item label="售后单号">{{
+                            cardOf(tc).data.refund_id
+                          }}</el-descriptions-item>
+                          <el-descriptions-item label="状态">{{
+                            cardOf(tc).data.status
+                          }}</el-descriptions-item>
+                          <el-descriptions-item label="说明">{{
+                            cardOf(tc).data.message
+                          }}</el-descriptions-item>
+                        </el-descriptions>
+                      </template>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- 工单提示 -->
-              <el-alert
-                v-if="m.ticketId"
-                type="success"
-                :closable="false"
-                show-icon
-                class="ticket-alert"
-              >
-                <template #title>
-                  已创建工单
-                  {{ m.ticketId }}，前往
-                  <router-link to="/tickets" class="ticket-link">工单列表</router-link>
-                </template>
-              </el-alert>
+                <!-- 工单提示 -->
+                <el-alert
+                  v-if="m.ticketId"
+                  type="success"
+                  :closable="false"
+                  show-icon
+                  class="ticket-alert"
+                >
+                  <template #title>
+                    已创建工单
+                    {{ m.ticketId }}，前往
+                    <router-link to="/tickets" class="ticket-link">工单列表</router-link>
+                  </template>
+                </el-alert>
 
-              <!-- 回答 -->
-              <div v-if="m.content" class="bubble-text md-body" v-html="renderMd(m.content)" />
-              <div
-                v-else-if="m.status === 'done'"
-                class="bubble-text muted-text"
-              >
-                （暂无回答，可尝试转人工客服）
-              </div>
+                <!-- 回答 -->
+                <div v-if="m.content" class="bubble-text md-body" v-html="renderMd(m.content)" />
+                <div v-else-if="m.status === 'done'" class="bubble-text muted-text">
+                  （暂无回答，可尝试转人工客服）
+                </div>
 
-              <!-- 产品消歧候选卡片（phase15，clarify 反问回合）：点击以该商品名
+                <!-- 产品消歧候选卡片（phase15，clarify 反问回合）：点击以该商品名
                    走既有发送链路发出，下一轮经别名召回/信号词自动定向 -->
-              <div
-                v-if="m.disambiguation && m.disambiguation.status === 'clarify' && (m.disambiguation.candidates || []).length"
-                class="disambig-cards"
-              >
-                <el-button
-                  v-for="c in m.disambiguation.candidates"
-                  :key="c.product_id"
-                  class="disambig-card"
-                  @click="sendDisambigChoice(c)"
+                <div
+                  v-if="
+                    m.disambiguation &&
+                    m.disambiguation.status === 'clarify' &&
+                    (m.disambiguation.candidates || []).length
+                  "
+                  class="disambig-cards"
                 >
-                  <span class="disambig-card-body">
-                    <span class="disambig-card-name">{{ c.name }}</span>
-                    <span class="disambig-card-spec">{{ c.spec }}</span>
-                    <span class="disambig-card-hint">点击咨询这款 →</span>
-                  </span>
-                </el-button>
-              </div>
+                  <el-button
+                    v-for="c in m.disambiguation.candidates"
+                    :key="c.product_id"
+                    class="disambig-card"
+                    @click="sendDisambigChoice(c)"
+                  >
+                    <span class="disambig-card-body">
+                      <span class="disambig-card-name">{{ c.name }}</span>
+                      <span class="disambig-card-spec">{{ c.spec }}</span>
+                      <span class="disambig-card-hint">点击咨询这款 →</span>
+                    </span>
+                  </el-button>
+                </div>
 
-              <!-- 诊断信息（仅 admin/agent 可见）：流式中实时展示阶段/耗时，完成后含
+                <!-- 诊断信息（仅 admin/agent 可见）：流式中实时展示阶段/耗时，完成后含
                    来源明细 + 事件时间线 + 阶段耗时 + 完整诊断 JSON 复制（便于定位问题） -->
-              <div v-if="isStaff && (m.started || m.status === 'done')" class="diag-section">
-                <button
-                  type="button"
-                  class="diag-header"
-                  :class="{ open: m.diagOpen }"
-                  @click="m.diagOpen = !m.diagOpen"
-                >
-                  <svg class="diag-caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6" /></svg>
-                  <span class="diag-title">诊断信息</span>
-                  <span class="diag-chips">
-                    <span v-if="m.status !== 'done' && m.status !== 'error'" class="diag-chip chip-live">
-                      {{ stageText(m) }} {{ fmtMs(m.elapsedMs) }}
-                    </span>
-                    <span class="diag-chip chip-intent">
-                      {{ intentLabel(m.intent) }}<template v-if="m.routeSource"> · {{ routeLabel(m.routeSource) }}</template>
-                    </span>
-                    <span v-if="m.elapsedMs" class="diag-chip">{{ fmtMs(m.elapsedMs) }}</span>
-                    <span v-if="m.fromCache" class="diag-chip chip-cache">缓存 {{ m.fromCache }}</span>
-                    <span v-if="m.cragAction" class="diag-chip">{{ cragLabel(m.cragAction) }}</span>
-                    <span v-if="m.cragScore != null && m.cragScore !== ''" class="diag-chip chip-crag">
-                      CRAG {{ m.cragScore }}
-                    </span>
-                    <span v-if="m.degraded.length" class="diag-chip chip-degraded">
-                      降级：{{ m.degraded.join('、') }}
-                    </span>
-                    <span v-if="m.disambiguation" class="diag-chip chip-disambig">
-                      消歧 {{ m.disambiguation.status }}<template v-if="m.disambiguation.method"> · {{ m.disambiguation.method }}</template>
-                    </span>
-                  </span>
-                  <span class="diag-toggle-text">{{ m.diagOpen ? '收起' : '展开' }}</span>
-                </button>
-                <div v-show="m.diagOpen" class="diag-body">
-                  <!-- 会话上下文：确认看到的是谁的问题、什么权限/语气在生效 -->
-                  <div class="diag-row">
-                    <span class="diag-row-label">当前用户</span>
-                    <code class="diag-code">{{ authStore.user?.username || '—' }}</code>
-                    <el-tag
-                      size="small"
-                      effect="plain"
-                      :type="authStore.role === 'admin' ? 'danger' : 'warning'"
-                    >
-                      {{ authStore.role || '—' }}
-                    </el-tag>
-                    <span v-if="personaName" class="diag-chip">语气: {{ personaName }}</span>
-                  </div>
+                <ChatDiagnostics
+                  v-if="isStaff && (m.started || m.status === 'done')"
+                  :message="m"
+                  :persona-name="personaName"
+                  :query="queryOf(m)"
+                />
 
-                  <!-- 后端精确阶段耗时（faq：检索/生成/总耗时；其余意图仅前端总耗时） -->
-                  <div v-if="stageBreakdown(m).length" class="diag-block">
-                    <div class="diag-caption">
-                      阶段耗时{{ hasBackendTimings(m) ? '（后端计时）' : '（前端由事件间隔推断）' }}
-                    </div>
-                    <div v-for="row in stageBreakdown(m)" :key="row[0]" class="diag-stage-row">
-                      <span class="diag-stage-name">{{ row[0] }}</span>
-                      <span class="diag-stage-val">{{ fmtMs(row[1]) }}</span>
-                    </div>
-                  </div>
-
-                  <!-- 查询改写变体（CRAG 被动改写实际用于二次检索的词） -->
-                  <div v-if="m.rewrites && m.rewrites.length" class="diag-block">
-                    <div class="diag-caption">查询改写变体（二次检索用）</div>
-                    <div v-for="(r, i) in m.rewrites" :key="i" class="diag-line">
-                      <span class="diag-line-idx">{{ i + 1 }}</span>
-                      <span class="diag-line-text">{{ r }}</span>
-                    </div>
-                  </div>
-
-                  <!-- 产品消歧决策（phase15）：status/method 与定向商品或候选明细 -->
-                  <div v-if="m.disambiguation" class="diag-block">
-                    <div class="diag-caption">产品消歧决策</div>
-                    <div class="diag-line">
-                      <span class="diag-line-name">决策</span>
-                      <span class="diag-line-text">
-                        {{ m.disambiguation.status }}<template v-if="m.disambiguation.method"> · {{ m.disambiguation.method }}</template>
-                      </span>
-                    </div>
-                    <div
-                      v-if="m.disambiguation.product_id || m.disambiguation.product_name"
-                      class="diag-line"
-                    >
-                      <span class="diag-line-name">定向</span>
-                      <span class="diag-line-text">{{ m.disambiguation.product_id }} {{ m.disambiguation.product_name }}</span>
-                    </div>
-                    <div
-                      v-for="c in m.disambiguation.candidates || []"
-                      :key="c.product_id"
-                      class="diag-line"
-                    >
-                      <span class="diag-line-name">{{ c.product_id }}</span>
-                      <span class="diag-line-text">{{ c.name }}（{{ c.spec }}）</span>
-                    </div>
-                  </div>
-
-                  <!-- 事件时间线：每个 SSE 事件的相对时刻与间隔，定位卡在哪个环节 -->
-                  <div class="diag-block" v-if="displayEvents(m).length">
-                    <div class="diag-caption">事件时间线（相对发送时刻 · 间隔=与上条间隔）</div>
-                    <div v-for="(e, i) in displayEvents(m)" :key="i" class="diag-line">
-                      <span class="diag-line-t">{{ fmtMs(e.t) }}</span>
-                      <span class="diag-line-name" :class="`evt-${e.name}`">{{ eventLabel(e.name) }}</span>
-                      <span v-if="e.dt >= 100" class="diag-line-gap">+{{ fmtMs(e.dt) }}</span>
-                      <span class="diag-line-text">{{ evtDataText(e) }}</span>
-                    </div>
-                  </div>
-
-                  <!-- 知识来源（最终排序） -->
-                  <template v-if="m.sources.length">
-                    <div class="diag-row">
-                      <span class="diag-row-label">知识来源（{{ m.sources.length }} 条，最终排序）</span>
-                    </div>
-                    <div class="diag-sources">
-                      <div v-for="(s, i) in m.sources" :key="i" class="diag-source">
-                        <span class="diag-source-idx">{{ i + 1 }}</span>
-                        <span class="diag-source-title">{{ s.title || s.snippet || '知识库命中' }}</span>
-                        <span class="diag-source-doc">{{ s.doc_id || s.source || '' }}</span>
-                        <span class="diag-source-score">{{ fmtScore(s.score) }}</span>
-                        <el-button
-                          v-if="s.text"
-                          link
-                          type="primary"
-                          size="small"
-                          class="diag-source-toggle"
-                          @click="toggleSourceDetail(m, i)"
+                <!-- 反馈（Bad Case 收集入口）：口袋按钮 + 内联评论行 -->
+                <div v-if="m.status === 'done' && !m.isNotice" class="feedback-row">
+                  <template v-if="!m.feedbackSubmitted">
+                    <div class="fb-group">
+                      <button
+                        class="fb-btn"
+                        :class="{ 'is-active': m.feedbackScore === 5 }"
+                        :title="m.feedbackScore === 5 ? '已选' : '有帮助'"
+                        @click="m.feedbackScore = 5"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
                         >
-                          {{ m.srcOpen === i ? '收起' : '溯因' }}
-                        </el-button>
-                        <div v-if="m.srcOpen === i" class="diag-source-detail">{{ s.text }}</div>
-                      </div>
+                          <path
+                            d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        class="fb-btn fb-btn-down"
+                        :class="{ 'is-active': m.feedbackScore === 1 }"
+                        :title="m.feedbackScore === 1 ? '已选' : '没帮助'"
+                        @click="m.feedbackScore = 1"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path
+                            d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7 0h3a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3"
+                          />
+                        </svg>
+                      </button>
+                      <textarea
+                        v-model="m.feedbackComment"
+                        class="fb-comment"
+                        rows="1"
+                        placeholder="补充说明（选填）"
+                        maxlength="1000"
+                      />
+                      <button
+                        class="fb-submit"
+                        :disabled="m.feedbackSubmitting"
+                        :class="{ 'is-loading': m.feedbackSubmitting }"
+                        @click="submitMessageFeedback(m)"
+                      >
+                        提交
+                      </button>
                     </div>
                   </template>
-                  <div v-else-if="m.status === 'done'" class="diag-row">
-                    无检索来源（chat/task 意图或缓存命中）
-                  </div>
-
-                  <div class="diag-row">
-                    <span class="diag-row-label">Trace ID</span>
-                    <code class="diag-code">{{ m.traceId || '—' }}</code>
-                    <el-button v-if="m.traceId" link type="primary" size="small" @click="copyTrace(m.traceId)">
-                      复制
-                    </el-button>
-                  </div>
-                  <div class="diag-row">
-                    <span class="diag-row-label">会话 ID</span>
-                    <code class="diag-code">{{ m.conversationId || '—' }}</code>
-                    <el-button v-if="m.conversationId" link type="primary" size="small" @click="copyTrace(m.conversationId)">
-                      复制
-                    </el-button>
-                  </div>
-                  <div class="diag-footer" v-if="m.status === 'done' || m.status === 'error'">
-                    <el-button link type="primary" size="small" @click="copyDiagnosis(m)">
-                      复制完整诊断 JSON（上报排查）
-                    </el-button>
-                  </div>
+                  <span v-else class="muted-text">已提交反馈，感谢您的反馈！</span>
                 </div>
-              </div>
 
-              <!-- 反馈（Bad Case 收集入口）：口袋按钮 + 内联评论行 -->
-              <div v-if="m.status === 'done' && !m.isNotice" class="feedback-row">
-                <template v-if="!m.feedbackSubmitted">
-                  <div class="fb-group">
-                    <button
-                      class="fb-btn"
-                      :class="{ 'is-active': m.feedbackScore === 5 }"
-                      :title="m.feedbackScore === 5 ? '已选' : '有帮助'"
-                      @click="m.feedbackScore = 5"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
-                    </button>
-                    <button
-                      class="fb-btn fb-btn-down"
-                      :class="{ 'is-active': m.feedbackScore === 1 }"
-                      :title="m.feedbackScore === 1 ? '已选' : '没帮助'"
-                      @click="m.feedbackScore = 1"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7 0h3a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3"/></svg>
-                    </button>
-                    <textarea
-                      v-model="m.feedbackComment"
-                      class="fb-comment"
-                      rows="1"
-                      placeholder="补充说明（选填）"
-                      maxlength="1000"
-                    />
-                    <button
-                      class="fb-submit"
-                      :disabled="m.feedbackSubmitting"
-                      :class="{ 'is-loading': m.feedbackSubmitting }"
-                      @click="submitMessageFeedback(m)"
-                    >
-                      提交
-                    </button>
-                  </div>
-                </template>
-                <span v-else class="muted-text">已提交反馈，感谢您的反馈！</span>
-              </div>
-
-              <!-- 错误提示 -->
-              <el-alert
-                v-if="m.status === 'error'"
-                type="error"
-                :closable="false"
-                show-icon
-                class="error-alert"
-                :title="m.errorMsg || '服务异常，请重试'"
-              />
-            </template>
+                <!-- 错误提示 -->
+                <el-alert
+                  v-if="m.status === 'error'"
+                  type="error"
+                  :closable="false"
+                  show-icon
+                  class="error-alert"
+                  :title="m.errorMsg || '服务异常，请重试'"
+                />
+              </template>
+            </div>
           </div>
-        </div>
 
           <!-- 人工客服线程（transfer_human 成功后挂接）：工单回复轮询落在此处，
                staff 回复左泡、用户回帖右泡；新消息自动滚底，卸载停止轮询 -->
@@ -507,7 +411,11 @@
       </div>
 
       <div v-if="historyLoading" class="history-loading muted-text">加载中…</div>
-      <el-empty v-else-if="conversations.length === 0" description="暂无历史会话" :image-size="60" />
+      <el-empty
+        v-else-if="conversations.length === 0"
+        description="暂无历史会话"
+        :image-size="60"
+      />
       <template v-else>
         <div v-for="c in conversations" :key="c.id" class="conversation-item">
           <div class="conversation-info">
@@ -518,7 +426,9 @@
             </div>
           </div>
           <div class="conversation-actions">
-            <el-button size="small" link type="primary" @click="viewConversation(c)">查看</el-button>
+            <el-button size="small" link type="primary" @click="viewConversation(c)"
+              >查看</el-button
+            >
             <el-button size="small" link type="success" @click="continueConversation(c)">
               继续对话
             </el-button>
@@ -553,6 +463,9 @@ import { listReplies, addReply } from '@/api/ticket'
 import { useAuthStore } from '@/stores/auth'
 import { usePersonaStore } from '@/stores/persona'
 import AiInputBox from '@/components/Chat/AiInputBox.vue'
+import ChatDiagnostics from '@/components/Chat/ChatDiagnostics.vue'
+import { eventSnap, stageText } from '@/utils/chatDiagnostics'
+import { fmtTime } from '@/utils/datetime'
 import { speak, stopSpeaking } from '@/utils/speech'
 import { useBreakpoint } from '@/utils/useBreakpoint'
 
@@ -593,15 +506,6 @@ const quickQuestions = computed(() => {
     { label: '产品排障', text: '我的 S1 Pro 不吸了', tone: 'fix' },
   ]
 })
-
-// 流式阶段 → 展示文案（对齐后端 SSE 事件；tool 为业务工具处理中，普通用户友好提示）
-const STAGE_TEXT = {
-  start: '正在思考…',
-  disambiguation: '正在识别产品…',
-  retrieving: '正在检索知识库…',
-  tool: '正在为您处理，请稍候…',
-  generating: '正在生成回答…',
-}
 
 // 工具名 → 中文标签
 const TOOL_LABELS = {
@@ -785,10 +689,6 @@ function newMessage(role, content) {
   }
 }
 
-function stageText(m) {
-  return STAGE_TEXT[m.stage] || '正在思考…'
-}
-
 function toolLabel(name) {
   return TOOL_LABELS[name] || name
 }
@@ -798,7 +698,7 @@ function toolArgsText(tc) {
   let text = ''
   try {
     text = JSON.stringify(tc.arguments)
-  } catch (e) {
+  } catch {
     text = String(tc.arguments)
   }
   return text.length > 80 ? `${text.slice(0, 80)}…` : text
@@ -812,16 +712,34 @@ function parseToolResult(tc) {
   // MCP 工具返回可能是 {result: ...} 包装，也可能是直接 dict/list
   const data = result && typeof result === 'object' && 'result' in result ? result.result : result
 
-  if (name === 'query_order' && data && typeof data === 'object' && !Array.isArray(data) && data.order_sn) {
+  if (
+    name === 'query_order' &&
+    data &&
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    data.order_sn
+  ) {
     return { type: 'order', data }
   }
   if (name === 'query_logistics' && Array.isArray(data) && data.length && data[0].ts) {
     return { type: 'logistics', data }
   }
-  if (name === 'query_product' && data && typeof data === 'object' && !Array.isArray(data) && data.id) {
+  if (
+    name === 'query_product' &&
+    data &&
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    data.id
+  ) {
     return { type: 'product', data }
   }
-  if (name === 'apply_refund' && data && typeof data === 'object' && !Array.isArray(data) && data.refund_id) {
+  if (
+    name === 'apply_refund' &&
+    data &&
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    data.refund_id
+  ) {
     return { type: 'refund', data }
   }
   return null
@@ -856,112 +774,7 @@ function renderMd(text) {
   return DOMPurify.sanitize(md.render(text))
 }
 
-// 来源分数展示（保留 2 位小数）
-function fmtScore(score) {
-  const n = Number(score)
-  return Number.isFinite(n) ? n.toFixed(2) : ''
-}
-
-// ---------- 管理员/客服诊断辅助 ----------
-
-const INTENT_LABELS = {
-  faq: '知识问答',
-  task: '任务处理',
-  chat: '闲聊',
-  unclear: '意图不明',
-}
-
-const ROUTE_LABELS = {
-  rule: '规则命中',
-  semantic: '语义命中',
-  llm: 'LLM 分类',
-  fallback: '降级兜底',
-}
-
-const CRAG_LABELS = {
-  generate: 'CRAG: 直接生成',
-  rewrite_retry: 'CRAG: 改写重试',
-  no_result: 'CRAG: 无结果',
-}
-
-function intentLabel(intent) {
-  return INTENT_LABELS[intent] || intent || '—'
-}
-
-function routeLabel(source) {
-  return ROUTE_LABELS[source] || source || ''
-}
-
-function cragLabel(action) {
-  return CRAG_LABELS[action] || (action ? action.toUpperCase() : '')
-}
-
-function fmtMs(ms) {
-  const n = Number(ms)
-  if (!Number.isFinite(n) || n < 0) return ''
-  return n >= 10000 ? `${(n / 1000).toFixed(1)}s` : `${n}ms`
-}
-
-function copyTrace(text) {
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).catch(() => {})
-  }
-}
-
-// 展开/收起某条检索来源的片段全文（查看溯因）
-function toggleSourceDetail(m, i) {
-  m.srcOpen = m.srcOpen === i ? -1 : i
-}
-
-// ---------- 诊断增强：事件时间线 / 阶段耗时 / 完整诊断 JSON ----------
-
-// 后端 faq 阶段计时（毫秒）存在时优先展示（网络层耗时不可靠）
-function hasBackendTimings(m) {
-  const o = m.timings || {}
-  return o.total_ms != null || o.retrieve_ms != null || o.generate_ms != null
-}
-
-function summarize(v, max = 200) {
-  if (v === undefined || v === null) return v
-  let s
-  try {
-    s = typeof v === 'string' ? v : JSON.stringify(v)
-  } catch {
-    s = String(v)
-  }
-  return s.length > max ? `${s.slice(0, max)}…` : s
-}
-
-// 事件数据快照（截断大对象，避免诊断面板堆积噪声）
-function eventSnap(name, data) {
-  const d = data || {}
-  switch (name) {
-    case 'tool_result':
-      return { tool_name: d.tool_name, result: summarize(d.result, 160) }
-    case 'tool_call':
-      return { tool_name: d.tool_name, arguments: summarize(d.arguments, 120) }
-    case 'start':
-      return {
-        intent: d.intent,
-        route_source: d.route_source,
-        role: d.role,
-        conversation_id: d.conversation_id,
-      }
-    case 'rewriting':
-      return { variants: Array.isArray(d.variants) ? d.variants : [] }
-    case 'done':
-      return {
-        from_cache: d.from_cache,
-        crag_action: d.crag_action,
-        crag_score: d.crag_score,
-        degraded: d.degraded,
-        timings: d.timings,
-      }
-    default:
-      return d
-  }
-}
-
+// 当前语气（persona id → 名称；选择器与诊断面板共用）
 // 记录 SSE 事件到诊断时间线（delta 聚合为计数，不进列表防刷屏）
 function recordEvent(msg, name, data) {
   if (!msg.sentAt) msg.sentAt = Date.now()
@@ -979,147 +792,6 @@ function recordEvent(msg, name, data) {
   if (!(name in msg.stageTs)) msg.stageTs[name] = t
 }
 
-// 诊断时间线：事件快照按时刻正序（delta 摘要插到实际发生位置），间隔重算
-function displayEvents(m) {
-  const evs = m.eventLog.map((e) => ({ ...e }))
-  if (m.deltaCount) {
-    evs.push({
-      name: 'delta',
-      t: m.deltaLastMs,
-      dt: 0,
-      data: { count: m.deltaCount, chars: m.deltaChars, firstMs: m.deltaFirstMs },
-    })
-    evs.sort((a, b) => a.t - b.t)
-  }
-  evs.forEach((e, i) => {
-    e.dt = i > 0 ? e.t - evs[i - 1].t : 0
-  })
-  return evs
-}
-
-const EVENT_LABELS = {
-  start: '开始',
-  disambiguation: '消歧',
-  retrieving: '检索',
-  rewriting: '改写',
-  generating: '生成中',
-  delta: '流式输出',
-  tool_call: '工具调用',
-  tool_result: '工具结果',
-  done: '完成',
-  error: '错误',
-}
-
-function eventLabel(name) {
-  return EVENT_LABELS[name] || name
-}
-
-function evtDataText(e) {
-  const d = e.data || {}
-  switch (e.name) {
-    case 'start':
-      return (
-        `意图: ${intentLabel(d.intent)}` +
-        (d.route_source ? ` · ${routeLabel(d.route_source)}` : '') +
-        (d.role ? ` · role=${d.role}` : '')
-      )
-    case 'tool_call':
-      return `tool: ${d.tool_name || ''} args=${summarize(d.arguments, 60)}`
-    case 'tool_result':
-      return `${d.tool_name || ''} => ${summarize(d.result, 60)}`
-    case 'rewriting':
-      return `变体×${(d.variants || []).length}`
-    case 'delta':
-      return `×${d.count} 块 / ${d.chars} 字符（首块 ${fmtMs(d.firstMs)}）`
-    case 'done':
-      return (
-        `cache: ${d.from_cache || '—'} · crag: ${d.crag_action || '—'} · ` +
-        (Array.isArray(d.degraded) && d.degraded.length
-          ? `降级: ${d.degraded.join('、')}`
-          : '无降级')
-      )
-    case 'error':
-      return `msg: ${d.message || ''}`
-    default:
-      return ''
-  }
-}
-
-// 阶段耗时（ms）：后端 timings 优先，否则由事件相对时刻差推断（faq 链路为主）
-function stageBreakdown(m) {
-  const o = m.timings || {}
-  if (hasBackendTimings(m)) {
-    const rows = []
-    if (o.retrieve_ms != null) rows.push(['检索', o.retrieve_ms])
-    if (o.generate_ms != null) rows.push(['生成', o.generate_ms])
-    if (o.total_ms != null) rows.push(['后端总耗时', o.total_ms])
-    return rows
-  }
-  const st = m.stageTs
-  const chain = [
-    ['start', '路由'],
-    ['retrieving', '检索'],
-    ['rewriting', '改写'],
-    ['generating', '生成'],
-    ['done', '完成'],
-  ]
-  const rows = []
-  for (let i = 1; i < chain.length; i += 1) {
-    const cur = st[chain[i][0]]
-    const prev = st[chain[i - 1][0]]
-    if (cur != null && prev != null) rows.push([chain[i][1], cur - prev])
-  }
-  if (m.elapsedMs) rows.push(['前端总耗时', m.elapsedMs])
-  return rows
-}
-
-// 完整诊断 JSON：admin/agent 一键复制上报排查
-function diagBlob(m) {
-  const idx = messages.value.indexOf(m)
-  const userMsg = idx > 0 ? messages.value[idx - 1] : null
-  return JSON.stringify(
-    {
-      user: authStore.user?.username || '',
-      role: authStore.role || '',
-      ask_time: m.sentAt ? new Date(m.sentAt).toISOString() : '',
-      total_ms: m.elapsedMs || '',
-      intent: m.intent || '',
-      route_source: m.routeSource || '',
-      persona: personaStore.personaId || '',
-      from_cache: m.fromCache || '',
-      crag_action: m.cragAction || '',
-      crag_score: m.cragScore || '',
-      degraded: m.degraded || [],
-      rewrites: m.rewrites || [],
-      backend_timings_ms: m.timings || {},
-      query: userMsg ? userMsg.content : '',
-      answer: m.content || '',
-      sources: m.sources || [],
-      tools: m.toolCalls.map((tc) => ({
-        name: tc.tool_name,
-        args: summarize(tc.arguments, 400),
-        result: summarize(tc.result, 800),
-      })),
-      events: displayEvents(m).map((e) => ({
-        name: e.name,
-        t_ms: e.t,
-        gap_ms: e.dt,
-        data: e.data,
-      })),
-      error: m.errorMsg || '',
-      trace_id: m.traceId || '',
-      conversation_id: m.conversationId || '',
-    },
-    null,
-    2
-  )
-}
-
-function copyDiagnosis(m) {
-  copyTrace(diagBlob(m))
-}
-
-// 当前语气（persona id → 名称；选择器与诊断面板共用）
 const personaName = computed(() => {
   const id = personaStore.personaId
   if (!id) return ''
@@ -1127,13 +799,16 @@ const personaName = computed(() => {
   return p ? p.name : id
 })
 
+// 诊断 JSON 里带上本条回答对应的用户提问（取相邻上一条用户消息），便于复现
+function queryOf(m) {
+  const idx = messages.value.indexOf(m)
+  const prev = idx > 0 ? messages.value[idx - 1] : null
+  return prev ? prev.content : ''
+}
+
 // ---------- 历史会话抽屉 ----------
 
 // 后端返回 ISO 时间（naive UTC）→ 'YYYY-MM-DD HH:mm' 展示
-function fmtTime(iso) {
-  return String(iso || '').replace('T', ' ').slice(0, 16)
-}
-
 async function openHistoryDrawer() {
   historyDrawerVisible.value = true
   // 每次打开都拉最新列表（新完成的问答会浮到最上）
@@ -1449,9 +1124,13 @@ function onListScroll() {
   isAtBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 40
 }
 
-watch(messages, () => {
-  if (isAtBottom.value) scrollToBottom()
-}, { deep: true })
+watch(
+  messages,
+  () => {
+    if (isAtBottom.value) scrollToBottom()
+  },
+  { deep: true },
+)
 
 // 流式进行中：每 500ms 刷新诊断面板的实时耗时（staff 定位"卡住"环节用）；
 // 结束（done/error/异常）即停表，避免空跑
@@ -1685,249 +1364,6 @@ onMounted(() => {
   margin-right: 4px;
 }
 
-/* 诊断信息面板（仅 admin/agent 可见）：意图/路由/耗时/缓存/CRAG/降级 + 时间线 + 来源 */
-.diag-section {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--am-line);
-}
-.diag-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 4px 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font: inherit;
-  color: var(--am-text-2);
-  text-align: left;
-  flex-wrap: wrap;
-}
-.diag-header:hover .diag-title {
-  color: var(--am-blue-600);
-}
-.diag-caret {
-  color: var(--am-text-3);
-  flex-shrink: 0;
-  transition: transform 0.18s ease;
-}
-.diag-header.open .diag-caret {
-  transform: rotate(90deg);
-}
-.diag-title {
-  font-weight: 600;
-  color: var(--am-text-2);
-  font-size: 13px;
-  flex-shrink: 0;
-}
-.diag-chips {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  flex: 1;
-  min-width: 0;
-}
-.diag-chip {
-  display: inline-block;
-  padding: 0 8px;
-  height: 20px;
-  line-height: 20px;
-  border-radius: 10px;
-  font-size: 12px;
-  background: var(--am-blue-50);
-  color: var(--am-text-2);
-  white-space: nowrap;
-}
-.diag-chip.chip-intent {
-  background: var(--am-blue-600);
-  color: #fff;
-  font-weight: 600;
-}
-.diag-chip.chip-cache {
-  background: #ecfdf5;
-  color: var(--am-green-700);
-}
-.diag-chip.chip-degraded {
-  background: #fef2f2;
-  color: var(--am-red-700);
-}
-.diag-chip.chip-crag {
-  background: #f5f3ff;
-  color: var(--am-violet-700);
-}
-.diag-chip.chip-live {
-  background: var(--am-blue-50);
-  color: var(--am-blue-600);
-  animation: diag-pulse 1.4s ease-in-out infinite;
-}
-@keyframes diag-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-.diag-toggle-text {
-  font-size: 12px;
-  color: var(--am-text-3);
-  flex-shrink: 0;
-}
-.diag-body {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.diag-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  flex-wrap: wrap;
-}
-.diag-row-label {
-  font-weight: 600;
-  color: var(--am-text-2);
-  font-size: 13px;
-}
-.diag-code {
-  background: var(--am-blue-50);
-  border-radius: 3px;
-  padding: 1px 6px;
-  font-size: 12px;
-  font-family: var(--am-font-mono);
-  word-break: break-all;
-  color: var(--am-text-2);
-}
-.diag-block {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.diag-caption {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--am-text-3);
-}
-.diag-stage-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-}
-.diag-stage-name {
-  width: 76px;
-  flex-shrink: 0;
-  color: var(--am-text-2);
-}
-.diag-stage-val {
-  font-family: var(--am-font-mono);
-  color: var(--am-text);
-}
-.diag-line {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.diag-line-idx {
-  color: var(--am-blue-600);
-  flex-shrink: 0;
-  min-width: 14px;
-}
-.diag-line-t {
-  font-family: var(--am-font-mono);
-  color: var(--am-text-3);
-  flex-shrink: 0;
-  min-width: 44px;
-}
-.diag-line-name {
-  flex-shrink: 0;
-  font-weight: 600;
-  color: var(--am-text-2);
-}
-.diag-line-name.evt-start {
-  color: var(--am-blue-600);
-}
-.diag-line-name.evt-done {
-  color: var(--am-green-700);
-}
-.diag-line-name.evt-error {
-  color: var(--am-red-700);
-}
-.diag-line-name.evt-tool_call,
-.diag-line-name.evt-tool_result {
-  color: var(--am-amber-700);
-}
-.diag-line-gap {
-  flex-shrink: 0;
-  color: var(--am-red-600);
-  font-family: var(--am-font-mono);
-  font-size: 11px;
-}
-.diag-line-text {
-  color: var(--am-text-2);
-  word-break: break-all;
-  min-width: 0;
-}
-.diag-sources {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.diag-source {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--am-text-2);
-  padding: 2px 0;
-  flex-wrap: wrap;
-}
-.diag-source-idx {
-  color: var(--am-blue-600);
-  flex-shrink: 0;
-}
-.diag-source-title {
-  word-break: break-all;
-}
-.diag-source-doc {
-  color: var(--am-text-3);
-  font-size: 12px;
-  font-family: var(--am-font-mono);
-  word-break: break-all;
-}
-.diag-source-score {
-  color: var(--am-text-2);
-  font-size: 12px;
-  flex-shrink: 0;
-}
-.diag-source-toggle {
-  flex-shrink: 0;
-}
-.diag-source-detail {
-  width: 100%;
-  margin-top: 2px;
-  padding: 6px 8px;
-  background: var(--am-blue-50);
-  border-radius: 4px;
-  color: var(--am-text-2);
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-.diag-footer {
-  display: flex;
-  justify-content: flex-end;
-}
-
 /* 反馈（Bad Case 收集入口）：评分条 = 口袋赞踩 + 内联评论 + 提交 */
 .feedback-row {
   margin-top: 10px;
@@ -1956,7 +1392,10 @@ onMounted(() => {
   background: transparent;
   color: var(--am-text-3);
   cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
 }
 .fb-btn:hover {
   background: rgba(94, 141, 234, 0.12);
@@ -1996,7 +1435,9 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
 }
 .fb-submit:hover {
   background: var(--am-blue-600);
@@ -2118,7 +1559,10 @@ onMounted(() => {
   border: 1px solid var(--am-line);
   border-radius: 10px;
   background: #fff;
-  transition: border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
 }
 .quick-btn:hover {
   transform: translateY(-1px);

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick, computed, provide, inject } from 'vue'
+import AdminOrders from '@/components/Admin/AdminOrders.vue'
 
 // ---------- mock 依赖 ----------
 
@@ -62,7 +63,10 @@ const stubs = {
   'el-table': {
     props: ['data'],
     setup(props) {
-      provide('amTableRows', computed(() => props.data || []))
+      provide(
+        'amTableRows',
+        computed(() => props.data || []),
+      )
     },
     template: '<div class="el-table-stub"><slot /></div>',
   },
@@ -320,45 +324,50 @@ describe('Admin 组件', () => {
     expect(text).toContain('在 Langfuse 查看完整 trace')
   })
 
-  // ---------- 商城订单 ----------
+  // ---------- 商城订单（AdminOrders 子组件） ----------
 
   it('挂载时拉取商城订单第一页并渲染订单号与归属用户', async () => {
     const wrapper = mountAdmin()
     await flushPromises()
 
+    const panel = wrapper.findComponent(AdminOrders)
+    expect(panel.exists()).toBe(true)
     expect(mallApi.listOrders).toHaveBeenCalledTimes(1)
     expect(mallApi.listOrders).toHaveBeenCalledWith({ limit: 10, offset: 0 })
-    expect(wrapper.vm.orders.length).toBe(2)
-    const text = wrapper.text()
+    expect(panel.vm.orders.length).toBe(2)
+    expect(panel.vm.total).toBe(2)
+
+    const text = panel.text()
     expect(text).toContain('商城订单')
     expect(text).toContain('2026080112340001')
     expect(text).toContain('2026080213560002')
     expect(text).toContain('user1')
     expect(text).toContain('user2')
-    expect(wrapper.vm.orderTotal).toBe(2)
   })
 
   it('订单状态映射 el-tag 类型：待付款黄 / 已发货蓝 / 已完成绿', async () => {
     const wrapper = mountAdmin()
     await flushPromises()
 
-    expect(wrapper.vm.orderStatusTagType('待付款')).toBe('warning')
-    expect(wrapper.vm.orderStatusTagType('待发货')).toBe('info')
-    expect(wrapper.vm.orderStatusTagType('已发货')).toBe('primary')
-    expect(wrapper.vm.orderStatusTagType('已完成')).toBe('success')
+    const panel = wrapper.findComponent(AdminOrders)
+    expect(panel.vm.statusTagType('待付款')).toBe('warning')
+    expect(panel.vm.statusTagType('待发货')).toBe('info')
+    expect(panel.vm.statusTagType('已发货')).toBe('primary')
+    expect(panel.vm.statusTagType('已完成')).toBe('success')
   })
 
   it('用户/状态筛选透传 listOrders 且重置回第一页', async () => {
     const wrapper = mountAdmin()
     await flushPromises()
 
-    wrapper.vm.orderPage = 3
-    wrapper.vm.orderOwnerFilter = 'user1'
-    wrapper.vm.orderStatusFilter = '已发货'
-    await wrapper.vm.searchOrders()
+    const panel = wrapper.findComponent(AdminOrders)
+    panel.vm.page = 3
+    panel.vm.ownerFilter = 'user1'
+    panel.vm.statusFilter = '已发货'
+    await panel.vm.search()
 
     expect(mallApi.listOrders).toHaveBeenCalledTimes(2)
-    expect(wrapper.vm.orderPage).toBe(1)
+    expect(panel.vm.page).toBe(1)
     expect(mallApi.listOrders).toHaveBeenLastCalledWith({
       limit: 10,
       offset: 0,
@@ -374,7 +383,7 @@ describe('Admin 组件', () => {
 
     // 后端不可用提示已统一由拦截器节流处理，页面内不再逐请求弹窗
     expect(ElMessageMock.error).not.toHaveBeenCalledWith('商城订单加载失败')
-    expect(wrapper.vm.orders).toEqual([])
+    expect(wrapper.findComponent(AdminOrders).vm.orders).toEqual([])
     // 其它卡片仍正常加载
     expect(healthApi.getHealth).toHaveBeenCalledTimes(1)
     expect(wrapper.vm.ticketTotal).toBe(3)
@@ -390,7 +399,6 @@ const adminApi = vi.hoisted(() => ({
 }))
 
 vi.mock('@/api/admin', () => adminApi)
-
 
 describe('Admin phase12 运营操作', () => {
   beforeEach(() => {
@@ -413,7 +421,10 @@ describe('Admin phase12 运营操作', () => {
       knowledge: { documents: 1, chunks: 2 },
       degraded: [],
     })
-    adminApi.listUsers.mockResolvedValue({ users: [{ id: 'u1', username: 'alice', role: 'user', is_active: true }], total: 1 })
+    adminApi.listUsers.mockResolvedValue({
+      users: [{ id: 'u1', username: 'alice', role: 'user', is_active: true }],
+      total: 1,
+    })
     adminApi.listAuditLogs.mockResolvedValue({ items: [], total: 0 })
 
     const wrapper = mount(Admin, { global: { components: stubs } })
@@ -429,7 +440,12 @@ describe('Admin phase12 运营操作', () => {
     adminApi.getOverview.mockResolvedValue({ users: { total: 1 }, degraded: [] })
     adminApi.listUsers.mockResolvedValue({ users: [], total: 0 })
     adminApi.listAuditLogs.mockResolvedValue({ items: [], total: 0 })
-    adminApi.updateUser.mockResolvedValue({ id: 'u1', username: 'alice', role: 'agent', is_active: true })
+    adminApi.updateUser.mockResolvedValue({
+      id: 'u1',
+      username: 'alice',
+      role: 'agent',
+      is_active: true,
+    })
 
     const wrapper = mount(Admin, { global: { components: stubs } })
     await flushPromises()
