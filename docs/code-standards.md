@@ -33,11 +33,15 @@
 | 覆盖率门禁 | CI only | `--cov=app --cov-fail-under=70`；**本地 `addopts` 不带 `--cov`，不要加回** |
 | 前端测试 | `frontend/vite.config.js` `test` | vitest + jsdom + `globals: true`，用例在 `frontend/tests/unit/*.spec.js` |
 | 前端 lint | 仓库根 `eslint.config.js` | ESLint 9 flat config：`@eslint/js` recommended + `eslint-plugin-vue` **essential**；格式类规则交给 Prettier |
-| 前端格式 | 仓库根 `.prettierrc.json` | `semi: false`、`singleQuote: true`、`printWidth: 100`、`endOfLine: lf`；`knowledge/`、`docs/`、`*.md`、`backend/` 不参与格式化 |
+| 前端格式 | 仓库根 `.prettierrc.json` | `semi: false`、`singleQuote: true`、`printWidth: 100`、`endOfLine: auto`；`knowledge/`、`docs/`、`*.md`、`backend/` 不参与格式化 |
 | 提交钩子 | `.husky/pre-commit`、`.husky/pre-push` | pre-commit：lint-staged（仅暂存文件）；pre-push：后端 + 前端单测 |
 
 > 仓库根 `package.json` 只放工程化依赖（eslint / prettier / husky / lint-staged），业务依赖仍在 `frontend/package.json`。
 > 首次克隆后需在**仓库根**执行一次 `npm install`（`prepare` 会安装 Git 钩子），否则 pre-commit 会跳过并提示。
+>
+> **行尾（踩过的坑）**：本仓库 `core.autocrlf=true`，检出到工作区是 CRLF。Prettier 若配 `endOfLine: "lf"`，
+> 每次格式化都会把文件写成 LF，导致「内容完全一致但 `git status` 一直显示 modified」（索引哈希相同、smudge 结果不符）。
+> 因此固定为 `auto`：跟随文件现有行尾，Windows 上保持 CRLF、Linux CI 上是 LF，两边 `prettier --check` 都能过。
 
 ### 1.2 本地必跑命令
 

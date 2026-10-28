@@ -6,6 +6,6 @@
   "useTabs": false,
   "trailingComma": "all",
   "arrowParens": "always",
-  "endOfLine": "lf",
+  "endOfLine": "auto",
   "vueIndentScriptAndStyle": false
 }
