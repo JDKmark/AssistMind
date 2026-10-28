@@ -8,12 +8,29 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from app.api.deps import get_current_user
+from app.config import get_settings
+from app.core.demo_accounts import listed_accounts
 from app.core.infra.postgres import async_session
 from app.core.security.auth import create_access_token, verify_password
 from app.models.user import User
-from app.schemas.auth import LoginRequest, TokenResponse, UserInfo
+from app.schemas.auth import DemoAccountInfo, LoginRequest, TokenResponse, UserInfo
 
 router = APIRouter()
+
+
+@router.get("/demo-accounts", response_model=list[DemoAccountInfo])
+async def demo_accounts() -> list[DemoAccountInfo]:
+    """演示账号清单（登录页「一键填入」数据源）。
+
+    仅 DEBUG 模式返回；生产环境（DEBUG=false）返回空列表，任何口令都不下发。
+    账号与 `scripts/init_db.py` 建号共用 `app/core/demo_accounts.py`，避免前后端两处维护。
+    """
+    if not get_settings().DEBUG:
+        return []
+    return [
+        DemoAccountInfo(username=a.username, password=a.password, role=a.role, label=a.label)
+        for a in listed_accounts()
+    ]
 
 
 @router.post("/login", response_model=TokenResponse)

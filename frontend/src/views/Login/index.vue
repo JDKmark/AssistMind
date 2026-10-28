@@ -114,11 +114,11 @@
           </el-form-item>
         </el-form>
 
-        <div class="demo-accounts">
+        <div v-if="demoAccounts.length" class="demo-accounts">
           <div class="demo-caption">演示账号 · 点击快速填入</div>
           <div class="demo-chips">
             <div
-              v-for="acc in DEMO_ACCOUNTS"
+              v-for="acc in demoAccounts"
               :key="acc.username"
               class="demo-chip"
               role="button"
@@ -142,6 +142,7 @@ import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import gsap from 'gsap'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useDemoAccounts } from '@/composables/useDemoAccounts'
 import { User, Lock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -170,13 +171,17 @@ onMounted(() => {
 
       const tl = gsap.timeline({ defaults: { ease: 'power3.out' } })
       tl.to('.brand-mark path', { strokeDashoffset: 0, duration: 0.9, ease: 'power2.inOut' }, 0)
-        .from('.brand-mark circle', {
-          scale: 0,
-          transformOrigin: 'center',
-          duration: 0.35,
-          stagger: 0.06,
-          ease: 'back.out(2)',
-        }, 0.12)
+        .from(
+          '.brand-mark circle',
+          {
+            scale: 0,
+            transformOrigin: 'center',
+            duration: 0.35,
+            stagger: 0.06,
+            ease: 'back.out(2)',
+          },
+          0.12,
+        )
         .from('.brand-name', { y: 10, autoAlpha: 0, duration: 0.5 }, 0.4)
         .from('.hero-title', { y: 18, autoAlpha: 0, duration: 0.6 }, 0.5)
         .from('.hero-sub', { y: 12, autoAlpha: 0, duration: 0.5 }, 0.65)
@@ -186,7 +191,14 @@ onMounted(() => {
         .from('.form-box', { y: 18, autoAlpha: 0, duration: 0.55 }, 0.6)
 
       // 慢速漂浮（非循环入场之外的氛围层）：光斑 52s 往返、logo 呼吸 4.5s
-      gsap.to('.glow-orb', { x: 110, y: 80, duration: 26, yoyo: true, repeat: -1, ease: 'sine.inOut' })
+      gsap.to('.glow-orb', {
+        x: 110,
+        y: 80,
+        duration: 26,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inOut',
+      })
       gsap.to('.brand-mark', { y: -5, duration: 4.5, yoyo: true, repeat: -1, ease: 'sine.inOut' })
     })
   })
@@ -201,13 +213,9 @@ const form = reactive({
   password: '',
 })
 
-// 演示账号：点击行快速填入表单
-const DEMO_ACCOUNTS = [
-  { label: '管理员', username: 'admin', password: 'admin123' },
-  { label: '客服', username: 'agent', password: 'agent123' },
-  { label: '用户1', username: 'user1', password: 'user1123' },
-  { label: '用户2', username: 'user2', password: 'user2123' },
-]
+// 演示账号：由后端按 DEBUG 开关下发（生产环境返回空列表，页面自动隐藏该区块），
+// 账号清单唯一来源是 backend/app/core/demo_accounts.py。
+const { accounts: demoAccounts } = useDemoAccounts()
 
 function fillAccount(acc) {
   form.username = acc.username
@@ -227,7 +235,7 @@ async function handleLogin() {
       await auth.login(form.username, form.password)
       ElMessage.success('登录成功')
       router.push('/chat')
-    } catch (e) {
+    } catch {
       // 错误已在 request.js 拦截器处理
     } finally {
       loading.value = false
@@ -258,13 +266,16 @@ async function handleLogin() {
 }
 /* 深色底 + 蓝图点阵（双背景层：点阵叠在墨蓝渐变之上，避免覆盖） */
 .brand-panel.am-grid-dark {
-  background-image: radial-gradient(
+  background-image:
+    radial-gradient(
       circle,
       color-mix(in srgb, var(--am-blue-400) 16%, transparent) 1px,
       transparent 1px
     ),
     linear-gradient(160deg, var(--am-ink-900) 0%, var(--am-ink-950) 100%);
-  background-size: 24px 24px, 100% 100%;
+  background-size:
+    24px 24px,
+    100% 100%;
 }
 /* 顶部柔光（GSAP 缓动光斑：实元素以便动画 x/y） */
 .glow-orb {
@@ -479,7 +490,9 @@ async function handleLogin() {
   transition: box-shadow 0.2s ease;
 }
 .form-box :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px var(--el-color-primary) inset, 0 0 0 4px var(--am-glow-ring);
+  box-shadow:
+    0 0 0 1px var(--el-color-primary) inset,
+    0 0 0 4px var(--am-glow-ring);
 }
 
 /* 演示账号：胶囊快速填入 */

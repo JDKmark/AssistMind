@@ -18,9 +18,12 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import get_settings
+from app.core.demo_accounts import initial_users
 from app.core.security.auth import hash_password
 from app.models import audit as _audit_model  # noqa: F401 注册到 metadata
-from app.models import conversation as _conversation_model  # noqa: F401 注册到 metadata（conversations/chat_messages）
+from app.models import (
+    conversation as _conversation_model,  # noqa: F401 注册到 metadata（conversations/chat_messages）
+)
 from app.models import feedback as _feedback_model  # noqa: F401 注册到 metadata
 from app.models import mall as _mall_model  # noqa: F401 注册到 metadata（订单/商品/物流/售后表）
 from app.models import ticket as _ticket_model  # noqa: F401 注册到 metadata
@@ -53,14 +56,9 @@ _TICKET_EXTRA_COLUMNS = [
     ("conversation_id", "VARCHAR(64)"),
 ]
 
-# 初始账号清单：(username, password, role)，逐账号幂等创建（存在则跳过，不更新）
-_INITIAL_USERS = [
-    ("admin", "admin123", "admin"),
-    ("agent", "agent123", "agent"),
-    ("user", "user123", "user"),
-    ("user1", "user1123", "user"),
-    ("user2", "user2123", "user"),
-]
+# 初始账号清单与登录页「一键填入」共用 app/core/demo_accounts.py，避免两处各维护一份。
+# 逐账号幂等创建（存在则跳过，不更新）。
+_INITIAL_USERS = initial_users()
 
 # 存量演示订单归属迁移：001/002 → user1、003/004 → user2。
 # 条件带括号限定旧归属（NULL 或 'user'），已迁移过的行不再触碰（幂等）。

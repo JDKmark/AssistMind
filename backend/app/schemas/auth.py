@@ -25,3 +25,12 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserInfo
+
+
+class DemoAccountInfo(BaseModel):
+    """演示账号（仅 DEBUG 模式下发，供登录页一键填入）。"""
+
+    username: str
+    password: str
+    role: str
+    label: str

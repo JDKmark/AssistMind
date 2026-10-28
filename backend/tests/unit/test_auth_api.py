@@ -299,3 +299,35 @@ def test_knowledge_rebuild_requires_auth():
     """知识库重建无 token：401（先于角色校验）。"""
     resp = client.post("/api/v1/knowledge/rebuild")
     assert resp.status_code == 401
+
+
+# ---------- 演示账号下发（仅 DEBUG；生产不暴露口令）----------
+
+
+class _FakeCfg:
+    """仅暴露 DEBUG 的最小配置替身，避免改动全局 settings。"""
+
+    def __init__(self, debug: bool):
+        self.DEBUG = debug
+
+
+def test_demo_accounts_listed_in_debug(monkeypatch):
+    """DEBUG=true：下发登录页展示账号，且与建号清单同源。"""
+    from app.core.demo_accounts import initial_users
+
+    monkeypatch.setattr("app.api.auth.get_settings", lambda: _FakeCfg(True))
+    resp = client.get("/api/v1/auth/demo-accounts")
+    assert resp.status_code == 200
+    accounts = resp.json()
+    assert [a["username"] for a in accounts] == ["admin", "agent", "user1", "user2"]
+    assert all(a["password"] and a["role"] and a["label"] for a in accounts)
+    # 页面展示的账号必须都是 init_db 会创建的账号，否则「点了登不进去」
+    assert {a["username"] for a in accounts} <= {u for u, _, _ in initial_users()}
+
+
+def test_demo_accounts_hidden_when_not_debug(monkeypatch):
+    """DEBUG=false：返回空列表，不下发任何口令。"""
+    monkeypatch.setattr("app.api.auth.get_settings", lambda: _FakeCfg(False))
+    resp = client.get("/api/v1/auth/demo-accounts")
+    assert resp.status_code == 200
+    assert resp.json() == []
