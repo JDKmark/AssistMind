@@ -9,9 +9,8 @@ RBAC：通过 payload filter 按 security_group 字段过滤，不建独立权�
 
 from __future__ import annotations
 
-import uuid
-
 import logging
+import uuid
 from typing import Any
 
 from qdrant_client import AsyncQdrantClient
@@ -105,7 +104,7 @@ class QdrantClient:
                         "chunk_index": c.get("chunk_index", idx),
                     },
                 )
-                for idx, (c, emb) in enumerate(zip(chunks, embeddings))
+                for idx, (c, emb) in enumerate(zip(chunks, embeddings, strict=True))
             ]
             await call_with_breaker(
                 "qdrant",
@@ -153,9 +152,12 @@ class QdrantClient:
                     limit=top_k,
                     query_filter=models.Filter(
                         must=[flt],
-                        # must_not 只匹配字段值等于 False 的点：存量数据缺 enabled 字段不被过滤（视为启用）
+                        # must_not 只匹配字段值等于 False 的点：
+                        # 存量数据缺 enabled 字段不被过滤（视为启用）
                         must_not=[
-                            models.FieldCondition(key="enabled", match=models.MatchValue(value=False))
+                            models.FieldCondition(
+                                key="enabled", match=models.MatchValue(value=False)
+                            )
                         ],
                     ),
                     with_payload=True,
@@ -196,7 +198,11 @@ class QdrantClient:
                 collection_name=settings.QDRANT_COLLECTION,
                 points_selector=models.FilterSelector(
                     filter=models.Filter(
-                        must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
+                        must=[
+                            models.FieldCondition(
+                                key="doc_id", match=models.MatchValue(value=doc_id)
+                            )
+                        ]
                     )
                 ),
             )
@@ -225,7 +231,11 @@ class QdrantClient:
                 payload=payload,
                 points_selector=models.FilterSelector(
                     filter=models.Filter(
-                        must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
+                        must=[
+                            models.FieldCondition(
+                                key="doc_id", match=models.MatchValue(value=doc_id)
+                            )
+                        ]
                     )
                 ),
             )

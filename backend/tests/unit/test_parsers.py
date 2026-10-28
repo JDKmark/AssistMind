@@ -130,5 +130,5 @@ def test_extract_text_corrupt_pdf_raises(tmp_path):
     """非 PDF 内容但 .pdf 后缀：pypdf 解析失败抛异常（seed 侧降级跳过）。"""
     p = tmp_path / "broken.pdf"
     p.write_bytes(b"this is not a pdf")
-    with pytest.raises(Exception):
+    with pytest.raises(UnsupportedDocumentError):
         extract_text(str(p))

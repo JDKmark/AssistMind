@@ -469,7 +469,7 @@ async def run_all_tasks(agent: ToolAgent, label: str) -> list[dict]:
         elapsed = time.perf_counter() - started
 
         print(f"\n[任务 {idx}/{len(TASKS)}] {task['name']}")
-        for i, (turn, check) in enumerate(zip(result["turns"], result["checks"]), 1):
+        for i, (turn, check) in enumerate(zip(result["turns"], result["checks"], strict=False), 1):
             _print_turn(i, turn, check["passed"], check["reason"])
         print(f"  耗时: {elapsed:.1f}s  结果: {'通过' if result['ok'] else '失败'}")
         results.append(result)

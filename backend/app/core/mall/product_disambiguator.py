@@ -162,7 +162,7 @@ def _recall_alias(
         alias_nospace = _nospace(alias_norm)
         if not alias_norm:
             continue
-        for text, text_nospace in zip(texts, texts_nospace):
+        for text, text_nospace in zip(texts, texts_nospace, strict=True):
             if alias_norm in text or (alias_nospace and alias_nospace in text_nospace):
                 return entry, entry["alias"]
     return None
@@ -233,7 +233,7 @@ def _candidates_payload(
 ) -> list[dict]:
     """对外候选载荷：{product_id, name, spec, score, in_orders}。"""
     payload = []
-    for candidate, score in zip(enriched, scores):
+    for candidate, score in zip(enriched, scores, strict=True):
         payload.append(
             {
                 "product_id": candidate["product_id"],
@@ -325,11 +325,13 @@ async def _llm_fallback(
 ) -> str | None:
     """LLM 兜底定向：命中候选返回 product_id；null/非法/失败返回 None（回落反问）。"""
     candidates_text = "\n".join(
-        f"- {c['product_id']}: {c['name']}（{c['spec']}）；症状词：{'、'.join(c['symptom_keywords'])}"
+        f"- {c['product_id']}: {c['name']}（{c['spec']}）；"
+        f"症状词：{'、'.join(c['symptom_keywords'])}"
         for c in enriched
     )
     history_text = "\n".join(
-        f"{h.get('role', 'user')}: {h.get('content', '')}" for h in (history or [])[-_HISTORY_WINDOW:]
+        f"{h.get('role', 'user')}: {h.get('content', '')}"
+        for h in (history or [])[-_HISTORY_WINDOW:]
     )
     prompt = (
         _LLM_DISAMBIG_PROMPT.replace("{candidates}", candidates_text)

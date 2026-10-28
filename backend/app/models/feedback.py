@@ -32,15 +32,20 @@ class Feedback(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     score: Mapped[int] = mapped_column(Integer)  # 1-5
     comment: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
-    ticket_id: Mapped[str | None] = mapped_column(String(32), nullable=True, default="")  # 关联工单，可选
+    # 关联工单，可选
+    ticket_id: Mapped[str | None] = mapped_column(String(32), nullable=True, default="")
     user_id: Mapped[str] = mapped_column(String(36), default="system")
     conversation_id: Mapped[str | None] = mapped_column(String(64), nullable=True, default="")
-    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True, default="")  # Langfuse trace ID
+    # Langfuse trace ID
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True, default="")
     query: Mapped[str | None] = mapped_column(Text, nullable=True, default="")  # 问题快照
     answer: Mapped[str | None] = mapped_column(Text, nullable=True, default="")  # 回答快照
-    sources: Mapped[str | None] = mapped_column(Text, nullable=True, default="")  # 检索来源快照（JSON 文本）
+    # 检索来源快照（JSON 文本）
+    sources: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     intent: Mapped[str | None] = mapped_column(String(16), nullable=True, default="")  # 意图
-    crag_action: Mapped[str | None] = mapped_column(String(16), nullable=True, default="")  # generate/rewrite_retry/no_result
-    degraded: Mapped[str | None] = mapped_column(Text, nullable=True, default="")  # 降级项列表（JSON 文本）
+    # generate/rewrite_retry/no_result
+    crag_action: Mapped[str | None] = mapped_column(String(16), nullable=True, default="")
+    # 降级项列表（JSON 文本）
+    degraded: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     exported: Mapped[bool] = mapped_column(Boolean, default=False)  # 是否已回流评估集
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

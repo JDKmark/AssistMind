@@ -16,8 +16,8 @@ PDF/DOCX 无 Markdown 结构：调用方（seed_*_kb.py）应把文件名作为�
 from __future__ import annotations
 
 import logging
-import zipfile
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -50,9 +50,16 @@ def _extract_pdf(path: str) -> str:
     """
     from pypdf import PdfReader
 
-    reader = PdfReader(path)
+    try:
+        reader = PdfReader(path)
+        pages_iter = list(reader.pages)
+    except Exception as e:
+        # pypdf 对损坏文件抛的异常类型不稳定（PdfReadError / PdfStreamError / OSError），
+        # 统一收敛为领域异常，调用方按「文档不可用」跳过
+        raise UnsupportedDocumentError(f"解析 PDF 失败: {path}: {e}") from e
+
     pages: list[str] = []
-    for page in reader.pages:
+    for page in pages_iter:
         try:
             text = page.extract_text() or ""
         except Exception as e:
@@ -74,13 +81,13 @@ def _extract_docx(path: str) -> str:
         try:
             xml_bytes = zf.read("word/document.xml")
         except (KeyError, zipfile.BadZipFile) as e:
-            raise UnsupportedDocumentError(f"读取 docx 内容失败: {path}: {e}")
+            raise UnsupportedDocumentError(f"读取 docx 内容失败: {path}: {e}") from e
 
     ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
     try:
         root = ET.fromstring(xml_bytes)
     except ET.ParseError as e:
-        raise UnsupportedDocumentError(f"解析 docx XML 失败: {path}: {e}")
+        raise UnsupportedDocumentError(f"解析 docx XML 失败: {path}: {e}") from e
     paras = []
     for p in root.findall(".//w:p", ns):
         text = "".join(t.text or "" for t in p.findall(".//w:t", ns))

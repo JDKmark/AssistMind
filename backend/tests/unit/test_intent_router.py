@@ -75,9 +75,8 @@ async def test_semantic_hit():
     for i in range(len(samples)):
         sample_vecs.append([1.0, 0.0, 0.0] if i == 0 else [0.0, 1.0, 0.0])
 
-    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)):
-        with patch("app.core.router.semantic.embed_async", new=AsyncMock(return_value=sample_vecs)):
-            result = await semantic.semantic_route("AssistMind 是什么")
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)), patch("app.core.router.semantic.embed_async", new=AsyncMock(return_value=sample_vecs)):
+        result = await semantic.semantic_route("AssistMind 是什么")
 
     assert result is not None
     assert result["source"] == "semantic"
@@ -91,9 +90,8 @@ async def test_semantic_miss_returns_none():
     q_vec = [1.0, 0.0, 0.0]
     sample_vecs = _orthogonal_sample_vecs()
 
-    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)):
-        with patch("app.core.router.semantic.embed_async", new=AsyncMock(return_value=sample_vecs)):
-            result = await semantic.semantic_route("随便说说")
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)), patch("app.core.router.semantic.embed_async", new=AsyncMock(return_value=sample_vecs)):
+        result = await semantic.semantic_route("随便说说")
 
     assert result is None
 
@@ -103,10 +101,8 @@ async def test_llm_fallback_when_semantic_miss():
     q_vec = [1.0, 0.0, 0.0]
     sample_vecs = _orthogonal_sample_vecs()
 
-    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)):
-        with patch("app.core.router.semantic.embed_async", new=AsyncMock(return_value=sample_vecs)):
-            with patch("app.core.router.intent.call_llm", new=AsyncMock(return_value="task")):
-                result = await intent.route("帮我处理一下这个事情")
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)), patch("app.core.router.semantic.embed_async", new=AsyncMock(return_value=sample_vecs)), patch("app.core.router.intent.call_llm", new=AsyncMock(return_value="task")):
+        result = await intent.route("帮我处理一下这个事情")
 
     assert result["intent"] == "task"
     assert result["source"] == "llm"
@@ -117,9 +113,8 @@ async def test_llm_fallback_when_semantic_miss():
 
 async def test_embedding_fail_falls_to_llm():
     """embedding 失败（embed_one 返回 None）应走 LLM。"""
-    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)):
-        with patch("app.core.router.intent.call_llm", new=AsyncMock(return_value="chat")):
-            result = await intent.route("某个不匹配规则的问题")
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=None)), patch("app.core.router.intent.call_llm", new=AsyncMock(return_value="chat")):
+        result = await intent.route("某个不匹配规则的问题")
 
     assert result["source"] == "llm"
     assert result["intent"] == "chat"
@@ -130,13 +125,18 @@ async def test_llm_unavailable_fallback():
     q_vec = [1.0, 0.0, 0.0]
     sample_vecs = _orthogonal_sample_vecs()
 
-    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)):
-        with patch("app.core.router.semantic.embed_async", new=AsyncMock(return_value=sample_vecs)):
-            with patch(
-                "app.core.router.intent.call_llm",
-                new=AsyncMock(side_effect=LLMUnavailableError("all down")),
-            ):
-                result = await intent.route("一段完全无关的文字")
+    with (
+        patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)),
+        patch(
+            "app.core.router.semantic.embed_async",
+            new=AsyncMock(return_value=sample_vecs),
+        ),
+        patch(
+            "app.core.router.intent.call_llm",
+            new=AsyncMock(side_effect=LLMUnavailableError("all down")),
+        ),
+    ):
+        result = await intent.route("一段完全无关的文字")
 
     assert result["intent"] == "unclear"
     assert result["source"] == "fallback"
@@ -180,10 +180,8 @@ async def test_llm_classify_uses_fast_mode():
     sample_vecs = _orthogonal_sample_vecs()
     mock_call = AsyncMock(return_value='{"intent": "chat", "confidence": 0.9}')
 
-    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)):
-        with patch("app.core.router.semantic.embed_async", new=AsyncMock(return_value=sample_vecs)):
-            with patch("app.core.router.intent.call_llm", new=mock_call):
-                result = await intent.route("一段不匹配任何规则的闲聊文字")
+    with patch("app.core.router.semantic.embed_one", new=AsyncMock(return_value=q_vec)), patch("app.core.router.semantic.embed_async", new=AsyncMock(return_value=sample_vecs)), patch("app.core.router.intent.call_llm", new=mock_call):
+        result = await intent.route("一段不匹配任何规则的闲聊文字")
 
     assert result["source"] == "llm"
     assert result["intent"] == "chat"

@@ -144,15 +144,26 @@ async def test_answer_rewrite_retry_no_result_after_retry():
 
 async def test_answer_llm_unavailable_uses_template():
     """LLM 不可用时应模板兜底。"""
-    with patch("app.core.rag.engine.retrieve", new=AsyncMock(return_value={
-        "query": "问题",
-        "rewrites": {"original": "问题", "variants": [], "hyde": None, "all_queries": ["问题"], "degraded": False},
-        "contexts": [{"text": "相关内容", "doc_id": "d1", "title": "t", "source": "s"}],
-        "crag": {"score": 0.9, "action": "generate", "degraded": False},
-        "degraded": [],
-    })):
-        with patch("app.core.rag.engine.call_llm", new=AsyncMock(side_effect=LLMUnavailableError("all down"))):
-            result = await engine.answer("问题")
+    with (
+        patch(
+            "app.core.rag.engine.retrieve",
+            new=AsyncMock(
+                return_value={
+                    "query": "问题",
+                    "rewrites": {"original": "问题", "variants": [], "hyde": None,
+                                 "all_queries": ["问题"], "degraded": False},
+                    "contexts": [{"text": "相关内容", "doc_id": "d1", "title": "t", "source": "s"}],
+                    "crag": {"score": 0.9, "action": "generate", "degraded": False},
+                    "degraded": [],
+                }
+            ),
+        ),
+        patch(
+            "app.core.rag.engine.call_llm",
+            new=AsyncMock(side_effect=LLMUnavailableError("all down")),
+        ),
+    ):
+        result = await engine.answer("问题")
 
     assert "服务暂时繁忙" in result["answer"]
     assert "llm" in result["degraded"]
@@ -160,15 +171,26 @@ async def test_answer_llm_unavailable_uses_template():
 
 async def test_answer_generate_success():
     """正常生成路径。"""
-    with patch("app.core.rag.engine.retrieve", new=AsyncMock(return_value={
-        "query": "问题",
-        "rewrites": {"original": "问题", "variants": [], "hyde": None, "all_queries": ["问题"], "degraded": False},
-        "contexts": [{"text": "内容", "doc_id": "d1", "title": "t", "source": "s"}],
-        "crag": {"score": 0.9, "action": "generate", "degraded": False},
-        "degraded": [],
-    })):
-        with patch("app.core.rag.engine.call_llm", new=AsyncMock(return_value="生成的答案")):
-            result = await engine.answer("问题")
+    with (
+        patch(
+            "app.core.rag.engine.retrieve",
+            new=AsyncMock(
+                return_value={
+                    "query": "问题",
+                    "rewrites": {"original": "问题", "variants": [], "hyde": None,
+                                 "all_queries": ["问题"], "degraded": False},
+                    "contexts": [{"text": "内容", "doc_id": "d1", "title": "t", "source": "s"}],
+                    "crag": {"score": 0.9, "action": "generate", "degraded": False},
+                    "degraded": [],
+                }
+            ),
+        ),
+        patch(
+            "app.core.rag.engine.call_llm",
+            new=AsyncMock(return_value="生成的答案"),
+        ),
+    ):
+        result = await engine.answer("问题")
 
     assert result["answer"] == "生成的答案"
     assert len(result["sources"]) == 1

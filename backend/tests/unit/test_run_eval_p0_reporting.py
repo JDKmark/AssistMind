@@ -239,7 +239,7 @@ def test_retry_missing_scores_fills_gap(monkeypatch):
     calls: list[list] = []
 
     def handler(dataset):
-        calls.append([s for s in dataset.samples])
+        calls.append(list(dataset.samples))
         return _FakeResult(
             [{"faithfulness": 0.7, "context_precision": 0.6, "context_recall": 0.5}
              for _ in dataset.samples]

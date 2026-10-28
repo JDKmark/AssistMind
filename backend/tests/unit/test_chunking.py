@@ -335,10 +335,10 @@ def test_markdown_heading_plain_text_merged():
 def _no_orphan_heading_chunk(chunks) -> None:
     """断言不存在「仅含标题行」的孤儿 chunk。"""
     for c in chunks:
-        lines = [l for l in c["text"].splitlines() if l.strip()]
-        assert not (1 <= len(lines) <= 2 and all(l.strip().startswith("#") for l in lines)), (
-            f"孤儿标题 chunk: {c['text']!r}"
-        )
+        lines = [line for line in c["text"].splitlines() if line.strip()]
+        assert not (
+            1 <= len(lines) <= 2 and all(line.strip().startswith("#") for line in lines)
+        ), f"孤儿标题 chunk: {c['text']!r}"
 
 
 def test_markdown_heading_followed_by_heading_no_orphan():

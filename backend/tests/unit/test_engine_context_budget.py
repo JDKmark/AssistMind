@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from app.config import get_settings
 from app.core.rag import engine
 

@@ -35,7 +35,9 @@ class FeedbackRequest(BaseModel):
     answer: str = Field("", max_length=8000, description="回答快照")
     sources: list[dict] | None = Field(None, description="检索来源快照")
     intent: str = Field("", max_length=16, description="意图")
-    crag_action: str = Field("", max_length=16, description="CRAG 决策（generate/rewrite_retry/no_result）")
+    crag_action: str = Field(
+        "", max_length=16, description="CRAG 决策（generate/rewrite_retry/no_result）"
+    )
     degraded: list[str] | None = Field(None, description="降级项列表")
 
 
@@ -62,7 +64,9 @@ async def submit_feedback_api(
         )
         return result
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        ) from e
 
 
 @router.get("/")

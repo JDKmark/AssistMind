@@ -60,9 +60,8 @@ class _FakeLangfuseClient:
 def fake_langfuse():
     """启用 Langfuse：patch llm_factory 内的引用，返回假客户端。"""
     client = _FakeLangfuseClient()
-    with patch.object(llm_factory_module, "is_langfuse_enabled", return_value=True):
-        with patch.object(llm_factory_module, "get_langfuse", return_value=client):
-            yield client
+    with patch.object(llm_factory_module, "is_langfuse_enabled", return_value=True), patch.object(llm_factory_module, "get_langfuse", return_value=client):
+        yield client
 
 
 async def test_call_llm_langfuse_span_success(fake_langfuse, mock_llm_success):
@@ -119,9 +118,8 @@ async def test_call_llm_langfuse_error_marks_span(fake_langfuse):
 async def test_call_llm_langfuse_disabled_noop(mock_llm_success):
     """未启用时零开销：不调 get_langfuse、不创建 span，返回值正常。"""
     mock_get = MagicMock()
-    with patch.object(llm_factory_module, "is_langfuse_enabled", return_value=False):
-        with patch.object(llm_factory_module, "get_langfuse", mock_get):
-            result = await call_llm("你好")
+    with patch.object(llm_factory_module, "is_langfuse_enabled", return_value=False), patch.object(llm_factory_module, "get_langfuse", mock_get):
+        result = await call_llm("你好")
     assert result == "LLM 响应"
     mock_get.assert_not_called()
 
@@ -150,9 +148,8 @@ async def test_call_llm_langfuse_span_create_failure_does_not_block(mock_llm_suc
         def start_observation(self, **kwargs):
             raise RuntimeError("langfuse 挂了")
 
-    with patch.object(llm_factory_module, "is_langfuse_enabled", return_value=True):
-        with patch.object(llm_factory_module, "get_langfuse", return_value=_BrokenClient()):
-            result = await call_llm("你好")
+    with patch.object(llm_factory_module, "is_langfuse_enabled", return_value=True), patch.object(llm_factory_module, "get_langfuse", return_value=_BrokenClient()):
+        result = await call_llm("你好")
     assert result == "LLM 响应"
 
 

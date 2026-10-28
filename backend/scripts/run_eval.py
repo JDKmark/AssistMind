@@ -794,7 +794,7 @@ async def _retry_missing_scores(
                 len(sub_result.scores),
             )
             continue
-        for idx, sub_scores in zip(pending, sub_result.scores):
+        for idx, sub_scores in zip(pending, sub_result.scores, strict=False):
             for name in names:
                 if _is_missing(result.scores[idx].get(name)) and not _is_missing(
                     sub_scores.get(name)
@@ -931,7 +931,7 @@ async def run_evaluation(rows: list[dict], judge_retries: int = 2, judge_max_tok
         strictness=3,
     )
     ar_errors: dict[int, str] = {}
-    for i, (row, score_row) in enumerate(zip(rows, result.scores)):
+    for i, (row, score_row) in enumerate(zip(rows, result.scores, strict=False)):
         # 与 aevaluate 的 raise_exceptions=False 语义一致：失败记 NaN，不中断
         try:
             if not row["answer"]:
@@ -985,7 +985,7 @@ def print_report(rows: list[dict], scores: list[dict], diag: dict | None = None)
 
     print("\n===== RAGAS 逐条评估明细 =====")
     all_nan_rows = 0
-    for i, (row, s) in enumerate(zip(rows, scores), 1):
+    for i, (row, s) in enumerate(zip(rows, scores, strict=False), 1):
         tag = "对抗" if row["adversarial"] else "常规"
         question = row["question"]
         if len(question) > 34:
@@ -1028,7 +1028,7 @@ def print_report(rows: list[dict], scores: list[dict], diag: dict | None = None)
     # 常规 / 对抗分组统计：对抗样本设计为低分，混在一起算平均会误导质量判断
     for group_name, flag in (("常规样本", False), ("对抗样本", True)):
         group_scores = [
-            s for s, r in zip(scores, rows) if bool(r["adversarial"]) == flag
+            s for s, r in zip(scores, rows, strict=False) if bool(r["adversarial"]) == flag
         ]
         if not group_scores:
             continue
@@ -1082,7 +1082,7 @@ def dump_json(
     """
     names = [m.name for m in _select_metrics(rows)] + ["answer_relevancy"]
     records = []
-    for i, (row, s) in enumerate(zip(rows, scores), 1):
+    for i, (row, s) in enumerate(zip(rows, scores, strict=False), 1):
         records.append(
             {
                 "index": i,

@@ -70,7 +70,7 @@ async def _ensure_cache() -> None:
 
 def _cosine(a: list[float], b: list[float]) -> float:
     dot = 0.0
-    for x, y in zip(a, b):
+    for x, y in zip(a, b, strict=True):
         dot += x * y
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))

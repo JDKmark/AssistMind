@@ -567,7 +567,8 @@ async def answer(
     # 1. 检索
     retrieval = await retrieve(query, role=role, history=history)
 
-    # 2. CRAG 决策（no_result 短路 / rewrite_retry 二次检索，与 chat SSE 链路共用 resolve_retrieval）
+    # 2. CRAG 决策（no_result 短路 / rewrite_retry 二次检索，
+    #    与 chat SSE 链路共用 resolve_retrieval）
     contexts, crag, degraded = await resolve_retrieval(query, role, retrieval)
     if not contexts:
         return {

@@ -119,7 +119,7 @@ async def get(query: str, role: str = "user", persona: str = "") -> dict[str, An
     return None
 
 
-async def set(
+async def put(
     query: str,
     answer: str,
     sources: list[dict[str, Any]],
@@ -153,7 +153,9 @@ async def set(
             emb_hash = hashlib.md5(json.dumps(emb).encode()).hexdigest()
             data["embedding"] = json.dumps(emb, ensure_ascii=False)
             data["embedding_hash"] = emb_hash
-            await redis.hset(_l2_data_key(role, persona), {query: json.dumps(data, ensure_ascii=False)})
+            await redis.hset(
+                _l2_data_key(role, persona), {query: json.dumps(data, ensure_ascii=False)}
+            )
     except Exception as e:
         logger.warning("[Cache] set 失败: %s", e)
 
@@ -215,7 +217,7 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """余弦相似度（向量已归一化时等于点积）。"""
     if len(a) != len(b) or not a:
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm_a = sum(x * x for x in a) ** 0.5
     norm_b = sum(y * y for y in b) ** 0.5
     if norm_a == 0 or norm_b == 0:

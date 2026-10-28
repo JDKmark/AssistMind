@@ -76,6 +76,12 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]
 "scripts/*" = ["E501"]
+# 系统提示词模板按自然语义整行书写：在字符串内部换行会改变提示词内容（影响生成质量），
+# 因此这几个文件的 prompt 行不强制 100 列；其中的代码行仍按 100 列书写
+"app/agents/tool_agent.py" = ["E501"]
+"app/core/rag/engine.py" = ["E501"]
+"app/core/query_rewriter.py" = ["E501"]
+"app/core/mall/product_disambiguator.py" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

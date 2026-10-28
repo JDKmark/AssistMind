@@ -13,8 +13,8 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from app.core.infra.qdrant import get_qdrant
 from app.core.cache.semantic_cache import invalidate as cache_invalidate
+from app.core.infra.qdrant import get_qdrant
 from app.core.rag.bm25 import get_bm25
 from app.core.rag.chunking import chunk_text
 from app.core.rag.embedding import embed_sync
@@ -40,7 +40,13 @@ async def seed_docs(
     await qdrant.connect()
     if not qdrant.is_connected:
         logger.warning("[%s] Qdrant 不可用，跳过向量写入（仅输出切分统计）", log_prefix)
-        return {"docs": len(docs), "chunks": 0, "vector_written": 0, "bm25_built": 0, "qdrant_ok": False}
+        return {
+            "docs": len(docs),
+            "chunks": 0,
+            "vector_written": 0,
+            "bm25_built": 0,
+            "qdrant_ok": False,
+        }
 
     total_chunks = 0
     for doc in docs:

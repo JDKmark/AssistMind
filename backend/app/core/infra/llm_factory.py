@@ -12,7 +12,8 @@ P0 修复说明：
 现用 tenacity 显式装饰 _call_*_via_breaker，确保每次重试独立经过断路器计数。
 
 Langfuse 埋点（phase5 Task 2）：
-- 每次 call_llm 产生一个 span（name=llm.call），metadata 记录 provider/model/超时/重试次数/是否降级，
+- 每次 call_llm 产生一个 span（name=llm.call），metadata 记录
+  provider/model/超时/重试次数/是否降级，
   output 记录生成内容，metadata 同时记录耗时(ms)与内容长度；异常时 span 记 ERROR 后原样抛出。
 - 未启用（is_langfuse_enabled() False）时零开销：不构造 span、不产生任何额外调用，
   返回值与异常语义与未埋点时完全一致。

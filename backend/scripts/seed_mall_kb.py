@@ -133,23 +133,17 @@ async def main() -> None:
             "请先启动 docker compose 的 qdrant 服务再灌库。"
         )
         print(
-            "[SeedMallKB] 切分统计（未写入）：%d 篇文档 / %d 个 chunk（含表结构 chunk %d 个）"
-            % (len(docs), chunk_total, table_total)
+            f"[SeedMallKB] 切分统计（未写入）：{len(docs)} 篇文档 / {chunk_total} 个 chunk"
+            f"（含表结构 chunk {table_total} 个）"
         )
         for doc_id, n, t in per_doc:
             print(f"  {doc_id}: {n} chunks (table={t})")
         raise SystemExit(1)
 
     print(
-        "灌库完成: 文档数=%d, chunk 数=%d（含表结构 chunk %d 个），"
-        "向量写入=%d, BM25 索引=%d"
-        % (
-            stats["docs"],
-            stats["chunks"],
-            table_total,
-            stats["vector_written"],
-            stats["bm25_built"],
-        )
+        f"灌库完成: 文档数={stats['docs']}, chunk 数={stats['chunks']}"
+        f"（含表结构 chunk {table_total} 个），"
+        f"向量写入={stats['vector_written']}, BM25 索引={stats['bm25_built']}"
     )
 
 

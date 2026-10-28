@@ -247,7 +247,6 @@ async def test_seed_docs_skips_cache_invalidate_when_nothing_written(monkeypatch
 async def test_seed_docs_cache_invalidate_failure_does_not_break_seeding(monkeypatch, caplog):
     """缓存失效异常不中断灌库（旁路逻辑，logger.warning 后继续）。"""
     import logging as _logging
-
     from unittest.mock import AsyncMock
 
     from app.core.rag import seeder as seeder_module

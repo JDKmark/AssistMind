@@ -654,7 +654,9 @@ async def _handle_faq(
             contexts = retry_retrieval.get("contexts", [])
         elif crag.get("action") == "no_result":
             fallback = rag_engine.no_result_answer(query)
-            await _persist_round_safe(conversation_id, user_id, persist_query, fallback, intent="faq")
+            await _persist_round_safe(
+                conversation_id, user_id, persist_query, fallback, intent="faq"
+            )
             yield _faq_done_event(
                 span,
                 query,
@@ -695,7 +697,7 @@ async def _handle_faq(
         # 语义缓存写入（非降级兜底才写；按 role + persona 分桶；缓存故障不影响主流程）
         if not gen.get("degraded"):
             try:
-                await semantic_cache.set(
+                await semantic_cache.put(
                     query,
                     gen.get("answer", ""),
                     gen.get("sources", []),

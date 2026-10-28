@@ -19,9 +19,8 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi.testclient import TestClient
-
 import pytest
+from fastapi.testclient import TestClient
 
 from app.core.rag import engine as real_rag_engine
 from app.core.security.auth import create_access_token
@@ -132,7 +131,7 @@ def _parse_sse(text: str) -> list[tuple[str, dict | None]]:
 
 def _events_dict(events: list[tuple[str, dict | None]]) -> dict[str, dict | None]:
     """事件名 -> data（同名事件保留最后一个）。"""
-    return {e: d for e, d in events}
+    return dict(events)
 
 
 # ---------- 1. faq 流式事件序列 ----------
@@ -814,7 +813,7 @@ def test_faq_cache_miss_then_writes():
         ),
     ), patch("app.api.chat.rag_engine", new=mock_engine), patch(
         "app.api.chat.semantic_cache.get", new=AsyncMock(return_value=None)
-    ), patch("app.api.chat.semantic_cache.set", new=mock_set):
+    ), patch("app.api.chat.semantic_cache.put", new=mock_set):
         resp = client.post(
             "/api/v1/chat/ask",
             headers=AUTH_HEADERS,
@@ -856,7 +855,7 @@ def test_faq_persona_uses_persona_bucket_cache():
         ),
     ), patch("app.api.chat.rag_engine", new=mock_engine), patch(
         "app.api.chat.semantic_cache.get", new=mock_get
-    ), patch("app.api.chat.semantic_cache.set", new=mock_set):
+    ), patch("app.api.chat.semantic_cache.put", new=mock_set):
         resp = client.post(
             "/api/v1/chat/ask",
             headers=AUTH_HEADERS,

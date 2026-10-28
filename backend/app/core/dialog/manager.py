@@ -90,7 +90,8 @@ def format_history(history: list[dict[str, str]] | None) -> str:
     if not history:
         return ""
     summary, rest = split_summary(history)
-    kept = ([summary, *rest[-settings.MEMORY_WINDOW:]] if summary else rest[-settings.MEMORY_WINDOW:])
+    window = rest[-settings.MEMORY_WINDOW :]
+    kept = [summary, *window] if summary else window
     return "\n".join(
         f"{'用户' if h.get('role') == 'user' else '客服'}: {h.get('content', '')}"
         for h in kept

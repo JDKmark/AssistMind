@@ -90,7 +90,9 @@ async def rewrite(
             )
             text = await call_llm(prompt, system="你是查询改写助手。", fast=True)
             variants = [v.strip() for v in text.strip().split("\n") if v.strip()]
-            variants = [v for v in variants if len(v) > 3 and v != query][: settings.QUERY_REWRITE_NUM_VARIANTS]
+            variants = [v for v in variants if len(v) > 3 and v != query][
+                : settings.QUERY_REWRITE_NUM_VARIANTS
+            ]
             result["variants"] = variants
             result["all_queries"] = [query] + variants
         except LLMUnavailableError:

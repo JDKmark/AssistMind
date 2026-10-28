@@ -115,7 +115,13 @@ _INTENT_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("refund", ("退", "退款", "退货")),
     ("logistics", ("物流", "快递", "到哪")),
     ("order", ("查订单", "订单")),
-    ("ticket_status", ("工单进度", "工单状态", "工单怎么样", "工单处理", "查工单", "查一下工单", "查下工单", "我的工单")),
+    (
+        "ticket_status",
+        (
+            "工单进度", "工单状态", "工单怎么样", "工单处理",
+            "查工单", "查一下工单", "查下工单", "我的工单",
+        ),
+    ),
     ("ticket", ("工单", "建单")),
 ]
 
@@ -374,7 +380,9 @@ class ToolAgent(BaseReActAgent):
             and not filled_args.get("conversation_id")
         ):
             filled_args["conversation_id"] = self._conversation_id
-            logger.info("[ToolAgent] 会话注入 %s 参数: conversation_id=%s", name, self._conversation_id)
+            logger.info(
+                "[ToolAgent] 会话注入 %s 参数: conversation_id=%s", name, self._conversation_id
+            )
         return await self.mcp_client.call_tool(name, filled_args)
 
     async def run(

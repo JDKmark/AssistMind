@@ -19,6 +19,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.core.conversation_service import (
     list_conversations,
@@ -26,7 +27,6 @@ from app.core.conversation_service import (
     save_round,
 )
 from app.models.conversation import Conversation
-from sqlalchemy.exc import IntegrityError
 
 
 def _make_session() -> AsyncMock:

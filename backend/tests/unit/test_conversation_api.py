@@ -146,7 +146,7 @@ def _parse_sse(text: str) -> list[tuple[str, dict | None]]:
 
 
 def _events_dict(events: list[tuple[str, dict | None]]) -> dict[str, dict | None]:
-    return {e: d for e, d in events}
+    return dict(events)
 
 
 def _route_mock(intent: str) -> AsyncMock:

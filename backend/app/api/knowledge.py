@@ -192,8 +192,8 @@ async def enqueue_evaluation(user: Annotated[dict, Depends(require_admin)]):
 
 @router.post("/upload")
 async def upload_doc(
-    file: UploadFile = File(...),
-    category: str = Form(""),
+    file: Annotated[UploadFile, File()],
+    category: Annotated[str, Form()] = "",
     user: Annotated[dict, Depends(require_admin)] = None,
 ):
     """上传文档入库（仅管理员）：校验 → 持久化到 knowledge/uploads/ → 入队 RQ 任务。

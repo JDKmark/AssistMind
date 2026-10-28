@@ -11,7 +11,7 @@ mock httpx.AsyncClient（不连真实网络）；Settings 显式构造（防 .en
 
 from __future__ import annotations
 
-import asyncio
+import contextlib
 
 import httpx
 import pytest
@@ -133,11 +133,9 @@ async def test_siliconflow_rerank_timeout_returns_none(siliconflow_settings, mon
 
     async def _hang(coro, timeout=None):
         # 先消费 coro（避免 "coroutine was never awaited" 告警），再模拟超时截断
-        try:
+        with contextlib.suppress(Exception):
             await coro
-        except Exception:
-            pass
-        raise asyncio.TimeoutError()
+        raise TimeoutError()
 
     monkeypatch.setattr(reranker_module.asyncio, "wait_for", _hang)
 

@@ -243,7 +243,7 @@ def test_chat_faq_streams_answer(live_server):
     assert names[0] == "start"
     assert names[-1] == "done"
 
-    ed = {e: d for e, d in events}
+    ed = dict(events)
     assert ed["start"]["intent"] == "faq"
     assert "answer" in ed["done"]
     assert ed["done"]["answer"]
@@ -273,7 +273,7 @@ def test_chat_task_streams_answer(live_server):
     assert names[0] == "start"
     assert names[-1] == "done"
 
-    ed = {e: d for e, d in events}
+    ed = dict(events)
     assert ed["start"]["intent"] == "task"
     assert "answer" in ed["done"]
 

@@ -22,7 +22,7 @@ from app.core.cache.semantic_cache import (
     invalidate,
 )
 from app.core.cache.semantic_cache import (
-    set as cache_set,
+    put as cache_set,
 )
 
 
@@ -98,9 +98,8 @@ async def test_l1_cache_version_mismatch_triggers_cleanup():
     redis_mock.client = client_mock
     redis_mock.set = AsyncMock(return_value=True)
 
-    with patch("app.core.cache.semantic_cache.get_redis", return_value=redis_mock):
-        with patch("app.core.cache.semantic_cache.embed_one", new=AsyncMock(return_value=None)):
-            result = await get("查询")
+    with patch("app.core.cache.semantic_cache.get_redis", return_value=redis_mock), patch("app.core.cache.semantic_cache.embed_one", new=AsyncMock(return_value=None)):
+        result = await get("查询")
 
     # 应返回 None（L1 失效，L2 也没有）
     assert result is None
@@ -126,9 +125,8 @@ async def test_set_writes_l1_and_l2():
     redis_mock.hset = AsyncMock(return_value=True)
     redis_mock.set = AsyncMock(return_value=True)
 
-    with patch("app.core.cache.semantic_cache.get_redis", return_value=redis_mock):
-        with patch("app.core.cache.semantic_cache.embed_one", new=AsyncMock(return_value=[0.1, 0.2, 0.3])):
-            await cache_set("查询", "答案", [{"doc_id": "d1"}])
+    with patch("app.core.cache.semantic_cache.get_redis", return_value=redis_mock), patch("app.core.cache.semantic_cache.embed_one", new=AsyncMock(return_value=[0.1, 0.2, 0.3])):
+        await cache_set("查询", "答案", [{"doc_id": "d1"}])
 
     # L1 应被写入
     assert redis_mock.hset.call_count >= 1
@@ -190,9 +188,8 @@ async def test_set_writes_role_specific_keys():
     redis_mock.hset = AsyncMock(return_value=True)
     redis_mock.set = AsyncMock(return_value=True)
 
-    with patch("app.core.cache.semantic_cache.get_redis", return_value=redis_mock):
-        with patch("app.core.cache.semantic_cache.embed_one", new=AsyncMock(return_value=[0.1, 0.2])):
-            await cache_set("查询", "答案", [], role="agent")
+    with patch("app.core.cache.semantic_cache.get_redis", return_value=redis_mock), patch("app.core.cache.semantic_cache.embed_one", new=AsyncMock(return_value=[0.1, 0.2])):
+        await cache_set("查询", "答案", [], role="agent")
 
     # L2 data hash 用 agent 分桶（不传 persona 落 default 子桶）
     l2_calls = [c for c in redis_mock.hset.call_args_list if c.args[0].startswith("assistmind:cache:l2:data:")]

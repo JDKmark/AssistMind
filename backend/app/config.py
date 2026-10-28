@@ -298,10 +298,16 @@ class Settings(BaseSettings):
                 )
             return None  # 本地单账号开发（无迁移账号）放行
         if not migration_dsn:
-            return "runtime 账号非 postgres 时必须配置独立 DATABASE_MIGRATION_URL（DDL/授权走迁移账号）"
+            return (
+                "runtime 账号非 postgres 时必须配置独立 DATABASE_MIGRATION_URL"
+                "（DDL/授权走迁移账号）"
+            )
         migration = make_url(migration_dsn)
         if not migration.username or migration.username == runtime.username:
-            return "DATABASE_MIGRATION_URL 必须与 runtime 账号（DATABASE_URL）分离，不得复用同一账号"
+            return (
+                "DATABASE_MIGRATION_URL 必须与 runtime 账号（DATABASE_URL）分离，"
+                "不得复用同一账号"
+            )
         return None
 
 

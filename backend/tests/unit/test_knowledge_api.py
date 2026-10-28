@@ -352,7 +352,7 @@ def test_upload_md_enqueues_and_saves_file(tmp_path):
     ):
         resp = client.post(
             "/api/v1/knowledge/upload",
-            files={"file": ("退货规则.md", "# 退货规则\n7 天无理由".encode("utf-8"), "text/markdown")},
+            files={"file": ("退货规则.md", "# 退货规则\n7 天无理由".encode(), "text/markdown")},
             data={"category": "业务规则"},
         )
     assert resp.status_code == 200

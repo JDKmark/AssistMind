@@ -147,7 +147,7 @@ async def _rerank_via_siliconflow(
     except CircuitBreakerOpenError:
         logger.warning("[Reranker] rerank 断路器 Open")
         return None
-    except (asyncio.TimeoutError, TimeoutError):
+    except TimeoutError:
         logger.warning("[Reranker] SiliconFlow rerank 超时（跳过重排，用 RRF 结果）")
         return None
     except Exception as e:

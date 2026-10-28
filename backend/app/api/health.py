@@ -15,9 +15,9 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.core.infra.langfuse import is_langfuse_enabled
+from app.core.infra.postgres import engine as pg_engine
 from app.core.infra.qdrant import get_qdrant
 from app.core.infra.redis import get_redis
-from app.core.infra.postgres import engine as pg_engine
 
 router = APIRouter()
 settings = get_settings()

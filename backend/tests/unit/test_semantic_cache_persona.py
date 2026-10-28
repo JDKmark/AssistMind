@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.core.cache import semantic_cache
 from app.core.cache.semantic_cache import (
     _bucket,
     _hash_query,
@@ -24,7 +23,7 @@ from app.core.cache.semantic_cache import (
     get,
 )
 from app.core.cache.semantic_cache import (
-    set as cache_set,
+    put as cache_set,
 )
 
 

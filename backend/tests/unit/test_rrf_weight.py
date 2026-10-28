@@ -64,7 +64,7 @@ def test_rrf_default_weights_match_legacy(monkeypatch) -> None:
     expected = _legacy_rrf(vector_results, bm25_results, k=60)
 
     assert [d["doc_id"] for d in fused] == [d["doc_id"] for d in expected]
-    for f, e in zip(fused, expected):
+    for f, e in zip(fused, expected, strict=True):
         assert f["rrf_score"] == pytest.approx(e["rrf_score"])
 
 

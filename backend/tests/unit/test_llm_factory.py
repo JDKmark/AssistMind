@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,7 +21,6 @@ from app.core.infra.llm_factory import (
     get_chat_model,
     stream_llm,
 )
-
 
 # ---------- stream_llm（流式逐 token，chat SSE 打字机）----------
 
@@ -68,9 +68,8 @@ async def test_call_llm_fast_all_fail_raises():
 
     with _patch_no_langfuse(), patch(
         "app.core.infra.llm_factory._stream_impl", new=_fake_stream
-    ):
-        with pytest.raises(LLMUnavailableError):
-            await call_llm("你好", fast=True)
+    ), pytest.raises(LLMUnavailableError):
+        await call_llm("你好", fast=True)
 
 
 def _patch_no_langfuse():
@@ -160,10 +159,9 @@ async def test_stream_llm_all_fail_raises():
 
     with _patch_no_langfuse(), patch(
         "app.core.infra.llm_factory._stream_provider", new=_gen
-    ):
-        with pytest.raises(LLMUnavailableError):
-            async for d in stream_llm("你好"):
-                pass  # pragma: no cover
+    ), pytest.raises(LLMUnavailableError):
+        async for _chunk in stream_llm("你好"):
+            pass  # pragma: no cover
 
 
 async def test_stream_llm_ollama_provider_skips_deepseek(monkeypatch):
@@ -214,10 +212,8 @@ async def test_call_llm_skips_open_breaker():
     async def _fail():
         raise ConnectionError("挂了")
     for _ in range(5):
-        try:
+        with contextlib.suppress(Exception):
             await circuit_breaker.call_with_breaker("llm_deepseek", _fail)
-        except Exception:
-            pass
     assert circuit_breaker.is_open("llm_deepseek")
 
     # 调用 call_llm 应跳过 DeepSeek 直接用 Ollama
@@ -241,12 +237,10 @@ def test_get_chat_model_fallback_when_deepseek_open():
     async def _force_open():
         raise ConnectionError("force")
     for _ in range(5):
-        try:
+        with contextlib.suppress(Exception):
             asyncio.get_event_loop().run_until_complete(
                 circuit_breaker.call_with_breaker("llm_deepseek", _force_open)
             )
-        except Exception:
-            pass
 
     # 注意：同步测试中无法直接强制 Open，此处仅验证断路器未 Open 时返回 DeepSeek
     # 真实 Open 行为已在 async 测试中覆盖
@@ -344,10 +338,9 @@ async def test_stream_llm_ollama_only_mode_first_token_fail_raises_unavailable(m
 
     with _patch_no_langfuse(), patch(
         "app.core.infra.llm_factory._stream_provider", new=_gen
-    ):
-        with pytest.raises(LLMUnavailableError):
-            async for d in stream_llm("你好"):
-                pass  # pragma: no cover
+    ), pytest.raises(LLMUnavailableError):
+        async for _chunk in stream_llm("你好"):
+            pass  # pragma: no cover
 
 
 async def test_stream_llm_ollama_only_mode_success_fills_info(monkeypatch):

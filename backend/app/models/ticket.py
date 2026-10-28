@@ -44,14 +44,17 @@ class Ticket(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[str] = mapped_column(String(16), default="normal")  # low|normal|high|urgent
-    status: Mapped[str] = mapped_column(String(16), default="open")  # open|in_progress|resolved|closed
+    # open|in_progress|resolved|closed
+    status: Mapped[str] = mapped_column(String(16), default="open")
     category: Mapped[str] = mapped_column(String(32), default="")  # 标记"转人工"等
     # 用 String 软外键指向 users.id，不强约束以便测试
     user_id: Mapped[str] = mapped_column(String(36), default="system")
     # 关联的聊天会话（task 链路转人工建单经参数补填注入；工单页手动建单为空串）
     conversation_id: Mapped[str] = mapped_column(String(64), default="", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class TicketReply(Base):

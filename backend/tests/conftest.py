@@ -91,9 +91,8 @@ def mock_llm_success() -> Any:
     _orig = _lf.settings.LLM_PROVIDER
     _lf.settings.LLM_PROVIDER = "deepseek"
     try:
-        with patch("app.core.infra.llm_factory._deepseek_with_retry", new=AsyncMock(return_value="LLM 响应")):
-            with patch("app.core.infra.llm_factory._ollama_with_retry", new=AsyncMock(return_value="Ollama 响应")):
-                yield
+        with patch("app.core.infra.llm_factory._deepseek_with_retry", new=AsyncMock(return_value="LLM 响应")), patch("app.core.infra.llm_factory._ollama_with_retry", new=AsyncMock(return_value="Ollama 响应")):
+            yield
     finally:
         _lf.settings.LLM_PROVIDER = _orig
 
@@ -101,12 +100,17 @@ def mock_llm_success() -> Any:
 @pytest.fixture
 def mock_llm_deepseek_fail_ollama_success() -> Any:
     """mock DeepSeek 失败，Ollama 成功。"""
-    with patch(
-        "app.core.infra.llm_factory._deepseek_with_retry",
-        new=AsyncMock(side_effect=Exception("DeepSeek 不可用")),
+    with (
+        patch(
+            "app.core.infra.llm_factory._deepseek_with_retry",
+            new=AsyncMock(side_effect=Exception("DeepSeek 不可用")),
+        ),
+        patch(
+            "app.core.infra.llm_factory._ollama_with_retry",
+            new=AsyncMock(return_value="Ollama 兜底响应"),
+        ),
     ):
-        with patch("app.core.infra.llm_factory._ollama_with_retry", new=AsyncMock(return_value="Ollama 兜底响应")):
-            yield
+        yield
 
 
 @pytest.fixture
@@ -133,10 +137,8 @@ def mock_embedding() -> Any:
     async def _fake_embed(texts: list[str]) -> list[list[float]]:
         return [[0.1, 0.2, 0.3] for _ in texts]
 
-    with patch("app.core.rag.engine.embed_async", new=_fake_embed):
-        with patch("app.core.rag.embedding.embed_async", new=_fake_embed):
-            with patch("app.core.rag.embedding.embed_one", new=AsyncMock(return_value=[0.1, 0.2, 0.3])):
-                yield
+    with patch("app.core.rag.engine.embed_async", new=_fake_embed), patch("app.core.rag.embedding.embed_async", new=_fake_embed), patch("app.core.rag.embedding.embed_one", new=AsyncMock(return_value=[0.1, 0.2, 0.3])):
+        yield
 
 
 @pytest.fixture
@@ -145,10 +147,8 @@ def mock_embedding_fail() -> Any:
     async def _fail_embed(texts: list[str]) -> list[list[float]] | None:
         return None
 
-    with patch("app.core.rag.engine.embed_async", new=_fail_embed):
-        with patch("app.core.rag.embedding.embed_async", new=_fail_embed):
-            with patch("app.core.rag.embedding.embed_one", new=AsyncMock(return_value=None)):
-                yield
+    with patch("app.core.rag.engine.embed_async", new=_fail_embed), patch("app.core.rag.embedding.embed_async", new=_fail_embed), patch("app.core.rag.embedding.embed_one", new=AsyncMock(return_value=None)):
+        yield
 
 
 @pytest.fixture

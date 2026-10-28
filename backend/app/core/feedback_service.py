@@ -12,8 +12,8 @@ import json
 import logging
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy import func as sa_func
+from sqlalchemy import select
 
 from app.core.infra.postgres import async_session
 from app.models.feedback import Feedback
@@ -44,7 +44,12 @@ async def submit_feedback(
     sources / degraded 为快照列表，JSON 序列化后入库。
     返回 {"feedback_id": str, "created": True}。
     """
-    if not isinstance(score, int) or isinstance(score, bool) or score < MIN_SCORE or score > MAX_SCORE:
+    if (
+        not isinstance(score, int)
+        or isinstance(score, bool)
+        or score < MIN_SCORE
+        or score > MAX_SCORE
+    ):
         raise ValueError(f"score 必须为 {MIN_SCORE}-{MAX_SCORE} 之间的整数")
 
     sources_json = _dump_json(sources, "sources")
