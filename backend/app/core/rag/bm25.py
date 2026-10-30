@@ -130,6 +130,22 @@ _IDENT_RE = re.compile(r"[a-zA-Z0-9_]+")
 # 连续中文块（交给 jieba 做词粒度切分）
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
 
+# 缺 security_group 字段时的默认可见范围（兼容 P0 之前灌库的存量 chunk）
+_DEFAULT_SECURITY_GROUP: tuple[str, ...] = ("user", "agent", "admin")
+
+
+def _index_text(doc: dict[str, Any]) -> str:
+    """索引文本 = text + title + section_title + table_comment。
+
+    **build 与增量 add/remove_by_doc 必须共用这一口径。** SQL DDL 的
+    CREATE TABLE oms_order(...) 词面与自然语言查询差距大（"订单表
+    oms_order 是做什么的"），把表级注释（订单表）与标题注入打分词项，
+    中文语义词才能命中（不改变 chunk 存储文本，仅索引侧增强）。
+    """
+    return " ".join(
+        str(doc.get(key) or "") for key in ("text", "title", "section_title", "table_comment")
+    )
+
 
 def _tokenize(text: str) -> list[str]:
     """词粒度分词：中文 jieba.lcut，英文/数字/标识符整词保留，过滤停用词。
@@ -155,21 +171,20 @@ class BM25Index:
     def __init__(self) -> None:
         self._bm25: BM25Okapi | None = None
         self._docs: list[dict[str, Any]] = []
-        self._lock = asyncio.Lock()
         # 跨进程版本同步状态（见模块 docstring）
         self._seen_version: int = 0
         self._reload_task: asyncio.Task | None = None
 
     @staticmethod
-    def _build_bm25_from_docs(docs: list[dict[str, Any]]) -> BM25Okapi:
-        """tokenized 构建（build 与后台重载 _reload 共用，避免重复）。"""
-        tokenized = [
-            _tokenize(
-                f"{d.get('text', '')} {d.get('title', '')} "
-                f"{d.get('section_title', '')} {d.get('table_comment', '')}"
-            )
-            for d in docs
-        ]
+    def _build_bm25_from_docs(docs: list[dict[str, Any]]) -> BM25Okapi | None:
+        """tokenized 构建（build / _reload / add / remove_by_doc 共用，避免口径漂移）。
+
+        返回 None 表示所有文档的索引文本都为空：BM25Okapi 在 avgdl=0 时
+        除零崩溃，调用方据此把索引置空（检索返回 []），而非让构建抛异常。
+        """
+        tokenized = [_tokenize(_index_text(d)) for d in docs]
+        if not any(tokenized):
+            return None
         return BM25Okapi(tokenized)
 
     def _read_version_quiet(self) -> int:
@@ -184,10 +199,7 @@ class BM25Index:
     def build(self, docs: list[dict[str, Any]]) -> None:
         """构建索引（同步，仅在初始化时调用）。
 
-        检索文本 = text + title + section_title + table_comment 拼接：
-        SQL DDL 的 CREATE TABLE oms_order(...) 词面与自然语言查询差距大
-        （"订单表 oms_order 是做什么的"），把表级注释（订单表）与标题注入
-        打分词项，中文语义词才能命中（不改变 chunk 存储文本，仅索引侧增强）。
+        索引文本口径见 `_index_text`（text + title + section_title + table_comment）。
 
         成功构建后对齐当前 Redis 版本号：避免进程启动 / 本地重建后
         ensure_fresh 立即误判「版本落后」触发重载。
@@ -200,7 +212,10 @@ class BM25Index:
         self._docs = docs
         self._bm25 = self._build_bm25_from_docs(docs)
         self._seen_version = self._read_version_quiet()
-        logger.info("[BM25] 索引构建完成，%d 文档（版本=%d）", len(docs), self._seen_version)
+        if self._bm25 is None:
+            logger.warning("[BM25] 索引文本全为空，索引置空（%d 文档）", len(docs))
+        else:
+            logger.info("[BM25] 索引构建完成，%d 文档（版本=%d）", len(docs), self._seen_version)
 
     def _search_sync(
         self, query: str, top_k: int, role: str
@@ -216,7 +231,8 @@ class BM25Index:
             # 兼容 P0 之前灌库的存量 chunk；启停经版本重载自然生效，无需独立机制）
             if doc.get("enabled", True) is False:
                 continue
-            sg = doc.get("security_group", ["user", "agent", "admin"])
+            # 显式 null 与缺字段同等对待：单个坏文档不应让整次检索抛异常返回 []
+            sg = doc.get("security_group") or _DEFAULT_SECURITY_GROUP
             if role in sg:
                 filtered.append((i, float(scores[i])))
         filtered.sort(key=lambda x: x[1], reverse=True)
@@ -228,7 +244,7 @@ class BM25Index:
                 "source": self._docs[i].get("source", ""),
                 "section_title": self._docs[i].get("section_title", ""),
                 "table_comment": self._docs[i].get("table_comment", ""),
-                "text": self._docs[i]["text"],
+                "text": self._docs[i].get("text", ""),
                 "score": s,
             }
             for i, s in top
@@ -282,7 +298,14 @@ class BM25Index:
             self._docs = docs
             self._bm25 = new_bm25
             self._seen_version = target_version
-            logger.info("[BM25] 后台重载完成：%d 文档（版本=%d）", len(docs), target_version)
+            if new_bm25 is None:
+                logger.warning(
+                    "[BM25] 后台重载：索引文本全为空，索引置空（%d 文档，版本=%d）",
+                    len(docs),
+                    target_version,
+                )
+            else:
+                logger.info("[BM25] 后台重载完成：%d 文档（版本=%d）", len(docs), target_version)
         except Exception as e:
             logger.warning("[BM25] 后台重载失败: %s", e)
         finally:
@@ -330,17 +353,17 @@ class BM25Index:
     def add(self, doc: dict[str, Any]) -> None:
         """增量添加（重建索引，同步）。"""
         self._docs.append(doc)
-        tokenized = [_tokenize(d["text"]) for d in self._docs]
-        self._bm25 = BM25Okapi(tokenized)
+        self._bm25 = self._build_bm25_from_docs(self._docs)
 
     def remove_by_doc(self, doc_id: str) -> None:
-        """按 doc_id 移除（重建索引，同步）。"""
+        """按 doc_id 移除（重建索引，同步）。
+
+        重建必须走 `_build_bm25_from_docs`（而非只 tokenize text）：否则剩余
+        文档的 title / section_title / table_comment 注入全部丢失，中文语义
+        查询退化为只匹配 DDL 词面，且本进程 mark_changed 后不会自愈。
+        """
         self._docs = [d for d in self._docs if d.get("doc_id") != doc_id]
-        if self._docs:
-            tokenized = [_tokenize(d["text"]) for d in self._docs]
-            self._bm25 = BM25Okapi(tokenized)
-        else:
-            self._bm25 = None
+        self._bm25 = self._build_bm25_from_docs(self._docs) if self._docs else None
 
 
 _bm25: BM25Index | None = None

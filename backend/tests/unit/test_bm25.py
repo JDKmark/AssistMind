@@ -79,3 +79,109 @@ async def test_search_respects_rbac_security_group():
 def test_get_bm25_singleton():
     """get_bm25 返回单例。"""
     assert get_bm25() is get_bm25()
+
+
+def _doc_with_meta(doc_id: str, text: str, title: str) -> dict:
+    """带标题/表注释的文档（验证索引文本注入口径）。"""
+    return {
+        "doc_id": doc_id,
+        "text": text,
+        "title": title,
+        "section_title": "",
+        "table_comment": title,
+        "source": "t.md",
+        "security_group": ["user", "agent", "admin"],
+    }
+
+
+def _ddl_docs() -> list[dict]:
+    """五个 SQL DDL chunk：语义词只出现在 title / table_comment 里。
+
+    对应真实语料形态——chunk 正文是 CREATE TABLE oms_order(...)，
+    中文语义（订单表）只在表级注释与标题上。
+    """
+    return [
+        _doc_with_meta("d1", "CREATE TABLE oms_order (id bigint)", "订单表"),
+        _doc_with_meta("d2", "CREATE TABLE ums_member (id bigint)", "会员表"),
+        _doc_with_meta("d3", "CREATE TABLE pms_product (id bigint)", "商品表"),
+        _doc_with_meta("d4", "CREATE TABLE oms_cart_item (id bigint)", "购物车表"),
+        _doc_with_meta("d5", "CREATE TABLE sms_coupon (id bigint)", "优惠券表"),
+    ]
+
+
+def _scores(results: list[dict]) -> list[tuple[str, float]]:
+    return [(r["doc_id"], round(r["score"], 9)) for r in results]
+
+
+async def test_remove_by_doc_matches_full_rebuild():
+    """增量移除后的索引与「用剩余文档全量重建」完全等价。
+
+    回归背景：add / remove_by_doc 曾只对 text 做 tokenize，而 build 用
+    text + title + section_title + table_comment 拼接。一次文档删除就会让
+    整个索引的标题注入消失，中文语义查询（「订单表 oms_order 是做什么的」）
+    退化为只匹配 DDL 词面；且本进程 mark_changed 推进版本后不会自愈。
+    """
+    index = BM25Index()
+    index.build(_ddl_docs())
+    index.remove_by_doc("d2")
+
+    fresh = BM25Index()
+    fresh.build([d for d in _ddl_docs() if d["doc_id"] != "d2"])
+
+    # 「订单表」不在任何 text 中，只靠 title / table_comment 命中
+    assert (await index.search("订单表", top_k=5))[0]["doc_id"] == "d1"
+    assert _scores(await index.search("订单表", top_k=5)) == _scores(
+        await fresh.search("订单表", top_k=5)
+    )
+    assert _scores(await index.search("优惠券表", top_k=5)) == _scores(
+        await fresh.search("优惠券表", top_k=5)
+    )
+
+
+async def test_add_matches_full_rebuild():
+    """增量 add 后的索引与「含新文档的全量重建」完全等价。"""
+    docs = _ddl_docs()
+    index = BM25Index()
+    index.build(docs[:4])
+    index.add(docs[4])
+
+    fresh = BM25Index()
+    fresh.build(docs)
+
+    assert (await index.search("优惠券表", top_k=5))[0]["doc_id"] == "d5"
+    assert _scores(await index.search("优惠券表", top_k=5)) == _scores(
+        await fresh.search("优惠券表", top_k=5)
+    )
+
+
+async def test_empty_index_text_does_not_crash_build():
+    """索引文本全为空时构建不抛异常（BM25Okapi 在 avgdl=0 时除零）。
+
+    真实触发面：text/title/section_title/table_comment 全空的坏 chunk。
+    原实现会 ZeroDivisionError，让整批灌库中断。
+    """
+    index = BM25Index()
+    index.build([{"doc_id": "x", "text": "", "title": ""}])
+    assert index.doc_count == 1
+    assert await index.search("任何查询") == []
+
+    index.add({"doc_id": "y", "text": "", "title": ""})
+    assert index.doc_count == 2
+    assert await index.search("任何查询") == []
+
+
+async def test_search_tolerates_null_security_group_and_missing_text():
+    """单个字段缺失/为 null 的文档不应让整次检索返回空。
+
+    security_group 显式为 null、或文档缺 text 字段时，原实现分别抛
+    TypeError / KeyError，被 search 的兜底 except 吞掉后整库检索返回 []。
+    """
+    index = BM25Index()
+    index.build([
+        {"doc_id": "null_sg", "text": "连接池耗尽", "security_group": None},
+        {"doc_id": "no_text", "title": "连接池", "security_group": ["user"]},
+    ])
+
+    results = await index.search("连接池", top_k=5, role="user")
+    assert {r["doc_id"] for r in results} == {"null_sg", "no_text"}
+    assert all(r["score"] != 0.0 for r in results)
