@@ -114,7 +114,12 @@ function fmtAmount(amount) {
   return Number.isFinite(n) ? n.toFixed(2) : '-'
 }
 
+// 请求序号：快速翻页或切筛选时先发的请求可能后返回，只认最后一次，
+// 否则慢网络下会出现「页码与表格内容错位」
+let loadSeq = 0
+
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const params = {
@@ -124,14 +129,17 @@ async function load() {
     if (ownerFilter.value.trim()) params.owner_username = ownerFilter.value.trim()
     if (statusFilter.value) params.status = statusFilter.value
     const data = await listOrders(params)
+    if (seq !== loadSeq) return // 已有更新的请求在途，丢弃本次结果
     orders.value = data.orders || []
     total.value = data.total != null ? data.total : orders.value.length
   } catch {
+    if (seq !== loadSeq) return
     // 后端不可用已由拦截器节流提示（页面横幅提示重试）；此处静默降级为空列表
     orders.value = []
     total.value = 0
   } finally {
-    loading.value = false
+    // 只有最后一次请求负责收尾 loading，避免旧请求提前关掉新请求的加载态
+    if (seq === loadSeq) loading.value = false
   }
 }
 

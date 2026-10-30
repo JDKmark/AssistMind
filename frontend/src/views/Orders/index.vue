@@ -112,7 +112,12 @@ function formatTime(iso) {
   return String(iso).replace('T', ' ').slice(0, 19)
 }
 
+// 请求序号：快速翻页或切筛选时先发的请求可能后返回，只认最后一次，
+// 否则慢网络下会出现「页码是 3、表格是第 2 页」的错位
+let loadSeq = 0
+
 async function loadOrders() {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const params = {
@@ -121,14 +126,17 @@ async function loadOrders() {
     }
     if (filterStatus.value) params.status = filterStatus.value
     const data = await listMyOrders(params)
+    if (seq !== loadSeq) return // 已有更新的请求在途，丢弃本次结果
     orders.value = data.orders || []
     total.value = data.total != null ? data.total : orders.value.length
   } catch {
+    if (seq !== loadSeq) return
     orders.value = []
     total.value = 0
     ElMessage.error('我的订单加载失败')
   } finally {
-    loading.value = false
+    // 只有最后一次请求负责收尾 loading，避免旧请求提前关掉新请求的加载态
+    if (seq === loadSeq) loading.value = false
   }
 }
 

@@ -854,11 +854,34 @@ async function runEvaluation() {
   }
 }
 
+// 组件卸载置位：进行中的评估任务轮询停止
+let evalPollDisposed = false
+let evalPollTimer = null
+let evalPollResolve = null
+
+/**
+ * 可取消的等待。
+ *
+ * 直接 `await new Promise(r => setTimeout(r, ms))` 在卸载后仍会挂满一个
+ * 轮询周期（5s）才走下一轮判断；这里保留 resolve 引用，卸载时立即唤醒，
+ * 循环随即命中 evalPollDisposed 退出，不留空转。
+ */
+function pollSleep(ms) {
+  return new Promise((resolve) => {
+    evalPollResolve = resolve
+    evalPollTimer = setTimeout(() => {
+      evalPollTimer = null
+      evalPollResolve = null
+      resolve()
+    }, ms)
+  })
+}
+
 async function pollEvalJob(jobId) {
   // 组件卸载后停止轮询（evalPollDisposed 由 onUnmounted 置位）：
   // 不再空转 5 分钟，也不在其他页面弹完成/失败提示
   for (let i = 0; i < EVAL_POLL_MAX; i++) {
-    await new Promise((resolve) => setTimeout(resolve, EVAL_POLL_INTERVAL))
+    await pollSleep(EVAL_POLL_INTERVAL)
     if (evalPollDisposed) return
     try {
       const job = await getJobStatus(jobId)
@@ -920,10 +943,15 @@ onMounted(() => {
   loadFeedback()
 })
 
-// 卸载置位：进行中的评估任务轮询停止
-let evalPollDisposed = false
+// 卸载：停轮询并唤醒在途等待（否则还要挂满一个 EVAL_POLL_INTERVAL）
 onUnmounted(() => {
   evalPollDisposed = true
+  if (evalPollTimer) {
+    clearTimeout(evalPollTimer)
+    evalPollTimer = null
+  }
+  evalPollResolve?.()
+  evalPollResolve = null
 })
 </script>
 

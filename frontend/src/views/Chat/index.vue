@@ -452,7 +452,16 @@
 // 显式命名：MainLayout 的 <keep-alive include="Chat"> 按组件名缓存实例，
 // 避免从聊天页跳转工单/订单等页面后对话（组件内存 ref）随卸载全部丢失
 defineOptions({ name: 'Chat' })
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, onDeactivated } from 'vue'
+import {
+  ref,
+  computed,
+  watch,
+  nextTick,
+  onMounted,
+  onBeforeUnmount,
+  onActivated,
+  onDeactivated,
+} from 'vue'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 import { ElMessage } from 'element-plus'
@@ -524,6 +533,16 @@ const streaming = ref(false)
 const messages = ref([])
 // 已完成轮次的对话历史 [{role: 'user'|'assistant', content}]，随请求发给后端
 const history = ref([])
+// 客户端历史上限：后端 MEMORY_WINDOW 默认 10 条（5 轮），前端留 4 倍余量。
+// 目的仅是限制长会话的请求体大小——服务端 trim_history 会再按窗口裁剪，
+// 留余量是为了后端调大窗口时前端不先把有效上下文截掉。
+const CLIENT_HISTORY_MAX = 40
+
+function trimClientHistory() {
+  if (history.value.length > CLIENT_HISTORY_MAX) {
+    history.value = history.value.slice(-CLIENT_HISTORY_MAX)
+  }
+}
 const listRef = ref(null)
 
 // ---------- 历史会话抽屉 ----------
@@ -619,7 +638,10 @@ async function sendThreadReply() {
 
 onBeforeUnmount(() => {
   stopSpeaking()
-  if (liveTimer) clearInterval(liveTimer)
+  if (liveTimer) {
+    clearInterval(liveTimer)
+    liveTimer = null
+  }
   // 人工客服线程轮询：组件销毁即停止（无残留定时器）
   if (threadTimer) {
     clearInterval(threadTimer)
@@ -632,8 +654,13 @@ onBeforeUnmount(() => {
 
 onDeactivated(() => {
   // keep-alive 缓存下切走页面：停止播报与实时计时（实例保留，回来自动恢复对话现场）
+  // 置 null 是必须的：残留的 timer id 会让 onActivated 的 syncLiveTimer 误判
+  // 「已在计时」而不重建，诊断耗时停摆
   stopSpeaking()
-  if (liveTimer) clearInterval(liveTimer)
+  if (liveTimer) {
+    clearInterval(liveTimer)
+    liveTimer = null
+  }
 })
 
 let seq = 0
@@ -858,6 +885,7 @@ async function continueConversation(c) {
     console.warn('[Chat] 会话消息重建失败，仅切换会话', e)
   }
   history.value = rebuilt
+  trimClientHistory()
   currentConversationId.value = c.id
   historyDrawerVisible.value = false
   viewedMessages.value = []
@@ -1077,6 +1105,7 @@ async function onSend() {
         if (name === 'done') {
           history.value.push({ role: 'user', content: q })
           history.value.push({ role: 'assistant', content: liveMsg.content || '' })
+          trimClientHistory()
         }
       },
       onDone: () => {
@@ -1135,9 +1164,13 @@ watch(
 // 流式进行中：每 500ms 刷新诊断面板的实时耗时（staff 定位"卡住"环节用）；
 // 结束（done/error/异常）即停表，避免空跑
 let liveTimer = null
-watch(streaming, (v) => {
-  if (v && isStaff.value) {
-    clearInterval(liveTimer)
+
+// 起停实时耗时计时（staff 诊断面板用）。抽成函数是因为 keep-alive 切走时
+// onDeactivated 会停表，而 streaming 值没变、watch 不会重触发，切回来必须
+// 手动恢复，否则诊断耗时停在上一次刷新的值。
+function syncLiveTimer() {
+  if (streaming.value && isStaff.value) {
+    if (liveTimer) return // 已在计时，避免重复建表
     liveTimer = setInterval(() => {
       const now = Date.now()
       messages.value.forEach((m) => {
@@ -1150,6 +1183,13 @@ watch(streaming, (v) => {
     clearInterval(liveTimer)
     liveTimer = null
   }
+}
+
+watch(streaming, syncLiveTimer)
+
+onActivated(() => {
+  // keep-alive 切回：流式仍在进行时恢复计时（onDeactivated 已停表）
+  syncLiveTimer()
 })
 
 onMounted(() => {
