@@ -1,5 +1,7 @@
 # AssistMind —— 电商智能客服系统
 
+**仓库地址**：[github.com/JDKmark/AssistMind](https://github.com/JDKmark/AssistMind)
+
 > 电商智能客服系统：RAG + Agent，覆盖**电商客服问答**（商品咨询 / 订单查询 / 物流查询 / 售后申请）与**转人工 / 工单闭环**。
 > 知识库素材取自开源项目 [macrozheng/mall](https://github.com/macrozheng/mall) 的文档与表结构，业务数据为项目自建（见[知识来源与致谢](#知识来源与致谢)）。
 
@@ -76,7 +78,7 @@
 
 ```powershell
 # 克隆仓库
-git clone <repo-url>
+git clone https://github.com/JDKmark/AssistMind.git
 cd AssistMind
 
 # 后端虚拟环境

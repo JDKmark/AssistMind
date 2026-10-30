@@ -603,3 +603,29 @@ async def test_user2_orders_hold_both_s1_pro():
     result = await ds.my_orders(requester_user_id="uid-user2", requester_username="user2")
     pids = {i["product_id"] for o in result["orders"] for i in o["items"]}
     assert {"P006", "P007"} <= pids
+
+
+async def test_overview_stats_aggregates_beyond_first_page(monkeypatch):
+    """概览聚合覆盖全量，不因分页窗口截断。
+
+    回归背景：admin 概览曾在 list_orders()（默认 limit=50）/ list_refunds() 的
+    返回页上直接 sum 与分组，成交额和 by_status 只统计到首页；feedback 更是用
+    page_size=1 取一条再计数，negative / pending_export 恒为 0 或 1。
+    这里把翻页粒度压到 2，强制多次翻页，验证聚合结果仍与全量一致。
+    """
+    from app.core.mall import base as mall_base
+
+    monkeypatch.setattr(mall_base, "_OVERVIEW_PAGE_SIZE", 2)
+
+    all_orders = await ds.list_orders(limit=1000)
+    stats = await ds.overview_stats()
+
+    assert stats["orders"]["total"] == all_orders["total"]
+    assert stats["orders"]["amount"] == sum(
+        order["pay_amount"] or 0 for order in all_orders["orders"]
+    )
+    expected: dict[str, int] = {}
+    for order in all_orders["orders"]:
+        expected[order["status"]] = expected.get(order["status"], 0) + 1
+    assert stats["orders"]["by_status"] == expected
+    assert sum(stats["orders"]["by_status"].values()) == all_orders["total"]

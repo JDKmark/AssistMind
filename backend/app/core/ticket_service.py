@@ -229,6 +229,19 @@ async def list_tickets(
         return {"tickets": [_ticket_to_dict(t) for t in tickets], "total": total}
 
 
+async def count_by_status() -> dict[str, int]:
+    """按状态统计工单数（admin 概览用，不受 limit 窗口影响）。
+
+    list_tickets 默认 limit=50，在返回结果上做 by_status 求和只能覆盖前 50 条，
+    与 total 口径不一致。概览面板必须走 SQL group by 聚合。
+    """
+    async with async_session() as session:
+        rows = await session.execute(
+            select(Ticket.status, func.count(Ticket.id)).group_by(Ticket.status)
+        )
+        return dict(rows.all())
+
+
 def _parse_since(since_iso: str) -> datetime:
     """解析轮询基线时间（ISO 8601，允许 Z 后缀）。
 

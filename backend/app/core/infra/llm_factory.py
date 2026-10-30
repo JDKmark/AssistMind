@@ -34,7 +34,7 @@ from langfuse import LangfuseSpan
 from tenacity import (
     before_sleep_log,
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential_jitter,
 )
@@ -138,6 +138,46 @@ _RETRYABLE_EXC: tuple[type[Exception], ...] = (
     asyncio.TimeoutError,
 )
 
+# 额度耗尽的错误特征（命中即不重试，直接降级）：
+# - 商汤免费档：{"code": "insufficient_quota"} / {"message": "rpm exhausted", "code": "8"}
+# - DeepSeek 官方：402 {"message": "Insufficient Balance"}
+_QUOTA_HINTS: tuple[str, ...] = (
+    "insufficient_quota",
+    "quota_exceeded",
+    "rpm exhausted",
+    "insufficient balance",
+    "exceeded your current quota",
+)
+
+
+def _should_retry(exc: BaseException) -> bool:
+    """tenacity 重试判定：额度类 429 不重试，直接让调用方降级。
+
+    429 有两种语义，重试策略必须区分：
+    - 瞬时限流（每分钟窗口打满）：等几秒确实能恢复 → 重试有意义；
+    - 额度耗尽（insufficient_quota / rpm exhausted / Insufficient Balance）：
+      重试不会改变结果，只会白等 N 次退避 + 多打 N 次请求。
+      商汤免费档与 DeepSeek 余额归零都属于后者，实测把降级耗时从 24s 压到 3s。
+    """
+    if _is_quota_exhausted(exc):
+        logger.warning("[LLM] 额度已耗尽（%s），跳过重试直接降级", _exc_brief(exc))
+        return False
+    return isinstance(exc, _RETRYABLE_EXC + (CircuitBreakerOpenError,))
+
+
+def _is_quota_exhausted(exc: BaseException) -> bool:
+    """判断异常是否为「额度/配额耗尽」（重试无意义）。"""
+    if not isinstance(exc, openai.RateLimitError):
+        return False
+    body = getattr(exc, "body", None)
+    text = f"{exc} {body}".lower()
+    return any(hint in text for hint in _QUOTA_HINTS)
+
+
+def _exc_brief(exc: BaseException) -> str:
+    """异常摘要：只取首个错误信息，避免把整段 body 打进日志。"""
+    return str(exc).replace("\n", " ")[:160]
+
 
 def _build_retry_decorator(*, max_retries: int, base_delay: float, jitter: float):
     """构造 tenacity 重试装饰器。
@@ -152,7 +192,7 @@ def _build_retry_decorator(*, max_retries: int, base_delay: float, jitter: float
     return retry(
         stop=stop_after_attempt(max_retries + 1),
         wait=wait_exponential_jitter(initial=base_delay, jitter=jitter),
-        retry=retry_if_exception_type(_RETRYABLE_EXC + (CircuitBreakerOpenError,)),
+        retry=retry_if_exception(_should_retry),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
@@ -196,6 +236,9 @@ def _build_chat_model(name: str, *, stream_fast: bool = False) -> ChatOpenAI:
         )
     timeout = settings.LLM_STREAM_TIMEOUT if stream_fast else settings.LLM_TIMEOUT
     api_key, base_url, model = settings.llm_profile()
+    # 网关透传参数（LLM_EXTRA_BODY）：仅主 provider 生效，典型用于关闭推理模型的
+    # 思考阶段（商汤免费档 sensenova-6.8-flash-lite 默认先花 250+ reasoning tokens）。
+    extra_body = settings.llm_extra_body()
     return ChatOpenAI(
         model=model,
         api_key=api_key,
@@ -203,6 +246,11 @@ def _build_chat_model(name: str, *, stream_fast: bool = False) -> ChatOpenAI:
         temperature=0.3,
         max_tokens=2048,
         timeout=timeout,
+        # 重试统一由 tenacity 负责（_build_retry_decorator 区分瞬时限流与额度耗尽）。
+        # SDK 自带的重试默认 2 次且不区分 429 语义，额度耗尽时会白打 2 轮请求、
+        # 多等十几秒才降级，因此关闭，避免两层重试叠加。
+        max_retries=0,
+        **({"extra_body": extra_body} if extra_body else {}),
     )
 
 

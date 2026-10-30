@@ -104,6 +104,19 @@ def test_extract_text_docx_bad(tmp_path):
         extract_text(str(p))
 
 
+def test_extract_text_docx_not_a_zip(tmp_path):
+    """完全不是 zip 的 .docx：也须收敛为 UnsupportedDocumentError。
+
+    回归背景：zipfile.ZipFile(path) 原先在 try 之外，BadZipFile / OSError 直接
+    冒泡（与 UnsupportedDocumentError 无继承关系），调用方的「坏文档跳过」
+    降级失效，单个损坏文件会中断整批灌库。
+    """
+    p = tmp_path / "notzip.docx"
+    p.write_bytes(b"this is plain text, not a zip archive")
+    with pytest.raises(UnsupportedDocumentError):
+        extract_text(str(p))
+
+
 # ---------- 3. pdf ----------
 
 

@@ -1,0 +1,878 @@
+Building prefix dict from the default dictionary ...
+Loading model from cache C:\Users\sss208\AppData\Local\Temp\jieba.cache
+Loading model cost 0.479 seconds.
+Prefix dict has been built successfully.
+2026-10-30 00:48:41,887 INFO [Eval] 已启用 LLM 全局限速：15 rpm（间隔 4.0s）
+2026-10-30 00:48:41,890 INFO [Eval] 数据集加载完成：50 条有效（含 6 条对抗样本，0 条无 ground_truth），跳过 0 条
+2026-10-30 00:48:47,019 INFO [Langfuse] 客户端已创建，host=http://localhost:3001
+2026-10-30 00:48:47,020 WARNING [CB:llm_deepseek] 断路器未初始化，自动用内存存储创建
+2026-10-30 00:48:47,020 INFO [CB] 已初始化 7 个断路器（Redis=False）
+2026-10-30 00:48:47,020 INFO langchain-openai detected HTTP_PROXY, HTTPS_PROXY, http_proxy, https_proxy and no explicit `http_socket_options` / `http_client` / `http_async_client` / `openai_proxy`; skipping the custom `httpx` transport so httpx's env-proxy auto-detection applies. Pass `http_socket_options=[...]` to opt back into kernel-level TCP keepalive tuning on top of the env proxy.
+2026-10-30 00:48:54,003 INFO [Eval] LLM 连通性探测通过（回复: 正常）
+2026-10-30 00:48:56,671 INFO [Qdrant] 连接成功，collection=assistmind_docs
+2026-10-30 00:48:56,775 INFO [BM25] 索引构建完成，306 文档（版本=5）
+2026-10-30 00:48:56,775 INFO [Eval] Qdrant 连接成功，BM25 索引构建 306 文档
+2026-10-30 00:48:56,775 INFO [Eval] 开始逐条执行 RAG 链路（50 条）
+2026-10-30 00:48:56,775 INFO [Eval] [1/50] 检索生成: mall 项目在 Windows 环境下如何启动 mall-
+2026-10-30 00:49:11,350 INFO Loading SentenceTransformer model from BAAI/bge-base-zh-v1.5.
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 28319.70it/s]
+2026-10-30 00:49:12,385 INFO [Embedding] 模型加载完成: BAAI/bge-base-zh-v1.5
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.38it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.37it/s]
+2026-10-30 00:49:17,115 INFO [Reranker] SiliconFlow 重排完成：49 候选 → top 20（最高分 0.988）
+2026-10-30 00:49:27,628 INFO [Eval] [2/50] 检索生成: mall 项目只启动 mall-admin 一个模块，需要安
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 69.18it/s]
+2026-10-30 00:49:33,003 INFO [Reranker] SiliconFlow 重排完成：50 候选 → top 20（最高分 0.985）
+2026-10-30 00:49:42,392 INFO [Eval] [3/50] 检索生成: Windows 下如何安装并启动 Elasticsearch
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 85.86it/s]
+2026-10-30 00:49:48,206 INFO [Reranker] SiliconFlow 重排完成：66 候选 → top 20（最高分 0.984）
+2026-10-30 00:50:00,124 INFO [Eval] [4/50] 检索生成: mall-search 模块首次使用前需要做什么？启动失败怎
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 35.83it/s]
+2026-10-30 00:50:06,701 INFO [Reranker] SiliconFlow 重排完成：75 候选 → top 20（最高分 0.948）
+2026-10-30 00:50:17,290 INFO [Eval] [5/50] 检索生成: mall-admin 生产环境（application-pr
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.11it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.10it/s]
+2026-10-30 00:50:23,062 INFO [Reranker] SiliconFlow 重排完成：63 候选 → top 20（最高分 0.943）
+2026-10-30 00:50:32,864 INFO [Eval] [6/50] 检索生成: 如何修改 mall-admin 的 Redis 连接配置？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 23.43it/s]
+2026-10-30 00:50:38,376 INFO [Reranker] SiliconFlow 重排完成：63 候选 → top 20（最高分 0.528）
+2026-10-30 00:50:49,360 INFO [Eval] [7/50] 检索生成: mall-search 中 Elasticsearch 的 
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 84.64it/s]
+2026-10-30 00:50:55,340 INFO [Reranker] SiliconFlow 重排完成：66 候选 → top 20（最高分 0.973）
+2026-10-30 00:51:04,753 INFO [Eval] [8/50] 检索生成: mall 生产环境 MySQL 报 Access denie
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 20.80it/s]
+2026-10-30 00:51:10,473 INFO [Reranker] SiliconFlow 重排完成：75 候选 → top 20（最高分 0.645）
+2026-10-30 00:51:21,643 INFO [Eval] [9/50] 检索生成: MySQL 全局时区怎么改成北京时间（东八区）？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 95.16it/s]
+2026-10-30 00:51:27,656 INFO [Reranker] SiliconFlow 重排完成：62 候选 → top 20（最高分 0.998）
+2026-10-30 00:51:37,783 INFO [Eval] [10/50] 检索生成: mall 的订单表 oms_order 是做什么的？包含哪些
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 27.43it/s]
+2026-10-30 00:51:43,816 INFO [Reranker] SiliconFlow 重排完成：61 候选 → top 20（最高分 0.878）
+2026-10-30 00:51:55,415 INFO [Eval] [11/50] 检索生成: mall 后台用户表 ums_admin 的字段结构是什么样
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.89it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.89it/s]
+2026-10-30 00:52:01,140 INFO [Reranker] SiliconFlow 重排完成：57 候选 → top 20（最高分 0.953）
+2026-10-30 00:52:11,057 INFO [Eval] [12/50] 检索生成: Docker Compose 环境下 mall 的容器管理常
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 10.44it/s]
+2026-10-30 00:52:16,762 INFO [Reranker] SiliconFlow 重排完成：56 候选 → top 20（最高分 0.993）
+2026-10-30 00:52:27,334 INFO [Eval] [13/50] 检索生成: 把 application-prod.yml 中 Druid
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 54.28it/s]
+2026-10-30 00:52:33,747 INFO [Reranker] SiliconFlow 重排完成：76 候选 → top 20（最高分 0.936）
+2026-10-30 00:52:46,085 INFO [Eval] [14/50] 检索生成: mall 订单服务接入了什么监控告警系统，告警阈值怎么配置？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.00it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.99it/s]
+2026-10-30 00:52:52,466 INFO [Reranker] SiliconFlow 重排完成：82 候选 → top 20（最高分 0.026）
+2026-10-30 00:53:03,511 INFO [Eval] [15/50] 检索生成: 华为 Mate 70 Pro 多少钱？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.01it/s]
+2026-10-30 00:53:09,253 INFO [Reranker] SiliconFlow 重排完成：78 候选 → top 20（最高分 0.932）
+2026-10-30 00:53:18,234 INFO [Eval] [16/50] 检索生成: 小米电视 65 英寸还有货吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.71it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.70it/s]
+2026-10-30 00:53:24,099 INFO [Reranker] SiliconFlow 重排完成：79 候选 → top 20（最高分 0.563）
+2026-10-30 00:53:32,982 INFO [Eval] [17/50] 检索生成: 戴森 V12 吸尘器什么价格，库存多少？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 47.35it/s]
+2026-10-30 00:53:38,874 INFO [Reranker] SiliconFlow 重排完成：69 候选 → top 20（最高分 0.846）
+2026-10-30 00:53:47,444 INFO [Eval] [18/50] 检索生成: P003 支持快速退款吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 11.53it/s]
+2026-10-30 00:53:52,769 INFO [Reranker] SiliconFlow 重排完成：67 候选 → top 20（最高分 0.985）
+2026-10-30 00:54:02,688 INFO [Eval] [19/50] 检索生成: 联想拯救者笔记本 P005 有什么服务承诺？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 78.33it/s]
+2026-10-30 00:54:08,286 INFO [Reranker] SiliconFlow 重排完成：73 候选 → top 20（最高分 0.759）
+2026-10-30 00:54:17,058 INFO [Eval] [20/50] 检索生成: 订单状态 0 到 5 分别代表什么意思？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 56.61it/s]
+2026-10-30 00:54:22,547 INFO [Reranker] SiliconFlow 重排完成：63 候选 → top 20（最高分 0.889）
+2026-10-30 00:54:32,425 INFO [Eval] [21/50] 检索生成: 订单 20260801003 现在什么状态？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 10.99it/s]
+2026-10-30 00:54:38,645 INFO [Reranker] SiliconFlow 重排完成：64 候选 → top 20（最高分 0.944）
+2026-10-30 00:54:47,818 INFO [Eval] [22/50] 检索生成: 订单 20260801001 包含什么商品，实付多少？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 31.04it/s]
+2026-10-30 00:54:53,060 INFO [Reranker] SiliconFlow 重排完成：57 候选 → top 20（最高分 0.971）
+2026-10-30 00:55:02,533 INFO [Eval] [23/50] 检索生成: 订单 20260801002 为什么实付 5398 元？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.16it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.14it/s]
+2026-10-30 00:55:08,810 INFO [Reranker] SiliconFlow 重排完成：68 候选 → top 20（最高分 0.962）
+2026-10-30 00:55:19,148 INFO [Eval] [24/50] 检索生成: 7 天无理由退货是怎么规定的？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 75.70it/s]
+2026-10-30 00:55:24,878 INFO [Reranker] SiliconFlow 重排完成：62 候选 → top 20（最高分 0.908）
+2026-10-30 00:55:35,672 INFO [Eval] [25/50] 检索生成: 退货申请提交后多久审核？审核通过后多久退款到账？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.50it/s]
+2026-10-30 00:55:44,245 INFO [Reranker] SiliconFlow 重排完成：58 候选 → top 20（最高分 0.991）
+2026-10-30 00:55:53,684 INFO [Eval] [26/50] 检索生成: 退货的运费由谁承担？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.64it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  7.63it/s]
+2026-10-30 00:55:58,843 INFO [Reranker] SiliconFlow 重排完成：58 候选 → top 20（最高分 0.946）
+2026-10-30 00:56:10,555 INFO [Eval] [27/50] 检索生成: 申请退货需要满足什么前提？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 19.47it/s]
+2026-10-30 00:56:15,834 INFO [Reranker] SiliconFlow 重排完成：60 候选 → top 20（最高分 0.958）
+2026-10-30 00:56:26,654 INFO [Eval] [28/50] 检索生成: 退货申请被拒绝了怎么办？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 15.98it/s]
+2026-10-30 00:56:32,167 INFO [Reranker] SiliconFlow 重排完成：70 候选 → top 20（最高分 0.806）
+2026-10-30 00:56:42,675 INFO [Eval] [29/50] 检索生成: 下单后多久发货？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 19.11it/s]
+2026-10-30 00:56:48,249 INFO [Reranker] SiliconFlow 重排完成：61 候选 → top 20（最高分 0.833）
+2026-10-30 00:56:57,323 INFO [Eval] [30/50] 检索生成: 怎么查询我的物流？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.93it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.93it/s]
+2026-10-30 00:57:03,032 INFO [Reranker] SiliconFlow 重排完成：84 候选 → top 20（最高分 0.973）
+2026-10-30 00:57:13,583 INFO [Eval] [31/50] 检索生成: 订单 20260801001 的物流信息是什么？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.06it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.05it/s]
+2026-10-30 00:57:19,673 INFO [Reranker] SiliconFlow 重排完成：66 候选 → top 20（最高分 0.983）
+2026-10-30 00:57:29,008 INFO [Eval] [32/50] 检索生成: 为什么订单发货后物流一直不更新？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 15.79it/s]
+2026-10-30 00:57:34,528 INFO [Reranker] SiliconFlow 重排完成：65 候选 → top 20（最高分 0.495）
+2026-10-30 00:57:43,142 INFO [Eval] [33/50] 检索生成: 优惠券能和满减一起用吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 71.30it/s]
+2026-10-30 00:57:49,029 INFO [Reranker] SiliconFlow 重排完成：66 候选 → top 20（最高分 0.997）
+2026-10-30 00:57:57,921 INFO [Eval] [34/50] 检索生成: 积分怎么抵现金？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.64it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.63it/s]
+2026-10-30 00:58:03,757 INFO [Reranker] SiliconFlow 重排完成：65 候选 → top 20（最高分 0.693）
+2026-10-30 00:58:13,230 INFO [Eval] [35/50] 检索生成: 积分会过期吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.06it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.04it/s]
+2026-10-30 00:58:18,236 INFO [Reranker] SiliconFlow 重排完成：67 候选 → top 20（最高分 0.903）
+2026-10-30 00:58:27,438 INFO [Eval] [36/50] 检索生成: 怎么升级会员？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.06it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.05it/s]
+2026-10-30 00:58:33,330 INFO [Reranker] SiliconFlow 重排完成：64 候选 → top 20（最高分 0.668）
+2026-10-30 00:58:42,186 INFO [Eval] [37/50] 检索生成: 会员有什么特权？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 71.33it/s]
+2026-10-30 00:58:47,383 INFO [Reranker] SiliconFlow 重排完成：57 候选 → top 20（最高分 0.951）
+2026-10-30 00:58:58,105 INFO [Eval] [38/50] 检索生成: 商城支持白条或花呗分期付款吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.35it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.34it/s]
+2026-10-30 00:59:03,970 INFO [Reranker] SiliconFlow 重排完成：72 候选 → top 20（最高分 0.010）
+2026-10-30 00:59:13,731 INFO [Eval] [39/50] 检索生成: Apple AirPods Pro 支持快速退款吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 16.73it/s]
+2026-10-30 00:59:19,534 INFO [Reranker] SiliconFlow 重排完成：66 候选 → top 20（最高分 0.591）
+2026-10-30 00:59:28,932 INFO [Eval] [40/50] 检索生成: 戴森 V12 是免费包邮的，那退货运费是不是也全免？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.98it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.98it/s]
+2026-10-30 00:59:35,808 INFO [Reranker] SiliconFlow 重排完成：75 候选 → top 20（最高分 0.825）
+2026-10-30 00:59:45,952 INFO [Eval] [41/50] 检索生成: S1 Pro 吸奶器吸不出奶了怎么办？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 18.74it/s]
+2026-10-30 00:59:52,042 INFO [Reranker] SiliconFlow 重排完成：73 候选 → top 20（最高分 0.895）
+2026-10-30 01:00:04,425 INFO [Eval] [42/50] 检索生成: 追觅 S1 Pro 扫地机器人吸力变小了怎么排查？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 23.90it/s]
+2026-10-30 01:00:10,539 INFO [Reranker] SiliconFlow 重排完成：69 候选 → top 20（最高分 0.986）
+2026-10-30 01:00:22,678 INFO [Eval] [43/50] 检索生成: 同一件商品能同时享受促销价和满减优惠吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 12.72it/s]
+2026-10-30 01:00:28,743 INFO [Reranker] SiliconFlow 重排完成：60 候选 → top 20（最高分 0.985）
+2026-10-30 01:00:37,997 INFO [Eval] [44/50] 检索生成: 满减活动和阶梯价可以跨商品合并计算吗？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.75it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.75it/s]
+2026-10-30 01:00:43,795 INFO [Reranker] SiliconFlow 重排完成：66 候选 → top 20（最高分 0.996）
+2026-10-30 01:00:52,713 INFO [Eval] [45/50] 检索生成: 限时购活动的限购数量由哪个字段控制？超出限购的部分怎么计价？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 12.62it/s]
+2026-10-30 01:00:59,351 INFO [Reranker] SiliconFlow 重排完成：64 候选 → top 20（最高分 0.939）
+2026-10-30 01:01:07,957 INFO [Eval] [46/50] 检索生成: 优惠券的使用范围（use_type）有哪几种？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 14.75it/s]
+2026-10-30 01:01:13,922 INFO [Reranker] SiliconFlow 重排完成：73 候选 → top 20（最高分 0.980）
+2026-10-30 01:01:23,927 WARNING [LLM] DeepSeek 流式失败，切 Ollama: Request timed out.
+2026-10-30 01:01:31,279 INFO Retrying request to /chat/completions in 0.471246 seconds
+2026-10-30 01:01:34,062 INFO Retrying request to /chat/completions in 0.867516 seconds
+2026-10-30 01:01:37,226 WARNING [LLM] Ollama 流式失败: Connection error.
+2026-10-30 01:01:37,227 WARNING [CRAG] 降级：LLM 不可用，默认走 generate 路径
+2026-10-30 01:01:42,177 INFO [Eval] [47/50] 检索生成: 订单的实付金额 pay_amount 是怎么计算出来的？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 14.06it/s]
+2026-10-30 01:01:47,410 INFO [Reranker] SiliconFlow 重排完成：54 候选 → top 20（最高分 0.987）
+2026-10-30 01:01:58,968 INFO [Eval] [48/50] 检索生成: 发货后多久系统会自动确认收货？会自动变更哪些字段？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 12.83it/s]
+2026-10-30 01:02:04,570 INFO [Reranker] SiliconFlow 重排完成：67 候选 → top 20（最高分 0.944）
+2026-10-30 01:02:14,379 INFO [Eval] [49/50] 检索生成: 什么情况下订单可以免运费？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 14.43it/s]
+2026-10-30 01:02:19,887 INFO [Reranker] SiliconFlow 重排完成：74 候选 → top 20（最高分 0.872）
+2026-10-30 01:02:30,742 INFO [Eval] [50/50] 检索生成: 我是钻石会员，是不是所有商品都能按会员价结算？
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 13.48it/s]
+2026-10-30 01:02:36,111 INFO [Reranker] SiliconFlow 重排完成：67 候选 → top 20（最高分 0.732）
+2026-10-30 01:02:46,008 WARNING [Eval] judge 调用记录包装与 instructor 不兼容（Failed to initialize openai client with instructor adapter. Ensure you've created a valid openai client.
+Error: Failed to patch openai client with Instructor: Client must be an instance of one of: OpenAI, AsyncOpenAI. Got: _CaptureClient），退回原始 client
+2026-10-30 01:02:46,020 INFO [Eval] 开始 ragas 评估：50 条样本 × 3 项指标 + answer_relevancy(3 问题均值)（评分 LLM: sensenova / sensenova-6.8-flash-lite）
+2026-10-30 01:02:46,020 INFO [Eval] 判分批次 1/13：样本 1-4
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]Evaluating:   8%|▊         | 1/12 [03:04<33:45, 184.15s/it]Evaluating: 100%|██████████| 12/12 [03:04<00:00, 15.35s/it]
+2026-10-30 01:05:50,176 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:06:00,188 INFO [Eval] 判分批次 2/13：样本 5-8
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]Evaluating:   8%|▊         | 1/12 [02:21<25:59, 141.75s/it]Evaluating: 100%|██████████| 12/12 [02:21<00:00, 11.81s/it]
+2026-10-30 01:08:21,942 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:08:31,954 INFO [Eval] 判分批次 3/13：样本 9-12
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]Evaluating:   8%|▊         | 1/12 [02:35<28:32, 155.65s/it]Evaluating: 100%|██████████| 12/12 [02:35<00:00, 12.97s/it]
+2026-10-30 01:11:07,603 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:11:17,612 INFO [Eval] 判分批次 4/13：样本 13-16
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]Evaluating:   8%|▊         | 1/12 [01:48<19:55, 108.68s/it]Evaluating: 100%|██████████| 12/12 [01:48<00:00,  9.06s/it]
+2026-10-30 01:13:06,294 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:13:16,305 INFO [Eval] 判分批次 5/13：样本 17-20
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]2026-10-30 01:14:25,432 INFO Retrying request to /chat/completions in 0.483349 seconds
+2026-10-30 01:14:28,167 INFO Retrying request to /chat/completions in 0.499661 seconds
+2026-10-30 01:14:28,712 INFO Retrying request to /chat/completions in 0.986656 seconds
+2026-10-30 01:14:31,904 INFO Retrying request to /chat/completions in 0.433041 seconds
+2026-10-30 01:14:32,384 INFO Retrying request to /chat/completions in 0.776173 seconds
+2026-10-30 01:14:35,446 INFO Retrying request to /chat/completions in 0.462503 seconds
+2026-10-30 01:14:37,757 INFO Retrying request to /chat/completions in 0.411375 seconds
+2026-10-30 01:14:38,216 INFO Retrying request to /chat/completions in 0.985163 seconds
+2026-10-30 01:14:41,222 INFO Retrying request to /chat/completions in 0.467760 seconds
+2026-10-30 01:14:41,736 INFO Retrying request to /chat/completions in 0.824569 seconds
+2026-10-30 01:14:44,398 INFO Retrying request to /chat/completions in 0.411576 seconds
+2026-10-30 01:14:44,858 INFO Retrying request to /chat/completions in 0.829653 seconds
+2026-10-30 01:14:45,736 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:14:45,736 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:14:45,736 ERROR Exception raised in Job[7]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:14:49,071 INFO Retrying request to /chat/completions in 0.464580 seconds
+Evaluating:   8%|▊         | 1/12 [02:00<22:04, 120.45s/it]Evaluating: 100%|██████████| 12/12 [02:00<00:00, 10.04s/it]
+2026-10-30 01:15:16,758 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:15:26,767 INFO [Eval] 判分批次 6/13：样本 21-24
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]2026-10-30 01:15:59,144 INFO Retrying request to /chat/completions in 0.432630 seconds
+2026-10-30 01:16:02,108 INFO Retrying request to /chat/completions in 0.428516 seconds
+2026-10-30 01:16:04,277 INFO Retrying request to /chat/completions in 0.405392 seconds
+2026-10-30 01:16:04,749 INFO Retrying request to /chat/completions in 0.875987 seconds
+2026-10-30 01:16:05,689 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:16:05,690 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:16:05,690 ERROR Exception raised in Job[4]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:16:05,753 INFO Retrying request to /chat/completions in 0.478360 seconds
+2026-10-30 01:16:08,783 INFO Retrying request to /chat/completions in 0.443267 seconds
+2026-10-30 01:16:22,309 INFO Retrying request to /chat/completions in 0.487289 seconds
+2026-10-30 01:16:24,770 INFO Retrying request to /chat/completions in 0.489538 seconds
+2026-10-30 01:16:25,315 INFO Retrying request to /chat/completions in 0.832825 seconds
+2026-10-30 01:16:29,116 INFO Retrying request to /chat/completions in 0.381687 seconds
+2026-10-30 01:16:32,157 INFO Retrying request to /chat/completions in 0.428678 seconds
+2026-10-30 01:16:55,815 INFO Retrying request to /chat/completions in 0.473052 seconds
+2026-10-30 01:16:58,753 INFO Retrying request to /chat/completions in 0.465860 seconds
+2026-10-30 01:17:01,583 INFO Retrying request to /chat/completions in 0.476272 seconds
+2026-10-30 01:17:02,122 INFO Retrying request to /chat/completions in 0.842108 seconds
+2026-10-30 01:17:05,242 INFO Retrying request to /chat/completions in 0.440587 seconds
+2026-10-30 01:17:05,747 INFO Retrying request to /chat/completions in 0.829411 seconds
+2026-10-30 01:17:08,976 INFO Retrying request to /chat/completions in 0.382378 seconds
+2026-10-30 01:17:11,671 INFO Retrying request to /chat/completions in 0.490046 seconds
+2026-10-30 01:17:12,209 INFO Retrying request to /chat/completions in 0.991248 seconds
+Evaluating:   8%|▊         | 1/12 [01:53<20:43, 113.02s/it]Evaluating: 100%|██████████| 12/12 [01:53<00:00,  9.42s/it]
+2026-10-30 01:17:19,790 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:17:29,803 INFO [Eval] 判分批次 7/13：样本 25-28
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]2026-10-30 01:17:54,690 INFO Retrying request to /chat/completions in 0.429249 seconds
+2026-10-30 01:17:55,216 INFO Retrying request to /chat/completions in 0.766112 seconds
+2026-10-30 01:17:58,605 INFO Retrying request to /chat/completions in 0.443886 seconds
+2026-10-30 01:17:59,106 INFO Retrying request to /chat/completions in 0.983324 seconds
+2026-10-30 01:18:02,014 INFO Retrying request to /chat/completions in 0.492498 seconds
+2026-10-30 01:18:04,766 INFO Retrying request to /chat/completions in 0.385340 seconds
+2026-10-30 01:18:05,224 INFO Retrying request to /chat/completions in 0.826760 seconds
+2026-10-30 01:19:48,780 INFO Retrying request to /chat/completions in 0.449106 seconds
+2026-10-30 01:19:52,279 INFO Retrying request to /chat/completions in 0.459042 seconds
+2026-10-30 01:19:55,320 INFO Retrying request to /chat/completions in 0.398780 seconds
+2026-10-30 01:19:55,776 INFO Retrying request to /chat/completions in 0.769257 seconds
+2026-10-30 01:19:58,828 INFO Retrying request to /chat/completions in 0.420423 seconds
+2026-10-30 01:20:01,425 INFO Retrying request to /chat/completions in 0.398158 seconds
+2026-10-30 01:20:01,887 INFO Retrying request to /chat/completions in 0.964893 seconds
+Evaluating:   8%|▊         | 1/12 [02:35<28:35, 155.94s/it]Evaluating: 100%|██████████| 12/12 [02:35<00:00, 12.99s/it]
+2026-10-30 01:20:05,742 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:20:15,758 INFO [Eval] 判分批次 8/13：样本 29-32
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]2026-10-30 01:21:02,433 INFO Retrying request to /chat/completions in 0.446676 seconds
+2026-10-30 01:21:07,955 INFO Retrying request to /chat/completions in 0.422699 seconds
+2026-10-30 01:21:08,427 INFO Retrying request to /chat/completions in 0.942584 seconds
+2026-10-30 01:21:11,736 INFO Retrying request to /chat/completions in 0.455163 seconds
+2026-10-30 01:21:12,242 INFO Retrying request to /chat/completions in 0.881847 seconds
+2026-10-30 01:21:15,178 INFO Retrying request to /chat/completions in 0.486474 seconds
+2026-10-30 01:21:15,716 INFO Retrying request to /chat/completions in 0.980173 seconds
+2026-10-30 01:21:19,095 INFO Retrying request to /chat/completions in 0.441050 seconds
+2026-10-30 01:21:21,257 INFO Retrying request to /chat/completions in 0.469222 seconds
+2026-10-30 01:21:21,773 INFO Retrying request to /chat/completions in 0.986049 seconds
+2026-10-30 01:21:24,738 INFO Retrying request to /chat/completions in 0.393137 seconds
+2026-10-30 01:21:25,212 INFO Retrying request to /chat/completions in 0.831440 seconds
+2026-10-30 01:21:31,303 INFO Retrying request to /chat/completions in 0.430271 seconds
+2026-10-30 01:21:31,802 INFO Retrying request to /chat/completions in 0.824157 seconds
+2026-10-30 01:21:38,446 INFO Retrying request to /chat/completions in 0.490237 seconds
+2026-10-30 01:21:38,995 INFO Retrying request to /chat/completions in 0.959946 seconds
+2026-10-30 01:21:41,600 INFO Retrying request to /chat/completions in 0.430326 seconds
+2026-10-30 01:21:42,084 INFO Retrying request to /chat/completions in 0.796604 seconds
+2026-10-30 01:21:44,015 INFO Retrying request to /chat/completions in 0.384627 seconds
+2026-10-30 01:21:44,449 INFO Retrying request to /chat/completions in 0.836147 seconds
+2026-10-30 01:21:45,337 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:21:45,337 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:21:45,337 ERROR Exception raised in Job[7]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:21:45,388 INFO Retrying request to /chat/completions in 0.437636 seconds
+2026-10-30 01:21:48,489 INFO Retrying request to /chat/completions in 0.410158 seconds
+2026-10-30 01:21:48,947 INFO Retrying request to /chat/completions in 0.801165 seconds
+2026-10-30 01:21:51,317 INFO Retrying request to /chat/completions in 0.490016 seconds
+2026-10-30 01:21:51,853 INFO Retrying request to /chat/completions in 0.976146 seconds
+2026-10-30 01:21:57,703 INFO Retrying request to /chat/completions in 0.380358 seconds
+2026-10-30 01:21:58,128 INFO Retrying request to /chat/completions in 0.852659 seconds
+2026-10-30 01:21:59,041 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:21:59,041 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:21:59,041 ERROR Exception raised in Job[10]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:21:59,112 INFO Retrying request to /chat/completions in 0.426295 seconds
+Evaluating:   8%|▊         | 1/12 [01:46<19:27, 106.18s/it]Evaluating: 100%|██████████| 12/12 [01:46<00:00,  8.85s/it]
+2026-10-30 01:22:01,940 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:22:11,954 INFO [Eval] 判分批次 9/13：样本 33-36
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]2026-10-30 01:22:32,208 INFO Retrying request to /chat/completions in 0.427092 seconds
+2026-10-30 01:22:34,441 INFO Retrying request to /chat/completions in 0.467241 seconds
+2026-10-30 01:22:34,962 INFO Retrying request to /chat/completions in 0.946522 seconds
+2026-10-30 01:22:45,123 INFO Retrying request to /chat/completions in 0.407875 seconds
+2026-10-30 01:22:45,657 INFO Retrying request to /chat/completions in 0.797675 seconds
+2026-10-30 01:22:48,985 INFO Retrying request to /chat/completions in 0.400481 seconds
+2026-10-30 01:22:52,114 INFO Retrying request to /chat/completions in 0.492256 seconds
+2026-10-30 01:22:54,886 INFO Retrying request to /chat/completions in 0.472773 seconds
+2026-10-30 01:22:55,453 INFO Retrying request to /chat/completions in 0.877299 seconds
+2026-10-30 01:23:02,162 INFO Retrying request to /chat/completions in 0.434879 seconds
+2026-10-30 01:23:04,656 INFO Retrying request to /chat/completions in 0.490996 seconds
+2026-10-30 01:23:05,202 INFO Retrying request to /chat/completions in 0.853323 seconds
+2026-10-30 01:23:14,655 INFO Retrying request to /chat/completions in 0.395983 seconds
+2026-10-30 01:23:15,102 INFO Retrying request to /chat/completions in 0.883942 seconds
+2026-10-30 01:23:18,519 INFO Retrying request to /chat/completions in 0.429650 seconds
+2026-10-30 01:23:19,004 INFO Retrying request to /chat/completions in 0.804148 seconds
+2026-10-30 01:23:21,644 INFO Retrying request to /chat/completions in 0.494642 seconds
+2026-10-30 01:23:22,191 INFO Retrying request to /chat/completions in 0.889571 seconds
+2026-10-30 01:23:31,535 INFO Retrying request to /chat/completions in 0.464624 seconds
+2026-10-30 01:23:32,051 INFO Retrying request to /chat/completions in 0.978629 seconds
+2026-10-30 01:23:35,087 INFO Retrying request to /chat/completions in 0.496153 seconds
+2026-10-30 01:23:35,703 INFO Retrying request to /chat/completions in 0.797864 seconds
+2026-10-30 01:23:39,143 INFO Retrying request to /chat/completions in 0.479728 seconds
+2026-10-30 01:23:41,831 INFO Retrying request to /chat/completions in 0.467696 seconds
+2026-10-30 01:23:42,358 INFO Retrying request to /chat/completions in 0.962992 seconds
+2026-10-30 01:23:45,624 INFO Retrying request to /chat/completions in 0.458210 seconds
+2026-10-30 01:23:48,338 INFO Retrying request to /chat/completions in 0.468416 seconds
+2026-10-30 01:23:48,856 INFO Retrying request to /chat/completions in 0.855496 seconds
+2026-10-30 01:23:51,746 INFO Retrying request to /chat/completions in 0.401644 seconds
+2026-10-30 01:23:52,199 INFO Retrying request to /chat/completions in 0.903826 seconds
+2026-10-30 01:23:54,801 INFO Retrying request to /chat/completions in 0.478097 seconds
+2026-10-30 01:23:55,347 INFO Retrying request to /chat/completions in 0.841552 seconds
+2026-10-30 01:23:58,629 INFO Retrying request to /chat/completions in 0.443318 seconds
+2026-10-30 01:23:59,125 INFO Retrying request to /chat/completions in 0.781697 seconds
+Evaluating:   8%|▊         | 1/12 [01:51<20:27, 111.58s/it]Evaluating: 100%|██████████| 12/12 [01:51<00:00,  9.30s/it]
+2026-10-30 01:24:03,536 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:24:13,544 INFO [Eval] 判分批次 10/13：样本 37-40
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]2026-10-30 01:25:09,032 INFO Retrying request to /chat/completions in 0.383207 seconds
+2026-10-30 01:25:11,887 INFO Retrying request to /chat/completions in 0.464356 seconds
+2026-10-30 01:25:12,407 INFO Retrying request to /chat/completions in 0.843271 seconds
+2026-10-30 01:25:15,317 INFO Retrying request to /chat/completions in 0.398160 seconds
+2026-10-30 01:25:15,767 INFO Retrying request to /chat/completions in 0.977959 seconds
+2026-10-30 01:25:18,693 INFO Retrying request to /chat/completions in 0.395728 seconds
+2026-10-30 01:25:20,749 INFO Retrying request to /chat/completions in 0.436129 seconds
+2026-10-30 01:25:21,231 INFO Retrying request to /chat/completions in 0.805473 seconds
+2026-10-30 01:25:22,087 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:25:22,087 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:25:22,088 ERROR Exception raised in Job[4]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:25:22,138 INFO Retrying request to /chat/completions in 0.491894 seconds
+2026-10-30 01:25:28,365 INFO Retrying request to /chat/completions in 0.479469 seconds
+2026-10-30 01:25:28,897 INFO Retrying request to /chat/completions in 0.822083 seconds
+2026-10-30 01:25:37,877 INFO Retrying request to /chat/completions in 0.383118 seconds
+2026-10-30 01:25:38,312 INFO Retrying request to /chat/completions in 0.912638 seconds
+2026-10-30 01:25:42,060 INFO Retrying request to /chat/completions in 0.467700 seconds
+2026-10-30 01:25:44,902 INFO Retrying request to /chat/completions in 0.430564 seconds
+2026-10-30 01:25:45,384 INFO Retrying request to /chat/completions in 0.845782 seconds
+2026-10-30 01:25:48,433 INFO Retrying request to /chat/completions in 0.439055 seconds
+2026-10-30 01:25:48,930 INFO Retrying request to /chat/completions in 0.771148 seconds
+2026-10-30 01:25:52,159 INFO Retrying request to /chat/completions in 0.425605 seconds
+2026-10-30 01:25:54,797 INFO Retrying request to /chat/completions in 0.489939 seconds
+2026-10-30 01:25:55,338 INFO Retrying request to /chat/completions in 0.996445 seconds
+2026-10-30 01:25:58,393 INFO Retrying request to /chat/completions in 0.429167 seconds
+2026-10-30 01:25:58,887 INFO Retrying request to /chat/completions in 0.913733 seconds
+2026-10-30 01:26:24,749 INFO Retrying request to /chat/completions in 0.463813 seconds
+2026-10-30 01:26:25,264 INFO Retrying request to /chat/completions in 0.768838 seconds
+Evaluating:   8%|▊         | 1/12 [02:20<25:41, 140.18s/it]Evaluating: 100%|██████████| 12/12 [02:20<00:00, 11.68s/it]
+2026-10-30 01:26:33,721 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:26:43,731 INFO [Eval] 判分批次 11/13：样本 41-44
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]Evaluating:   8%|▊         | 1/12 [02:14<24:44, 134.97s/it]Evaluating: 100%|██████████| 12/12 [02:14<00:00, 11.25s/it]
+2026-10-30 01:28:58,698 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:29:08,704 INFO [Eval] 判分批次 12/13：样本 45-48
+Evaluating:   0%|          | 0/12 [00:00<?, ?it/s]2026-10-30 01:29:44,670 INFO Retrying request to /chat/completions in 0.477390 seconds
+2026-10-30 01:29:45,196 INFO Retrying request to /chat/completions in 0.899226 seconds
+2026-10-30 01:29:47,950 INFO Retrying request to /chat/completions in 0.472309 seconds
+2026-10-30 01:29:48,472 INFO Retrying request to /chat/completions in 0.962264 seconds
+2026-10-30 01:29:51,988 INFO Retrying request to /chat/completions in 0.442208 seconds
+2026-10-30 01:29:55,368 INFO Retrying request to /chat/completions in 0.486932 seconds
+2026-10-30 01:30:11,379 INFO Retrying request to /chat/completions in 0.495742 seconds
+2026-10-30 01:30:11,927 INFO Retrying request to /chat/completions in 0.783659 seconds
+2026-10-30 01:30:15,472 INFO Retrying request to /chat/completions in 0.480409 seconds
+2026-10-30 01:30:17,965 INFO Retrying request to /chat/completions in 0.438410 seconds
+2026-10-30 01:30:18,464 INFO Retrying request to /chat/completions in 0.962968 seconds
+2026-10-30 01:30:29,011 INFO Retrying request to /chat/completions in 0.383322 seconds
+2026-10-30 01:30:31,682 INFO Retrying request to /chat/completions in 0.493771 seconds
+2026-10-30 01:30:32,233 INFO Retrying request to /chat/completions in 0.933832 seconds
+Evaluating:   8%|▊         | 1/12 [01:26<15:50, 86.42s/it]Evaluating: 100%|██████████| 12/12 [01:26<00:00,  7.20s/it]
+2026-10-30 01:30:35,129 INFO [Eval] 批次间歇 10s（限速保护）
+2026-10-30 01:30:45,135 INFO [Eval] 判分批次 13/13：样本 49-50
+Evaluating:   0%|          | 0/6 [00:00<?, ?it/s]Evaluating:  17%|█▋        | 1/6 [01:06<05:34, 66.86s/it]Evaluating: 100%|██████████| 6/6 [01:06<00:00, 11.14s/it]
+2026-10-30 01:31:51,994 WARNING [Eval] 判分缺失重试第 1/2 轮：第 [19, 22, 31, 32, 38] 行
+2026-10-30 01:32:17,878 INFO Retrying request to /chat/completions in 0.433533 seconds
+2026-10-30 01:32:18,359 INFO Retrying request to /chat/completions in 0.873834 seconds
+2026-10-30 01:32:21,560 INFO Retrying request to /chat/completions in 0.438697 seconds
+2026-10-30 01:32:22,047 INFO Retrying request to /chat/completions in 0.781152 seconds
+2026-10-30 01:32:24,748 INFO Retrying request to /chat/completions in 0.475134 seconds
+2026-10-30 01:32:25,275 INFO Retrying request to /chat/completions in 0.983530 seconds
+2026-10-30 01:32:27,875 INFO Retrying request to /chat/completions in 0.393938 seconds
+2026-10-30 01:32:28,318 INFO Retrying request to /chat/completions in 0.974494 seconds
+2026-10-30 01:32:30,986 INFO Retrying request to /chat/completions in 0.494547 seconds
+2026-10-30 01:32:31,528 INFO Retrying request to /chat/completions in 0.795981 seconds
+2026-10-30 01:32:32,370 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:32:32,370 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:32:32,370 ERROR Exception raised in Job[1]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:32:38,603 INFO Retrying request to /chat/completions in 0.413035 seconds
+2026-10-30 01:32:41,541 INFO Retrying request to /chat/completions in 0.497582 seconds
+2026-10-30 01:32:42,091 INFO Retrying request to /chat/completions in 0.973922 seconds
+2026-10-30 01:32:44,888 INFO Retrying request to /chat/completions in 0.442951 seconds
+2026-10-30 01:32:45,381 INFO Retrying request to /chat/completions in 0.934460 seconds
+2026-10-30 01:32:50,921 INFO Retrying request to /chat/completions in 0.379420 seconds
+2026-10-30 01:32:51,353 INFO Retrying request to /chat/completions in 0.992894 seconds
+2026-10-30 01:32:54,737 INFO Retrying request to /chat/completions in 0.463217 seconds
+2026-10-30 01:32:55,252 INFO Retrying request to /chat/completions in 0.806629 seconds
+2026-10-30 01:32:57,852 INFO Retrying request to /chat/completions in 0.399990 seconds
+2026-10-30 01:32:58,474 INFO Retrying request to /chat/completions in 0.870872 seconds
+2026-10-30 01:33:01,160 INFO Retrying request to /chat/completions in 0.435581 seconds
+2026-10-30 01:33:01,655 INFO Retrying request to /chat/completions in 0.784088 seconds
+2026-10-30 01:33:03,991 INFO Retrying request to /chat/completions in 0.457360 seconds
+2026-10-30 01:33:04,521 INFO Retrying request to /chat/completions in 0.772612 seconds
+2026-10-30 01:33:05,363 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:33:05,363 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:33:05,363 ERROR Exception raised in Job[4]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:33:05,480 INFO Retrying request to /chat/completions in 0.468679 seconds
+2026-10-30 01:33:08,837 INFO Retrying request to /chat/completions in 0.387932 seconds
+2026-10-30 01:33:11,092 INFO Retrying request to /chat/completions in 0.469072 seconds
+2026-10-30 01:33:11,615 INFO Retrying request to /chat/completions in 0.805378 seconds
+2026-10-30 01:33:17,409 INFO Retrying request to /chat/completions in 0.433686 seconds
+2026-10-30 01:33:17,900 INFO Retrying request to /chat/completions in 0.882319 seconds
+2026-10-30 01:33:18,837 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:33:18,837 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:33:18,837 ERROR Exception raised in Job[7]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:33:18,885 INFO Retrying request to /chat/completions in 0.396255 seconds
+2026-10-30 01:33:21,647 INFO Retrying request to /chat/completions in 0.406200 seconds
+2026-10-30 01:33:22,100 INFO Retrying request to /chat/completions in 0.765332 seconds
+2026-10-30 01:33:24,580 INFO Retrying request to /chat/completions in 0.472601 seconds
+2026-10-30 01:33:25,101 INFO Retrying request to /chat/completions in 0.845153 seconds
+2026-10-30 01:33:28,343 INFO Retrying request to /chat/completions in 0.387293 seconds
+2026-10-30 01:33:28,778 INFO Retrying request to /chat/completions in 0.798066 seconds
+2026-10-30 01:33:31,483 INFO Retrying request to /chat/completions in 0.446855 seconds
+2026-10-30 01:33:31,981 INFO Retrying request to /chat/completions in 0.926993 seconds
+2026-10-30 01:33:35,650 INFO Retrying request to /chat/completions in 0.486905 seconds
+2026-10-30 01:33:37,707 INFO Retrying request to /chat/completions in 0.459387 seconds
+2026-10-30 01:33:38,218 INFO Retrying request to /chat/completions in 0.831820 seconds
+2026-10-30 01:33:41,483 INFO Retrying request to /chat/completions in 0.398407 seconds
+2026-10-30 01:33:41,932 INFO Retrying request to /chat/completions in 0.773741 seconds
+2026-10-30 01:33:44,447 INFO Retrying request to /chat/completions in 0.400820 seconds
+2026-10-30 01:33:44,901 INFO Retrying request to /chat/completions in 0.890102 seconds
+2026-10-30 01:33:51,482 INFO Retrying request to /chat/completions in 0.381381 seconds
+2026-10-30 01:33:51,917 INFO Retrying request to /chat/completions in 0.784903 seconds
+2026-10-30 01:33:55,057 INFO Retrying request to /chat/completions in 0.437824 seconds
+2026-10-30 01:33:55,541 INFO Retrying request to /chat/completions in 0.786949 seconds
+2026-10-30 01:33:58,477 INFO Retrying request to /chat/completions in 0.444507 seconds
+2026-10-30 01:33:58,974 INFO Retrying request to /chat/completions in 0.857677 seconds
+2026-10-30 01:34:02,000 INFO Retrying request to /chat/completions in 0.439844 seconds
+2026-10-30 01:34:04,919 INFO Retrying request to /chat/completions in 0.475302 seconds
+2026-10-30 01:34:05,466 INFO Retrying request to /chat/completions in 0.941511 seconds
+2026-10-30 01:34:08,393 INFO Retrying request to /chat/completions in 0.411656 seconds
+2026-10-30 01:34:08,875 INFO Retrying request to /chat/completions in 0.846992 seconds
+2026-10-30 01:34:12,070 INFO Retrying request to /chat/completions in 0.441942 seconds
+2026-10-30 01:34:14,586 INFO Retrying request to /chat/completions in 0.444876 seconds
+2026-10-30 01:34:15,087 INFO Retrying request to /chat/completions in 0.875982 seconds
+2026-10-30 01:34:18,020 INFO Retrying request to /chat/completions in 0.378853 seconds
+2026-10-30 01:34:18,491 INFO Retrying request to /chat/completions in 0.977663 seconds
+2026-10-30 01:34:21,366 INFO Retrying request to /chat/completions in 0.386387 seconds
+2026-10-30 01:34:21,803 INFO Retrying request to /chat/completions in 0.820945 seconds
+2026-10-30 01:34:24,757 INFO Retrying request to /chat/completions in 0.498987 seconds
+2026-10-30 01:34:25,301 INFO Retrying request to /chat/completions in 0.873928 seconds
+2026-10-30 01:34:28,781 INFO Retrying request to /chat/completions in 0.454610 seconds
+2026-10-30 01:34:30,991 INFO Retrying request to /chat/completions in 0.428284 seconds
+2026-10-30 01:34:31,467 INFO Retrying request to /chat/completions in 0.802199 seconds
+2026-10-30 01:34:32,316 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:34:32,316 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:34:32,316 ERROR Exception raised in Job[13]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:34:32,364 INFO Retrying request to /chat/completions in 0.459650 seconds
+2026-10-30 01:34:36,248 WARNING [Eval] 判分缺失重试第 2/2 轮：第 [19, 22, 31, 38] 行
+2026-10-30 01:35:08,293 INFO Retrying request to /chat/completions in 0.400267 seconds
+2026-10-30 01:35:08,757 INFO Retrying request to /chat/completions in 0.965182 seconds
+2026-10-30 01:35:11,632 INFO Retrying request to /chat/completions in 0.476085 seconds
+2026-10-30 01:35:12,165 INFO Retrying request to /chat/completions in 0.940787 seconds
+2026-10-30 01:35:15,758 INFO Retrying request to /chat/completions in 0.476553 seconds
+2026-10-30 01:35:18,342 INFO Retrying request to /chat/completions in 0.484136 seconds
+2026-10-30 01:35:18,877 INFO Retrying request to /chat/completions in 0.993265 seconds
+2026-10-30 01:35:22,212 INFO Retrying request to /chat/completions in 0.493057 seconds
+2026-10-30 01:35:24,424 INFO Retrying request to /chat/completions in 0.440568 seconds
+2026-10-30 01:35:24,912 INFO Retrying request to /chat/completions in 0.777577 seconds
+2026-10-30 01:35:25,738 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:35:25,738 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:35:25,738 ERROR Exception raised in Job[1]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:35:28,500 INFO Retrying request to /chat/completions in 0.389641 seconds
+2026-10-30 01:35:28,938 INFO Retrying request to /chat/completions in 0.874408 seconds
+2026-10-30 01:35:31,460 INFO Retrying request to /chat/completions in 0.461963 seconds
+2026-10-30 01:35:31,973 INFO Retrying request to /chat/completions in 0.880728 seconds
+2026-10-30 01:35:38,428 INFO Retrying request to /chat/completions in 0.386295 seconds
+2026-10-30 01:35:38,866 INFO Retrying request to /chat/completions in 0.898989 seconds
+2026-10-30 01:35:44,136 INFO Retrying request to /chat/completions in 0.449166 seconds
+2026-10-30 01:35:44,637 INFO Retrying request to /chat/completions in 0.973436 seconds
+2026-10-30 01:35:45,660 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:35:45,660 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:35:45,660 ERROR Exception raised in Job[4]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:35:45,710 INFO Retrying request to /chat/completions in 0.398377 seconds
+2026-10-30 01:35:48,948 INFO Retrying request to /chat/completions in 0.455536 seconds
+2026-10-30 01:35:51,931 INFO Retrying request to /chat/completions in 0.429330 seconds
+2026-10-30 01:35:52,413 INFO Retrying request to /chat/completions in 0.809037 seconds
+2026-10-30 01:35:58,816 INFO Retrying request to /chat/completions in 0.496927 seconds
+2026-10-30 01:36:00,994 INFO Retrying request to /chat/completions in 0.470115 seconds
+2026-10-30 01:36:01,527 INFO Retrying request to /chat/completions in 0.851447 seconds
+2026-10-30 01:36:04,894 INFO Retrying request to /chat/completions in 0.463124 seconds
+2026-10-30 01:36:05,405 INFO Retrying request to /chat/completions in 0.894324 seconds
+2026-10-30 01:36:08,376 INFO Retrying request to /chat/completions in 0.454322 seconds
+2026-10-30 01:36:08,883 INFO Retrying request to /chat/completions in 0.792660 seconds
+2026-10-30 01:36:11,640 INFO Retrying request to /chat/completions in 0.385213 seconds
+2026-10-30 01:36:12,098 INFO Retrying request to /chat/completions in 0.874565 seconds
+2026-10-30 01:36:17,820 INFO Retrying request to /chat/completions in 0.492758 seconds
+2026-10-30 01:36:18,365 INFO Retrying request to /chat/completions in 0.930708 seconds
+2026-10-30 01:36:25,216 INFO Retrying request to /chat/completions in 0.412298 seconds
+2026-10-30 01:36:25,678 INFO Retrying request to /chat/completions in 0.754247 seconds
+2026-10-30 01:36:34,493 INFO Retrying request to /chat/completions in 0.431481 seconds
+2026-10-30 01:36:34,973 INFO Retrying request to /chat/completions in 0.921106 seconds
+2026-10-30 01:36:38,277 INFO Retrying request to /chat/completions in 0.441030 seconds
+2026-10-30 01:36:38,767 INFO Retrying request to /chat/completions in 0.981154 seconds
+2026-10-30 01:36:44,281 INFO Retrying request to /chat/completions in 0.481427 seconds
+2026-10-30 01:36:44,814 INFO Retrying request to /chat/completions in 0.779997 seconds
+2026-10-30 01:36:45,643 ERROR API call failed on attempt 1: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:36:45,643 ERROR Max retries exceeded. Total attempts: 1, Last error: Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}}
+2026-10-30 01:36:45,643 ERROR Exception raised in Job[10]: InstructorRetryException(Error code: 429 - {'error': {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}})
+2026-10-30 01:36:45,695 INFO Retrying request to /chat/completions in 0.405583 seconds
+2026-10-30 01:36:49,798 INFO [Eval] 判分缺失重试完成：2 轮，累计重试 9 行
+2026-10-30 01:36:52,829 WARNING [Eval] judge 调用记录包装与 instructor 不兼容（Failed to initialize openai client with instructor adapter. Ensure you've created a valid openai client.
+Error: Failed to patch openai client with Instructor: Client must be an instance of one of: OpenAI, AsyncOpenAI. Got: _CaptureClient），退回原始 client
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 24.67it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 78.76it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 52.97it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 81.29it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 71.80it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 75.74it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 74.44it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 72.21it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 66.55it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 67.66it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 77.66it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 79.27it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 79.97it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 60.41it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 83.91it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 68.06it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 80.15it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 71.29it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 88.61it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 82.88it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 89.04it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 62.49it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 57.91it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 29.83it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 10.07it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 12.51it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 15.01it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 15.05it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 10.35it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.13it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  4.13it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 17.14it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.08it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.08it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.54it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.53it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 110.88it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 12.22it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.17it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.17it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 86.37it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 87.45it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 70.00it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 85.81it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 61.05it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 72.61it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 78.39it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 75.54it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 65.77it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 84.45it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 62.55it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 66.83it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 62.66it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 63.22it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 80.65it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 77.26it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 73.92it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 63.89it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 65.40it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 61.67it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 77.89it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 73.20it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 80.76it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 77.34it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 52.12it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 68.27it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 77.21it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 74.85it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 80.61it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 78.31it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 63.51it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 68.09it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 89.01it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 88.73it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 68.36it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 76.74it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 72.88it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 83.02it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 72.20it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 64.97it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 66.53it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 83.01it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 85.73it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 73.11it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 85.58it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 68.09it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 56.75it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 70.65it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 62.73it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 72.46it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 100.68it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 100.92it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 54.63it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 68.14it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 62.47it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 75.87it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 57.05it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 71.95it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 66.20it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 75.33it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 77.81it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 82.81it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 76.23it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 56.31it/s]
+
+===== RAGAS 逐条评估明细 =====
+[01] (常规) mall 项目在 Windows 环境下如何启动 mall-admi…
+     命中: knowledge/mall/reference/deploy-windows.md、knowledge/mall/README/README.md、knowledge/mall/config/application.yml
+     回答: 在 Windows 环境下启动 mall-admin 后端模块，需先安装 MySQL 和 Redis，然后直接运行 `c…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=0.000  answer_relevancy=0.962
+[02] (常规) mall 项目只启动 mall-admin 一个模块，需要安装哪些中…
+     命中: knowledge/mall/README/README.md、knowledge/mall/reference/deploy-windows.md、knowledge/mall/config/application.yml
+     回答: 只需要安装 MySQL 和 Redis 即可 [1]。
+
+如果只启动 `mall-admin` 模块，仅需安装 MySQ…
+     得分: faithfulness=1.000  context_precision=0.667  context_recall=1.000  answer_relevancy=0.936
+[03] (常规) Windows 下如何安装并启动 Elasticsearch 及中文…
+     命中: knowledge/mall/reference/deploy-windows.md、knowledge/mall/reference/linux.md、knowledge/mall/README/README.md、knowledge/mall/reference/dev_flow.md
+     回答: Windows 下安装并启动 Elasticsearch 及中文分词插件的步骤如下：
+
+1. **下载并解压 Elast…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.990
+[04] (常规) mall-search 模块首次使用前需要做什么？启动失败怎么排查？
+     命中: knowledge/mall/reference/deploy-windows.md、knowledge/mall/reference/dev_flow.md、knowledge/mall/README/README.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md、knowledge/ops/OPS-003-内存泄漏排查手册.md
+     回答: mall-search 模块首次使用前需要先调用接口导入数据，具体为调用 http://localhost:8081/e…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.903
+[05] (常规) mall-admin 生产环境（application-prod.y…
+     命中: knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/mall/README/README.md、knowledge/mall/config/application.yml、knowledge/mall/reference/deploy-windows.md、knowledge/mall/reference/dev_flow.md
+     回答: mall-admin 生产环境（application-prod.yml）的 MySQL 连接配置如下：url 为 `j…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.794
+[06] (常规) 如何修改 mall-admin 的 Redis 连接配置？
+     命中: knowledge/mall/reference/deploy-windows.md、knowledge/mall/config/application-dev.yml、knowledge/mall/config/application-prod.yml、knowledge/mall/config/application.yml、knowledge/mall/README/README.md、knowledge/mall/reference/dev_flow.md
+     回答: 要修改 mall-admin 的 Redis 连接配置，需根据运行环境修改对应的配置文件：
+
+- **开发环境（dev）…
+     得分: faithfulness=1.000  context_precision=0.583  context_recall=0.500  answer_relevancy=1.000
+[07] (常规) mall-search 中 Elasticsearch 的 clus…
+     命中: knowledge/mall/reference/deploy-windows.md、knowledge/mall/reference/dev_flow.md、knowledge/mall/README/README.md、knowledge/mall/config/application.yml、knowledge/mall/reference/mysql.md
+     回答: 修改 mall-search 中 Elasticsearch 的 cluster-name 后，需要在 elastics…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.867
+[08] (常规) mall 生产环境 MySQL 报 Access denied fo…
+     命中: knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/mall/reference/deploy-windows.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/mall/README/README.md、knowledge/mall/config/application.yml、knowledge/mall/reference/dev_flow.md
+     回答: 生产环境 MySQL 报 Access denied for user 'reader' 的排查方向是：检查生产环境数据…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=0.500  answer_relevancy=0.890
+[09] (常规) MySQL 全局时区怎么改成北京时间（东八区）？
+     命中: knowledge/mall/reference/mysql.md、knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml
+     回答: 修改 MySQL 全局时区为北京时间（东八区）的命令是：`set global time_zone = '+8:00';…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.884
+[10] (常规) mall 的订单表 oms_order 是做什么的？包含哪些关键字段…
+     命中: knowledge/mall/business/售后服务政策.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/价格与优惠规则.md
+     回答: mall 的订单表 oms_order 用于存储订单的核心信息，包括订单编号、用户账号、支付金额、订单状态、收货信息等。…
+     得分: faithfulness=1.000  context_precision=0.333  context_recall=1.000  answer_relevancy=0.840
+[11] (常规) mall 后台用户表 ums_admin 的字段结构是什么样的？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/售后服务政策.md、knowledge/mall/business/价格与优惠规则.md、knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/README/README.md、knowledge/mall/reference/function.md
+     回答: 后台用户表 `ums_admin` 的字段结构如下 [2]：
+
+- **id**：主键，自增
+- **username*…
+     得分: faithfulness=1.000  context_precision=0.500  context_recall=1.000  answer_relevancy=0.914
+[12] (常规) Docker Compose 环境下 mall 的容器管理常用命令有…
+     命中: knowledge/mall/reference/docker.md、knowledge/mall/README/README.md、knowledge/mall/reference/dev_flow.md、knowledge/mall/config/application.yml、knowledge/mall/reference/deploy-windows.md
+     回答: Docker Compose 环境下 mall 的容器管理常用命令包括：构建、创建、启动相关容器（docker-comp…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=1.000
+[13] (对抗) 把 application-prod.yml 中 Druid 的 m…
+     命中: knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/mall/config/application.yml、knowledge/mall/README/README.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/dev_flow.md
+     回答: 不是。仅调大 max-active 不能彻底解决数据库连接问题。
+
+依据如下：
+- application-prod.y…
+     得分: faithfulness=0.714  context_precision=1.000  context_recall=1.000  answer_relevancy=0.743
+[14] (对抗) mall 订单服务接入了什么监控告警系统，告警阈值怎么配置？
+     命中: knowledge/mall/config/application-prod.yml、knowledge/mall/config/application-dev.yml、knowledge/mall/reference/function.md、knowledge/mall/reference/deploy-windows.md、knowledge/mall/config/application.yml
+     回答: mall 订单服务接入了 Druid 连接池监控和 Logstash 日志监控系统 [1][2]。
+
+告警阈值配置如下：…
+     得分: faithfulness=0.714  context_precision=0.000  context_recall=0.000  answer_relevancy=0.815
+[15] (常规) 华为 Mate 70 Pro 多少钱？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql
+     回答: 华为 Mate 70 Pro 售价为 ¥6999 [1]。
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.964
+[16] (常规) 小米电视 65 英寸还有货吗？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/服务承诺与话术.md
+     回答: 小米电视 65 英寸目前有货，库存为 100 件 [1]。
+     得分: faithfulness=1.000  context_precision=0.700  context_recall=1.000  answer_relevancy=0.912
+[17] (常规) 戴森 V12 吸尘器什么价格，库存多少？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql
+     回答: 戴森 V12 吸尘器的售价为 ¥4990，库存为 80 件 [1]。
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.926
+[18] (常规) P003 支持快速退款吗？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/售后服务政策.md
+     回答: 支持，P003 戴森 V12 吸尘器支持快速退款服务 [2]。其服务标识包含 2（快速退款），承诺验收通过后极速退款，2…
+     得分: faithfulness=1.000  context_precision=0.917  context_recall=1.000  answer_relevancy=0.810
+[19] (常规) 联想拯救者笔记本 P005 有什么服务承诺？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/售后服务政策.md、knowledge/mall/business/发货与物流规则.md、knowledge/mall/s1-pro-robot-vacuum.md
+     回答: 联想拯救者笔记本 P005 无额外服务承诺，其服务标识为空 [3][4]。
+     得分: faithfulness=1.000  context_precision=-  context_recall=1.000  answer_relevancy=0.914
+[20] (常规) 订单状态 0 到 5 分别代表什么意思？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/发货与物流规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/售后服务政策.md
+     回答: 订单状态 0 到 5 分别代表：0 待付款、1 待发货、2 已发货、3 已完成、4 已关闭、5 无效订单。[1][2] …
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=0.000  answer_relevancy=0.980
+[21] (常规) 订单 20260801003 现在什么状态？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/发货与物流规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 订单 20260801003 当前状态是“已完成”（状态值 3）[1][5]。该订单商品为戴森 V12 吸尘器（P003…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.961
+[22] (常规) 订单 20260801001 包含什么商品，实付多少？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/价格与优惠规则.md
+     回答: 订单 20260801001 包含 1 件华为 Mate 70 Pro（P001），实付金额为 ¥6999。[1][2]
+     得分: faithfulness=1.000  context_precision=-  context_recall=1.000  answer_relevancy=0.979
+[23] (常规) 订单 20260801002 为什么实付 5398 元？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/sql/mall_tables.sql
+     回答: 订单 20260801002 实付 5398 元，是因为该订单包含两件商品：P002 小米电视 65 英寸（¥3499）…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.787
+[24] (常规) 7 天无理由退货是怎么规定的？
+     命中: knowledge/mall/business/售后服务政策.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/发货与物流规则.md
+     回答: 7 天无理由退货的规定是：商品自签收次日起 **7 天内** 支持无理由退货（法律法规另有规定的商品除外）[1]。
+
+具…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.947
+[25] (常规) 退货申请提交后多久审核？审核通过后多久退款到账？
+     命中: knowledge/mall/business/售后服务政策.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/dev_flow.md
+     回答: 退货申请提交后 24 小时内审核；审核通过后，常规商品 3 个工作日内原路退款，带「快速退款」服务的商品 24 小时内到…
+     得分: faithfulness=1.000  context_precision=0.967  context_recall=1.000  answer_relevancy=0.975
+[26] (常规) 退货的运费由谁承担？
+     命中: knowledge/mall/business/售后服务政策.md、knowledge/mall/sql/mall_tables.sql
+     回答: 退货的运费由谁承担，需根据退货原因和商品是否含“免费包邮”服务来判断 [1][2]：
+
+- 若因**质量问题、商品破损、…
+     得分: faithfulness=1.000  context_precision=0.917  context_recall=1.000  answer_relevancy=1.000
+[27] (常规) 申请退货需要满足什么前提？
+     命中: knowledge/mall/business/售后服务政策.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/服务承诺与话术.md、knowledge/ops/OPS-004-微服务故障诊断方法论.md、knowledge/mall/business/发货与物流规则.md
+     回答: 申请退货需要满足以下前提：
+
+1. **时间要求**：商品自签收次日起 **7 天内** 支持无理由退货（法律法规另有规…
+     得分: faithfulness=1.000  context_precision=0.600  context_recall=1.000  answer_relevancy=0.983
+[28] (常规) 退货申请被拒绝了怎么办？
+     命中: knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/售后服务政策.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/dev_flow.md
+     回答: 退货申请被拒绝后，您可以查看拒绝原因，并补充凭证后重新提交申请。[1][2]
+
+具体处理方式如下：
+- 拒绝原因：商家驳…
+     得分: faithfulness=1.000  context_precision=0.821  context_recall=1.000  answer_relevancy=0.918
+[29] (常规) 下单后多久发货？
+     命中: knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql
+     回答: 48 小时内发货。现货商品支付成功后 48 小时内发货，预售/定制商品以商品详情页「发货时间」说明为准，计算起点为用户完…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.847
+[30] (常规) 怎么查询我的物流？
+     命中: knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/reference/dev_flow.md
+     回答: 您可以通过以下方式查询物流信息 [1]：
+
+1. **用户自助查询**：在订单详情页点击「查看物流」，凭物流单号跳转快递…
+     得分: faithfulness=1.000  context_precision=0.911  context_recall=1.000  answer_relevancy=0.874
+[31] (常规) 订单 20260801001 的物流信息是什么？
+     命中: knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/发货与物流规则.md
+     回答: 订单 20260801001 的物流信息是：顺丰速运，单号 SF1234567890，当前轨迹为已揽收 → 运输中，预计…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=1.000
+[32] (常规) 为什么订单发货后物流一直不更新？
+     命中: knowledge/mall/business/发货与物流规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 物流信息多日无更新时，建议您先联系快递公司核实包裹情况，同时客服会同步登记反馈。[1]
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.772
+[33] (常规) 优惠券能和满减一起用吗？
+     命中: knowledge/mall/business/价格与优惠规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 可以，满减和优惠券可以叠加使用。满减属于商品级促销，优惠券属于订单级优惠，二者可同时享受 [1]。
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.919
+[34] (常规) 积分怎么抵现金？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/business/价格与优惠规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 积分抵现金规则是：每 100 积分抵 1 元，单笔订单最高抵 50%，且须按 100 的整数倍使用。[1][2]
+     得分: faithfulness=1.000  context_precision=0.927  context_recall=1.000  answer_relevancy=0.857
+[35] (常规) 积分会过期吗？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 不会过期。根据规则，本商城演示规则下积分长期有效（以平台公告为准）。[1]
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=1.000
+[36] (常规) 怎么升级会员？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/dev_flow.md、knowledge/mall/reference/deploy-windows.md
+     回答: 消费获得成长值，累计达到等级阈值自动升级（黄金 1000 / 铂金 5000 / 钻石 10000）。[3]
+     得分: faithfulness=1.000  context_precision=0.583  context_recall=0.000  answer_relevancy=0.544
+[37] (常规) 会员有什么特权？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/发货与物流规则.md、knowledge/mall/reference/dev_flow.md
+     回答: 会员特权按等级开通，具体如下：黄金会员起开通免邮、签到、评论奖励特权；铂金会员起开通会员价、生日特权；钻石会员开通全部特…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.679
+[38] (对抗) 商城支持白条或花呗分期付款吗？
+     命中: knowledge/mall/README/README.md、knowledge/mall/business/会员与积分规则.md、knowledge/mall/reference/dev_flow.md、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/reference/function.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql
+     回答: 不支持。检索结果中提到的支付方式仅包括在线支付（支付宝、微信、银联、ApplePay）及货到付款，未提及白条或花呗分期付…
+     得分: faithfulness=0.667  context_precision=-  context_recall=0.000  answer_relevancy=0.877
+[39] (对抗) Apple AirPods Pro 支持快速退款吗？
+     命中: knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/服务承诺与话术.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/售后服务政策.md
+     回答: 不支持。Apple AirPods Pro 未配置「快速退款」服务，其服务标识为空，因此不享受快速退款权益。[1][2]
+     得分: faithfulness=1.000  context_precision=0.950  context_recall=1.000  answer_relevancy=0.971
+[40] (对抗) 戴森 V12 是免费包邮的，那退货运费是不是也全免？
+     命中: knowledge/mall/business/服务承诺与话术.md、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/business/售后服务政策.md、knowledge/mall/business/发货与物流规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 不是，退货运费不全免。戴森 V12 吸尘器（P003）确实带有「免费包邮」服务（service_ids 含 3），但该服…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.861
+[41] (常规) S1 Pro 吸奶器吸不出奶了怎么办？
+     命中: knowledge/mall/s1-pro-breast-pump.md、knowledge/mall/s1-pro-robot-vacuum.md、knowledge/mall/reference/deploy-windows.md
+     回答: S1 Pro 吸奶器吸不出奶，先按以下顺序排查（多数为组装或密封问题，而非主机故障）[3]：
+
+1. **检查硅胶隔膜*…
+     得分: faithfulness=0.970  context_precision=0.806  context_recall=1.000  answer_relevancy=0.950
+[42] (常规) 追觅 S1 Pro 扫地机器人吸力变小了怎么排查？
+     命中: knowledge/mall/s1-pro-robot-vacuum.md、knowledge/mall/s1-pro-breast-pump.md、knowledge/ops/OPS-003-内存泄漏排查手册.md、knowledge/ops/OPS-002-慢SQL排查手册.md、knowledge/ops/OPS-001-数据库连接池耗尽排查手册.md
+     回答: 追觅 S1 Pro 扫地机器人吸力变小，按以下顺序排查 [1]：
+
+1. **检查尘盒与尘袋**：尘盒集满或基站尘袋已满…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.992
+[43] (常规) 同一件商品能同时享受促销价和满减优惠吗？
+     命中: knowledge/mall/business/价格与优惠规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 不能。同一商品同一时间只能启用一种促销类型，促销价与满减互斥。[1]
+     得分: faithfulness=1.000  context_precision=0.692  context_recall=1.000  answer_relevancy=0.919
+[44] (常规) 满减活动和阶梯价可以跨商品合并计算吗？
+     命中: knowledge/mall/business/价格与优惠规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 不可以跨商品合并计算。满减和阶梯价均只针对单个商品，不可跨商品合并计算（与优惠券的「全场通用」不同）。[1]
+     得分: faithfulness=1.000  context_precision=0.806  context_recall=1.000  answer_relevancy=0.962
+[45] (常规) 限时购活动的限购数量由哪个字段控制？超出限购的部分怎么计价？
+     命中: knowledge/mall/business/价格与优惠规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 限时购活动的限购数量由 `promotion_per_limit` 字段控制，超出部分按原价计算。[1][2]
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.922
+[46] (常规) 优惠券的使用范围（use_type）有哪几种？
+     命中: knowledge/mall/business/价格与优惠规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 优惠券的使用范围（use_type）共有 3 种：0 全场通用、1 指定分类、2 指定商品 [1][2]。
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.897
+[47] (常规) 订单的实付金额 pay_amount 是怎么计算出来的？
+     命中: knowledge/mall/business/价格与优惠规则.md、knowledge/mall/business/演示商品与订单数据.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/business/服务承诺与话术.md
+     回答: 订单实付金额的计算公式为：`pay_amount = total_amount - promotion_amount -…
+     得分: faithfulness=1.000  context_precision=0.833  context_recall=1.000  answer_relevancy=0.846
+[48] (常规) 发货后多久系统会自动确认收货？会自动变更哪些字段？
+     命中: knowledge/mall/business/发货与物流规则.md、knowledge/mall/sql/mall_tables.sql
+     回答: 发货后超过 15 天（演示默认值）系统会自动确认收货 [1][2]。自动确认时，会变更以下字段：确认状态由未确认变为已确…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.736
+[49] (常规) 什么情况下订单可以免运费？
+     命中: knowledge/mall/business/发货与物流规则.md、knowledge/mall/business/会员与积分规则.md、knowledge/mall/business/售后服务政策.md、knowledge/mall/sql/mall_tables.sql
+     回答: 订单在以下两种情况下可以免运费：一是会员拥有免邮特权，且订单金额达到免运费标准；二是商品带有「免费包邮」服务（如演示商品…
+     得分: faithfulness=1.000  context_precision=1.000  context_recall=1.000  answer_relevancy=0.979
+[50] (对抗) 我是钻石会员，是不是所有商品都能按会员价结算？
+     命中: knowledge/mall/business/会员与积分规则.md、knowledge/mall/sql/mall_tables.sql、knowledge/mall/reference/dev_flow.md、knowledge/mall/business/价格与优惠规则.md、knowledge/mall/business/发货与物流规则.md2026-10-30 01:46:50,273 INFO [Eval] 全量明细已落盘: D:\2026\AssistMind\backend\eval\reports\eval_mall_50_20261029.json（50 条，失败行 3）
+2026-10-30 01:46:50,285 INFO [Eval] 全量明细已落盘: D:\2026\AssistMind\backend\eval\reports\eval_mall_50_20261029.json（50 条，失败行 3）
+
+     回答: 不是所有商品都能按会员价结算。会员价结算需同时满足两个条件：商品启用会员价促销类型（promotion_type=2）[…
+     得分: faithfulness=1.000  context_precision=0.552  context_recall=1.000  answer_relevancy=0.678
+
+===== RAGAS 平均分 =====
+样本数: 50（对抗样本 6 条）
+answer_relevancy 为 3 问题均值（collections 循环采样，非单点采样）
+  faithfulness         = 0.981 ± 0.072（有效 50/50 行）
+  context_precision    = 0.874 ± 0.212（有效 47/50 行）
+  context_recall       = 0.880 ± 0.309（有效 50/50 行）
+  answer_relevancy     = 0.893 ± 0.097（有效 50/50 行）
+
+--- 常规样本（44 条）---
+  faithfulness         = 0.999 ± 0.005（有效 44/44 行）
+  context_precision    = 0.894 ± 0.169（有效 42/44 行）
+  context_recall       = 0.909 ± 0.267（有效 44/44 行）
+  answer_relevancy     = 0.903 ± 0.094（有效 44/44 行）
+
+--- 对抗样本（6 条）---
+  faithfulness         = 0.849 ± 0.152（有效 6/6 行）
+  context_precision    = 0.700 ± 0.388（有效 5/6 行）
+  context_recall       = 0.667 ± 0.471（有效 6/6 行）
+  answer_relevancy     = 0.824 ± 0.095（有效 6/6 行）
+
+===== 判分失败行（3 条，需人工复查）=====
+已按缺失行重试 2 轮，以下行重试后仍缺分：
+  [19] (常规) 缺 context_precision | 联想拯救者笔记本 P005 有什么服务承诺？ | context_precision: judge 调用或结果解析失败，重试 2 轮后仍未产出分数
+  [22] (常规) 缺 context_precision | 订单 20260801001 包含什么商品，实付多少？ | context_precision: judge 调用或结果解析失败，重试 2 轮后仍未产出分数
+  [38] (对抗) 缺 context_precision | 商城支持白条或花呗分期付款吗？ | context_precision: judge 调用或结果解析失败，重试 2 轮后仍未产出分数
+
+评估完成。
+注：对抗样本（跨知识域/无对应文档/易混淆）检索不到对应文档属预期，相关指标会偏低。

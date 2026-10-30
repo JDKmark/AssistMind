@@ -26,7 +26,7 @@ from rq.job import Job
 
 from app.config import get_settings
 from app.core.cache.semantic_cache import invalidate as cache_invalidate
-from app.core.feedback_service import list_feedback, mark_exported
+from app.core.feedback_service import BAD_SCORE_MAX, list_feedback, mark_exported
 from app.core.infra.qdrant import get_qdrant
 from app.core.rag import parsers
 from app.core.rag.bm25 import get_bm25
@@ -50,7 +50,8 @@ KB_ROOT = os.path.join(os.path.dirname(_BACKEND_ROOT), "knowledge")
 # 重灌可定位的源文件扩展名（与上传允许列表一致，外加 seed 库涉及的 .sql/.yml/.yaml）
 _ALLOWED_EXTS = (".md", ".txt", ".pdf", ".docx", ".sql", ".yml", ".yaml")
 
-BAD_SCORE_MAX = 2  # 差评阈值：score<=2 视为 bad case（与 export_feedback_badcases.py 一致）
+# 差评阈值 score<=2（BAD_SCORE_MAX）统一在 feedback_service 定义，此处沿用同一常量，
+# 避免 admin 概览与回流导出各写一份口径
 
 _queue: Queue | None = None
 

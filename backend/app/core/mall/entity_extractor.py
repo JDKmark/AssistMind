@@ -19,21 +19,23 @@ import re
 from typing import Any
 
 from app.config import get_settings
-from app.core.dialog.manager import is_summary_message
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# 边界约定（三个正则统一）：只用 ASCII 边界，绝不用 \b 或 \w。
+# Python3 的 \w/\b 把中文也当单词字符，导致「商品P001缺货」「工单TK-…状态」这类
+# 中文紧邻场景整条漏匹配——而中文紧邻正是真实用户提问的绝对主流。
 # 订单号：11 位纯数字、20 开头（匹配演示单号 20240801001，避免误匹配手机号 1xx…）。
-# 用数字边界 (?<!\d)/(?!\d) 而非 \b——中文环境下 \b 不生效（中文非单词字符）
 _ORDER_SN_RE = re.compile(r"(?<!\d)20\d{9}(?!\d)")
-# 商品 ID：P + 3 位数字（P001-P005 及未来扩展）
-_PRODUCT_ID_RE = re.compile(r"(?<!\w)P\d{3}(?!\w)")
+# 商品 ID：P + 3 位数字（P001-P005 及未来扩展）；左侧排除 ASCII 字母/数字/下划线
+# （防「SP001」粘连），右侧排除数字（防「P0012」截断）
+_PRODUCT_ID_RE = re.compile(r"(?<![A-Za-z0-9_])P\d{3}(?![0-9])")
 # 工单号：TK- + 14 位时间戳 + ≥7 位随机数字（TICKET_ID_RANDOM_SUFFIX 可调大，
-# 故取 21 位下限）；大小写不敏感（LLM 可能回显小写）；左侧边界 (?<![\w-])
-# 防「xxTK-123…」粘连误匹配（中文环境 \b 不生效）
-_TICKET_ID_RE = re.compile(r"(?<![\w-])TK-\d{21,}(?!\d)", re.IGNORECASE)
+# 故取 21 位下限）；大小写不敏感（LLM 可能回显小写）；左侧排除 ASCII 字母/数字/
+# 下划线/连字符，防「xxTK-123…」粘连误匹配；右侧只排除数字
+_TICKET_ID_RE = re.compile(r"(?<![A-Za-z0-9_-])TK-\d{21,}(?![0-9])", re.IGNORECASE)
 
 # 实体 → 可用工具映射（ToolAgent.execute_tool 参数补填用）
 ENTITY_TO_TOOLS: dict[str, list[str]] = {
@@ -76,6 +78,11 @@ def extract(query: str, history: list[dict[str, str]] | None = None) -> dict[str
     # 跳过摘要消息：摘要特意保留单号等关键事实，参与回填会让陈旧实体
     # 跨话题长驻（越过窗口轮换存活到 TTL），确定性回填只认真实轮次
     if not entities and history:
+        # 延迟导入：app.core.dialog 包 __init__ 会 import dialog.state，
+        # 而 state 又 import 本模块的 extract，模块级导入会形成循环依赖
+        # （单独 import 本模块时报 "partially initialized module"）
+        from app.core.dialog.manager import is_summary_message
+
         for msg in reversed(history):
             content = msg.get("content", "") if isinstance(msg, dict) else ""
             if not isinstance(content, str) or is_summary_message(msg):

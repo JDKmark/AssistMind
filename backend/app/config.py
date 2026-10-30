@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from functools import lru_cache
 from typing import ClassVar
@@ -38,6 +39,12 @@ class Settings(BaseSettings):
     SENSENOVA_API_KEY: str = ""
     SENSENOVA_BASE_URL: str = "https://token.sensenova.cn/v1"
     SENSENOVA_MODEL: str = "deepseek-v4-flash"
+    # 网关透传参数（JSON 对象），原样并入主 provider 的 /chat/completions 请求体。
+    # 典型用途：商汤免费档 sensenova-6.8-flash-lite 属推理模型，默认先产出
+    # reasoning_tokens（实测 255 tok / 首字 6.3s），传 {"thinking": {"type": "disabled"}}
+    # 后思考 token 归零、首字降到 2.5s，额度和延迟都省；max_tokens 偏小时还能
+    # 避免「思考吃满预算、正文只剩几个字」（实测 400 tok 预算下正文仅 8 字）。
+    LLM_EXTRA_BODY: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:7b"
 
@@ -271,6 +278,33 @@ class Settings(BaseSettings):
                 f"请配置 {prefix}_API_KEY，或设置回落配置 DEEPSEEK_API_KEY"
             )
         return self.DEEPSEEK_API_KEY, self.DEEPSEEK_BASE_URL, self.DEEPSEEK_MODEL
+
+    def llm_extra_body(self) -> dict:
+        """解析 LLM_EXTRA_BODY 为 dict，供主 provider 透传（如关闭思考）。
+
+        空字符串 / 非 JSON 对象一律返回 {}：这是可选调优项，配错不该让
+        整个应用起不来，只 warning 一次并退化为不传（与原行为一致）。
+        """
+        raw = (self.LLM_EXTRA_BODY or "").strip()
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as e:
+            self._warn_extra_body_once(f"不是合法 JSON（{e}）")
+            return {}
+        if not isinstance(parsed, dict):
+            self._warn_extra_body_once("必须是 JSON 对象")
+            return {}
+        return parsed
+
+    @staticmethod
+    def _warn_extra_body_once(reason: str) -> None:
+        """同一进程内只告警一次，避免每次调用刷屏（不影响后续解析）。"""
+        if "extra_body" in Settings._llm_fallback_warned:
+            return
+        Settings._llm_fallback_warned.add("extra_body")
+        logger.warning("[LLM] LLM_EXTRA_BODY 已忽略：%s", reason)
 
     @staticmethod
     def db_minimal_privilege_error(runtime_dsn: str, migration_dsn: str) -> str | None:

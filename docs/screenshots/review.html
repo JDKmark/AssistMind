@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AssistMind · README 界面预览审阅</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #ffffff; --ink: #1f2937; --muted: #6b7280;
+    --line: #e5e7eb; --accent: #2f54eb; --ok: #16a34a; --warn: #d97706;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.6;
+    padding: 40px 24px 80px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header h1 { font-size: 26px; margin-bottom: 6px; }
+  header p.sub { color: var(--muted); font-size: 14px; }
+  .summary { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0 28px; }
+  .chip { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-size: 13px; }
+  .chip b { font-size: 16px; margin-right: 4px; }
+  .chip.ok b { color: var(--ok); }
+  .chip.new b { color: var(--accent); }
+  .notice {
+    background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px;
+    padding: 14px 18px; font-size: 14px; margin-bottom: 28px;
+  }
+  .notice code { background: #dbeafe; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  h2 { font-size: 18px; margin: 32px 0 14px; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+  .shot {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .shot img { width: 100%; display: block; border-bottom: 1px solid var(--line); }
+  .shot .meta { padding: 12px 18px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  .shot .meta .name { font-family: Consolas, monospace; font-size: 13px; color: var(--muted); }
+  .shot .meta .size { font-size: 12px; color: var(--muted); }
+  .badge { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 999px; font-weight: 600; }
+  .badge.ok { background: #dcfce7; color: var(--ok); }
+  .badge.new { background: #dbeafe; color: var(--accent); }
+  .shot h3 { font-size: 15px; padding: 12px 18px 0; }
+  .shot .note { padding: 4px 18px 14px; font-size: 13px; color: var(--muted); }
+  table.preview {
+    width: 100%; border-collapse: collapse; background: var(--card);
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+  }
+  table.preview td { width: 50%; padding: 10px; border: 1px solid var(--line); }
+  table.preview img { width: 100%; display: block; border-radius: 4px; }
+  footer {
+    margin-top: 32px; padding: 16px 18px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; font-size: 13px; color: var(--muted);
+  }
+  footer code { background: #f3f4f6; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AssistMind · README「界面预览」审阅</h1>
+    <p class="sub">共 8 张截图 · 本地演示环境真实画面（1440×900）· 更新于 2026-09-12（知识库管理 P0+P1 上线后）</p>
+  </header>
+
+  <div class="summary">
+    <span class="chip ok"><b>6</b>张沿用有效</span>
+    <span class="chip new"><b>1</b>张重截（04 新版知识库 UI）</span>
+    <span class="chip new"><b>1</b>张新增（08 召回测试）</span>
+  </div>
+
+  <div class="notice">
+    <b>更新说明</b>：知识库管理 P0（文档上传 / chunk 查看 / 召回测试）与 P1（文档启停 / 单文档重灌）上线后，
+    原知识库页截图已过时——<code>04-knowledge.png</code> 重截为新版 UI（上传按钮 / 参与检索开关 / 详情 / 重新灌库），
+    并新增 <code>08-recall-test.png</code>（召回测试 RRF 融合命中结果）。README 界面预览小节已同步改为 8 图布局。
+  </div>
+
+  <h2>逐张审阅</h2>
+  <div class="grid">
+
+    <div class="shot">
+      <h3>登录页 <span class="badge ok">沿用</span></h3>
+      <img src="01-login.png" alt="登录页">
+      <div class="meta"><span class="name">01-login.png</span></div>
+      <p class="note">左侧品牌区 + 右侧登录表单，演示账号快捷填入卡片齐全。</p>
+    </div>
+
+    <div class="shot">
+      <h3>RAG 问答（L1 语义缓存命中）<span class="badge ok">沿用</span></h3>
+      <img src="02-chat-faq.png" alt="RAG 问答">
+      <div class="meta"><span class="name">02-chat-faq.png</span></div>
+      <p class="note">「运费谁出？」命中知识问答规则，52ms 返回且带「缓存 L1」标记，含引用编号与反馈条。</p>
+    </div>
+
+    <div class="shot">
+      <h3>Agent 工具调用：订单售后办理 <span class="badge ok">沿用</span></h3>
+      <img src="03-chat-agent.png" alt="Agent 工具调用">
+      <div class="meta"><span class="name">03-chat-agent.png</span></div>
+      <p class="note">工具调用「申请售后」参数 → 售后单卡片（AF20260801002，处理中）→ 最终答复，诊断 19.1s。</p>
+    </div>
+
+    <div class="shot">
+      <h3>知识库管理（上传 / 启停 / 重灌）<span class="badge new">重截</span></h3>
+      <img src="04-knowledge.png" alt="知识库管理">
+      <div class="meta"><span class="name">04-knowledge.png</span></div>
+      <p class="note">新版 UI：24 篇文档；卡片头部「重建索引 + 上传文档」；新增「参与检索」启停开关列
+        与「详情 / 重新灌库 / 删除」操作列——P0/P1 全部管理能力入口在图内可见。</p>
+    </div>
+
+    <div class="shot">
+      <h3>工单列表 <span class="badge ok">沿用</span></h3>
+      <img src="05-tickets.png" alt="工单列表">
+      <div class="meta"><span class="name">05-tickets.png</span></div>
+      <p class="note">状态过滤、优先级、多状态徽标齐全，含故障类工单。</p>
+    </div>
+
+    <div class="shot">
+      <h3>我的订单（user1）<span class="badge ok">沿用</span></h3>
+      <img src="06-orders.png" alt="我的订单">
+      <div class="meta"><span class="name">06-orders.png</span></div>
+      <p class="note">演示账号 user1 的订单（待发货 / 已发货），物流单号脱敏显示。</p>
+    </div>
+
+    <div class="shot">
+      <h3>管理后台 <span class="badge ok">沿用</span></h3>
+      <img src="07-admin.png" alt="管理后台">
+      <div class="meta"><span class="name">07-admin.png</span></div>
+      <p class="note">系统状态四组件全部正常（Qdrant/Redis/PostgreSQL/Langfuse），数据概览与工单管理联动。</p>
+    </div>
+
+    <div class="shot">
+      <h3>召回测试（RRF 融合命中）<span class="badge new">新增</span></h3>
+      <img src="08-recall-test.png" alt="召回测试">
+      <div class="meta"><span class="name">08-recall-test.png</span></div>
+      <p class="note">「退货政策是什么」→ RRF 融合 28 条命中：doc_id / 段落标题 / 得分 / 内容摘要四列，
+        毫秒级 dry-run 验证知识库检索效果（不含改写 / CRAG / 重排 / 生成）。</p>
+    </div>
+
+  </div>
+
+  <h2>README 呈现效果预览（两列布局）</h2>
+  <table class="preview">
+    <tr>
+      <td><img src="01-login.png" alt=""></td>
+      <td><img src="02-chat-faq.png" alt=""></td>
+    </tr>
+    <tr>
+      <td><img src="03-chat-agent.png" alt=""></td>
+      <td><img src="04-knowledge.png" alt=""></td>
+    </tr>
+    <tr>
+      <td><img src="05-tickets.png" alt=""></td>
+      <td><img src="06-orders.png" alt=""></td>
+    </tr>
+    <tr>
+      <td><img src="07-admin.png" alt=""></td>
+      <td><img src="08-recall-test.png" alt=""></td>
+    </tr>
+  </table>
+
+  <footer>
+    生效链路：<code>README.md</code> + <code>docs/screenshots/</code> 提交后，GitHub 上的 README 界面预览即为上方两列布局效果。
+    建议 commit：<code>docs: 界面预览更新知识库管理新 UI 与召回测试截图</code>。
+  </footer>
+</div>
+</body>
+</html>

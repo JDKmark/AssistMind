@@ -195,11 +195,14 @@ def test_old_token_rejects_unknown_user(monkeypatch):
 
 
 async def test_old_token_pg_down_degrades_to_jwt_identity(monkeypatch):
-    """旧 token + PG 故障：降级为 JWT 自证身份（user_id 置空、特权角色降为 user）。
+    """旧 token + PG 故障：降级为 JWT 自证身份（user_id 回落 username、特权角色降为 user）。
 
     聊天类接口不受 PG 故障影响的降级哲学：签名可信的旧 token 放行，
     但安全收紧——无法核验用户的真实存在性/活跃状态时，角色一律降级为
     user（被删/停用的旧管理 token 不再具备 require_admin/require_staff 能力）。
+
+    user_id 不能用 None 兜底：调用方普遍写 user.get("user_id", "")，键存在值为 None
+    时默认值不生效，None 会传进会话持久化（Conversation.user_id）与订单消歧。
     """
     def _db_down():
         raise RuntimeError("postgres down")
@@ -210,7 +213,7 @@ async def test_old_token_pg_down_degrades_to_jwt_identity(monkeypatch):
 
     assert identity["username"] == "alice"
     assert identity["role"] == "user"
-    assert identity["user_id"] is None
+    assert identity["user_id"] == "alice"
     assert identity["access_token"] == OLD_USER_TOKEN
 
 

@@ -14,6 +14,10 @@ apply_refund 对非法状态（待付款/未知订单）返回失败结果 dict�
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
+
+# 概览聚合的翻页粒度（默认实现用；单页足够大以减少往返次数）
+_OVERVIEW_PAGE_SIZE = 200
 
 
 class MallDataSource(ABC):
@@ -158,3 +162,41 @@ class MallDataSource(ABC):
     @abstractmethod
     async def update_refund_status(self, refund_id: str, new_status: str) -> dict:
         """执行处理中到已通过或已拒绝的退款状态流转。"""
+
+    async def overview_stats(self) -> dict:
+        """管理端概览聚合：订单 / 退款的总数、金额、按状态分布。
+
+        为什么单列一个方法：list_orders / list_refunds 都带 limit（默认 50），
+        在返回页上做 sum / 分组只能覆盖首页，概览面板的「成交额」与 by_status
+        会随数据量增长而失真。聚合必须走全量口径。
+
+        默认实现按页遍历（对任意数据源都正确）；能下推到数据库的实现应覆盖本方法。
+
+        Returns:
+            {"orders": {"total", "amount", "by_status"},
+             "refunds": {"total", "amount", "by_status"}}
+        """
+        return {
+            "orders": await self._scan_all(self.list_orders, "orders"),
+            "refunds": await self._scan_all(self.list_refunds, "refunds"),
+        }
+
+    async def _scan_all(self, fetch: Any, key: str) -> dict:
+        """按页遍历 fetch 的返回，汇总 total / amount / by_status。"""
+        total = 0
+        amount = 0.0
+        by_status: dict[str, int] = {}
+        offset = 0
+        while True:
+            page = await fetch(offset=offset, limit=_OVERVIEW_PAGE_SIZE)
+            items = page.get(key) or []
+            total = page.get("total") or 0
+            for item in items:
+                status = item.get("status")
+                if status:
+                    by_status[status] = by_status.get(status, 0) + 1
+                amount += item.get("pay_amount") or 0
+            if not items or offset + len(items) >= total:
+                break
+            offset += len(items)
+        return {"total": int(total), "amount": amount, "by_status": by_status}

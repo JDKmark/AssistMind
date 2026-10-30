@@ -188,3 +188,13 @@ async def list_refunds(
 
 async def update_refund_status(refund_id: str, new_status: str) -> dict:
     return await (await _resolve_source()).update_refund_status(refund_id, new_status)
+
+
+async def overview_stats() -> dict:
+    """管理端概览聚合（全量口径，不受分页 limit 影响）。
+
+    Returns:
+        {"orders": {"total", "amount", "by_status"},
+         "refunds": {"total", "amount", "by_status"}}
+    """
+    return await (await _resolve_source()).overview_stats()

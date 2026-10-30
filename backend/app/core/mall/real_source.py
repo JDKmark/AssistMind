@@ -438,6 +438,56 @@ class RealMallDataSource(MallDataSource):
             logger.warning("[Mall] list_refunds 失败（PostgreSQL）: %s", e)
             return {"refunds": [], "total": 0, "degraded": ["postgres"]}
 
+    async def overview_stats(self) -> dict:
+        """概览聚合下推到 SQL（count + sum + group by），避免为聚合翻页拉全量。
+
+        PostgreSQL 失败 → logger.warning + 全零结果 + degraded 标记，不抛异常。
+        """
+        try:
+            async with async_session() as session:
+                order_total, order_amount = (
+                    await session.execute(
+                        select(
+                            func.count(MallOrder.id),
+                            func.coalesce(func.sum(MallOrder.pay_amount), 0),
+                        )
+                    )
+                ).one()
+                order_rows = (
+                    await session.execute(
+                        select(MallOrder.status, func.count(MallOrder.id)).group_by(
+                            MallOrder.status
+                        )
+                    )
+                ).all()
+                refund_total = await session.scalar(select(func.count(MallRefund.id)))
+                refund_rows = (
+                    await session.execute(
+                        select(MallRefund.status, func.count(MallRefund.id)).group_by(
+                            MallRefund.status
+                        )
+                    )
+                ).all()
+            return {
+                "orders": {
+                    "total": int(order_total or 0),
+                    "amount": float(order_amount or 0),
+                    "by_status": {status: int(count) for status, count in order_rows if status},
+                },
+                "refunds": {
+                    "total": int(refund_total or 0),
+                    "amount": 0.0,
+                    "by_status": {status: int(count) for status, count in refund_rows if status},
+                },
+            }
+        except Exception as e:
+            logger.warning("[Mall] overview_stats 失败（PostgreSQL）: %s", e)
+            return {
+                "orders": {"total": 0, "amount": 0.0, "by_status": {}},
+                "refunds": {"total": 0, "amount": 0.0, "by_status": {}},
+                "degraded": ["postgres"],
+            }
+
     async def update_refund_status(self, refund_id: str, new_status: str) -> dict:
         if new_status not in {"已通过", "已拒绝"}:
             raise ValueError(f"非法状态流转: 处理中 -> {new_status}")

@@ -446,34 +446,52 @@ def test_rate_limiter_install_patches_modules_and_limits(monkeypatch):
     assert limiter_holder[0] is not None and limiter_holder[0].calls == 1
 
 
-def test_limited_client_wraps_async_create():
-    class _Msg:
-        content = "x"
+def test_install_async_rate_limit_patches_instructor_client():
+    """限速补丁必须挂在 instructor 内部的 completions 上。
 
-    class _Choice:
-        finish_reason = "stop"
-        message = _Msg()
+    ragas 的 llm_factory 用 isinstance(client, OpenAI) 校验，任何包在外层的
+    client 代理都会被拒（"Client must be an instance of one of: ..."），所以
+    answer_relevancy 的限速只能在 llm_factory 之后对已构造的 Instructor 打补丁。
+    这里用一个同构的假对象验证补丁点与排队行为。
+    """
 
-    class _Resp:
-        choices = [_Choice()]
-        usage = None
-
-    class _InnerCompletions:
-        def create(self, **kwargs):
-            async def _call():
-                return _Resp()
-
-            return _call()
-
-    class _InnerChat:
+    class _Completions:
         def __init__(self):
-            self.completions = _InnerCompletions()
+            self.inner_calls = 0
 
-    class _Inner:
+        async def create(self, **kwargs):
+            self.inner_calls += 1
+            return {"ok": True}
+
+    class _Chat:
         def __init__(self):
-            self.chat = _InnerChat()
+            self.completions = _Completions()
+
+    class _LLM:
+        def __init__(self):
+            self.client = type("_Patched", (), {})()
+            self.client.chat = _Chat()
 
     limiter = run_eval._GlobalRateLimiter(rpm=6000)  # 0.01s，测试跑得快
-    client = run_eval._LimitedClient(_Inner(), limiter)
-    resp = asyncio.run(client.chat.completions.create(model="m", messages=[]))
-    assert resp is not None and limiter.calls == 1
+    run_eval._LLM_LIMITER = limiter
+    try:
+        llm = _LLM()
+        run_eval._install_async_rate_limit(llm)
+        patched = llm.client.chat.completions.create
+        assert getattr(patched, "__name__", "") == "limited_create"
+        resp = asyncio.run(patched(model="m", messages=[]))
+        assert resp == {"ok": True}
+        assert limiter.calls == 1  # 限速器被排队一次
+        assert llm.client.chat.completions.inner_calls == 1  # 原方法仍被调用
+    finally:
+        run_eval._LLM_LIMITER = None
+
+
+def test_install_async_rate_limit_noop_without_limiter():
+    """未启用限速（EVAL_LLM_RPM<=0）时不打补丁，保持原样。"""
+    llm = type("_LLM", (), {})()
+    llm.client = type("_Patched", (), {})()
+    llm.client.chat = type("_Chat", (), {"completions": object()})()
+    run_eval._LLM_LIMITER = None
+    run_eval._install_async_rate_limit(llm)  # 不抛异常即可
+    assert not hasattr(llm.client.chat.completions, "limited_create")

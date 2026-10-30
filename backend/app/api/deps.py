@@ -72,6 +72,14 @@ async def resolve_token_identity(token: str) -> dict:
                 exc_info=True,
             )
             role = "user"
+            # 只降 role 不够：user_id 此刻仍是 None（进入本分支的前提就是 payload
+            # 没有 uid），而调用方普遍写 user.get("user_id", "")——键存在、值为 None，
+            # 默认值不生效，None 会一路传下去：
+            #   · save_round → Conversation.user_id 为 None，归属校验与
+            #     list_conversations 的 uid 过滤都对不上，本轮问答写不进去；
+            #   · requester_user_id=None → 订单消歧查不到单。
+            # 故用自证的 username 兜底（与工单侧把 username 存进 user_id 的约定一致）。
+            user_id = user_id or username
     return {
         "user_id": user_id,
         "username": username,

@@ -75,7 +75,14 @@ def _extract_docx(path: str) -> str:
 
     只取每个 w:p 里的 w:t 文本，忽略样式/图片；空段落跳过。
     """
-    with zipfile.ZipFile(path) as zf:
+    try:
+        zf = zipfile.ZipFile(path)
+    except (zipfile.BadZipFile, OSError) as e:
+        # 非 zip 内容 / 文件不可读：zipfile 抛 BadZipFile / OSError，
+        # 与领域异常无继承关系，必须显式收敛，否则调用方的
+        # 「坏文档跳过」降级失效、整批灌库被单个坏文件中断
+        raise UnsupportedDocumentError(f"不是有效的 docx（zip 打开失败）: {path}: {e}") from e
+    with zf:
         if "word/document.xml" not in zf.namelist():
             raise UnsupportedDocumentError(f"不是有效的 docx（缺 word/document.xml）: {path}")
         try:

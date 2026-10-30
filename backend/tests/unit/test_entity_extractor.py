@@ -64,6 +64,24 @@ def test_extract_lowercase_p_not_matched():
     assert extract("有没有 p001 的测评")["product_id"] is None
 
 
+def test_extract_product_id_adjacent_to_chinese():
+    """商品 ID 紧贴中文也要能抽出来（真实提问的主流形态）。
+
+    回归背景：旧正则用 (?<!\\w)/(?!\\w) 做边界，而 Python3 的 \\w 把中文也算单词
+    字符，导致「商品P001缺货」「查下P001的库存」整条漏匹配，商品实体补填链路
+    在最常见的句式上完全失效。边界必须只用 ASCII 字符类。
+    """
+    assert extract("商品P001缺货")["product_id"] == "P001"
+    assert extract("帮我查下P001的库存")["product_id"] == "P001"
+    assert extract("P001的尺码表在哪")["product_id"] == "P001"
+
+
+def test_extract_product_id_still_rejects_glued_ascii():
+    """放宽中文边界后，ASCII 粘连（SP001 / P0012）仍须拒绝。"""
+    assert extract("型号SP001怎么样")["product_id"] is None
+    assert extract("P0012 有货吗")["product_id"] is None
+
+
 # ---------- 多轮历史提取 ----------
 
 def test_extract_from_history_when_query_has_no_entity():
@@ -303,6 +321,20 @@ def test_extract_ticket_id_boundary_guards():
     assert extract("TK-20260913103000123456")["ticket_id"] is None
     # 后缀含非数字不匹配
     assert extract("TK-20260913103000AB123")["ticket_id"] is None
+
+
+def test_extract_ticket_id_adjacent_to_chinese():
+    """工单号紧贴中文也要能抽出来（「工单TK-…状态」）。
+
+    回归背景同商品 ID：旧正则 (?<![\\w-]) 被中文触发，导致「单号TK-…」
+    「工单TK-…的状态」全部漏匹配，工单进度查询的参数补填失效。
+    """
+    assert extract("工单TK-202609131030001234567状态")["ticket_id"] == (
+        "TK-202609131030001234567"
+    )
+    assert extract("单号TK-202609131030001234567")["ticket_id"] == (
+        "TK-202609131030001234567"
+    )
 
 
 def test_extract_ticket_id_from_history_backtrack():

@@ -3,7 +3,7 @@
 覆盖：
 - synthesize 客户端：正常只产出 audio 块 / 空白文本零调用 / 失败 warning + 上抛
 - /api/v1/tts/speak API：200 流式 audio/mpeg / 空文本与超长 422 /
-  edge-tts 首块失败 503 / 未登录 401
+  edge-tts 首块失败与空生成器 503 / 未登录 401
 
 mock 策略：mock edge_tts.Communicate（客户端层）与 app.api.tts.synthesize
 （API 层），不连真实网络。
@@ -143,6 +143,20 @@ def test_speak_edge_tts_down_503():
     with _patch_synthesize(None, error=ConnectionError("edge 不可达")):
         resp = client.post(
             "/api/v1/tts/speak", headers=AUTH_HEADERS, json={"text": "你好"}
+        )
+    assert resp.status_code == 503
+    assert "暂不可用" in resp.json()["detail"]
+
+
+def test_speak_empty_generator_503():
+    """合成器一块音频都没产出（文本非空）：503，而非误导性的 422 空文本。
+
+    文本已过 Pydantic min_length 与 strip 两道非空校验，空生成器只可能是
+    edge-tts 合成失败；报 422「文本不能为空」会误导用户，并在日志里丢掉真正原因。
+    """
+    with _patch_synthesize([]):
+        resp = client.post(
+            "/api/v1/tts/speak", headers=AUTH_HEADERS, json={"text": "订单已发货"}
         )
     assert resp.status_code == 503
     assert "暂不可用" in resp.json()["detail"]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy import func, or_, select
 
@@ -107,7 +108,68 @@ async def update_refund_status(refund_id: str, new_status: str, operator: str) -
     return result
 
 
+async def _load_section(
+    label: str,
+    loader: Callable[[list[str]], Awaitable[dict]],
+    degraded: list[str],
+) -> dict:
+    """加载单个概览分区，返回该分区要合并进 overview 的键。
+
+    失败只影响自己：记 warning + 标记 degraded，返回空 dict 让调用方保留零值默认。
+    """
+    try:
+        return await loader(degraded)
+    except Exception as exc:
+        logger.warning("[admin] %s 概览失败: %s", label, exc)
+        degraded.append(label)
+        return {}
+
+
+async def _mall_overview(degraded: list[str]) -> dict:
+    stats = await mall_ds.overview_stats()
+    degraded.extend(stats.get("degraded", []))
+    return {"orders": stats["orders"], "refunds": stats["refunds"]}
+
+
+async def _user_overview(_degraded: list[str]) -> dict:
+    async with async_session() as session:
+        total = await session.scalar(select(func.count(User.id)))
+        role_rows = await session.execute(
+            select(User.role, func.count(User.id)).group_by(User.role)
+        )
+        return {"users": {"total": total or 0, "by_role": dict(role_rows.all())}}
+
+
+async def _ticket_overview(_degraded: list[str]) -> dict:
+    by_status = await ticket_service.count_by_status()
+    return {"tickets": {"total": sum(by_status.values()), "by_status": by_status}}
+
+
+async def _feedback_overview(_degraded: list[str]) -> dict:
+    return {"feedback": await feedback_service.feedback_stats()}
+
+
+async def _knowledge_overview(_degraded: list[str]) -> dict:
+    qdrant = get_qdrant()
+    if not qdrant.is_connected:
+        raise RuntimeError("qdrant unavailable")
+    chunks = await qdrant.scroll_all()
+    documents = {chunk.get("doc_id") for chunk in chunks if chunk.get("doc_id")}
+    return {"knowledge": {"documents": len(documents), "chunks": len(chunks)}}
+
+
+# 分区加载顺序即 degraded 标记顺序（与接口文档一致，改动需同步测试）
+_OVERVIEW_SECTIONS: tuple[tuple[str, Callable[[list[str]], Awaitable[dict]]], ...] = (
+    ("mall", _mall_overview),
+    ("postgres", _user_overview),
+    ("tickets", _ticket_overview),
+    ("feedback", _feedback_overview),
+    ("qdrant", _knowledge_overview),
+)
+
+
 async def get_overview() -> dict:
+    """管理端概览：各分区独立降级，任一数据源故障不拖垮其余分区。"""
     degraded: list[str] = []
     overview = {
         "orders": {"total": 0, "amount": 0, "by_status": {}},
@@ -116,76 +178,8 @@ async def get_overview() -> dict:
         "users": {"total": 0, "by_role": {}},
         "feedback": {"total": 0, "negative": 0, "pending_export": 0},
         "knowledge": {"documents": 0, "chunks": 0},
-        "degraded": degraded,
     }
-    try:
-        orders = await mall_ds.list_orders()
-        overview["orders"] = {
-            "total": orders["total"],
-            "amount": sum(item.get("pay_amount") or 0 for item in orders["orders"]),
-            "by_status": {
-                key: sum(1 for item in orders["orders"] if item["status"] == key)
-                for key in {item["status"] for item in orders["orders"]}
-            },
-        }
-        refunds = await mall_ds.list_refunds()
-        overview["refunds"] = {
-            "total": refunds["total"],
-            "by_status": {
-                key: sum(1 for item in refunds["refunds"] if item["status"] == key)
-                for key in {item["status"] for item in refunds["refunds"]}
-            },
-        }
-        degraded.extend(orders.get("degraded", []) + refunds.get("degraded", []))
-    except Exception as exc:
-        logger.warning("[admin] 商城概览失败: %s", exc)
-        degraded.append("mall")
-    try:
-        async with async_session() as session:
-            total = await session.scalar(select(func.count(User.id)))
-            role_rows = await session.execute(
-                select(User.role, func.count(User.id)).group_by(User.role)
-            )
-            overview["users"] = {"total": total or 0, "by_role": dict(role_rows.all())}
-    except Exception as exc:
-        logger.warning("[admin] 用户概览失败: %s", exc)
-        degraded.append("postgres")
-    for name, loader, key in (
-        ("tickets", lambda: ticket_service.list_tickets(), "tickets"),
-        ("feedback", lambda: feedback_service.list_feedback(page=1, page_size=1), "feedback"),
-    ):
-        try:
-            data = await loader()
-            if key == "tickets":
-                tickets = data.get("tickets", [])
-                overview[key] = {
-                    "total": data["total"],
-                    "by_status": {
-                        status: sum(1 for item in tickets if item.get("status") == status)
-                        for status in {item.get("status") for item in tickets if item.get("status")}
-                    },
-                }
-            else:
-                feedback_items = data.get("items", [])
-                overview[key] = {
-                    "total": data["total"],
-                    "negative": sum(1 for item in feedback_items if (item.get("score") or 0) <= 2),
-                    "pending_export": sum(
-                        1 for item in feedback_items if not item.get("exported", False)
-                    ),
-                }
-        except Exception as exc:
-            logger.warning("[admin] %s 概览失败: %s", name, exc)
-            degraded.append(name)
-    try:
-        qdrant = get_qdrant()
-        if not qdrant.is_connected:
-            raise RuntimeError("qdrant unavailable")
-        chunks = await qdrant.scroll_all()
-        documents = {chunk.get("doc_id") for chunk in chunks if chunk.get("doc_id")}
-        overview["knowledge"] = {"documents": len(documents), "chunks": len(chunks)}
-    except Exception as exc:
-        logger.warning("[admin] 知识库概览失败: %s", exc)
-        degraded.append("qdrant")
+    for label, loader in _OVERVIEW_SECTIONS:
+        overview.update(await _load_section(label, loader, degraded))
     overview["degraded"] = list(dict.fromkeys(degraded))
     return overview

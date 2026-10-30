@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 MIN_SCORE = 1
 MAX_SCORE = 5
+# 差评阈值：score<=2 视为 bad case（回流评估集与 admin 概览共用同一口径）
+BAD_SCORE_MAX = 2
 
 
 async def submit_feedback(
@@ -153,6 +155,31 @@ async def list_feedback(
         }
 
     return {"total": total or 0, "items": [_dump(f) for f in rows]}
+
+
+async def feedback_stats() -> dict[str, int]:
+    """反馈全量聚合统计（admin 概览用，不受分页窗口影响）。
+
+    概览面板曾用 `list_feedback(page_size=1)` 取一页再对 items 计数，导致
+    negative / pending_export 恒为 0 或 1，与真实数据量脱钩。聚合必须走 SQL
+    计数，不能在分页结果上做 sum。
+
+    Returns:
+        {"total": int, "negative": int(score<=2), "pending_export": int(未回流)}
+    """
+    async with async_session() as session:
+        total = await session.scalar(select(sa_func.count(Feedback.id)))
+        negative = await session.scalar(
+            select(sa_func.count(Feedback.id)).where(Feedback.score <= BAD_SCORE_MAX)
+        )
+        pending_export = await session.scalar(
+            select(sa_func.count(Feedback.id)).where(Feedback.exported.is_(False))
+        )
+    return {
+        "total": total or 0,
+        "negative": negative or 0,
+        "pending_export": pending_export or 0,
+    }
 
 
 async def mark_exported(feedback_ids: list[str]) -> int:

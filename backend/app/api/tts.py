@@ -49,9 +49,15 @@ async def speak(
     try:
         first_chunk = await gen.__anext__()
     except StopAsyncIteration:
+        # 文本已过 min_length 与 strip 两道非空校验，走到这里只可能是合成器
+        # 一块音频都没产出（edge-tts 失败但不抛异常）。按"合成失败"处理：
+        # 报 422「文本不能为空」会误导用户、并在日志里丢掉真正的原因。
+        logger.warning(
+            "[TTS] /speak 合成器无输出 user=%s text_len=%d", user.get("username"), len(text)
+        )
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="文本不能为空",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="语音合成服务暂不可用",
         ) from None
     except Exception:
         logger.warning(

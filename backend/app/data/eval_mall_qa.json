@@ -198,7 +198,7 @@
     "question": "戴森 V12 是免费包邮的，那退货运费是不是也全免？",
     "ground_truth": "不是全免。按《售后服务政策》运费承担规则：「免费包邮」服务（service_ids 含 3）仅免首程运费，退货运费仍按责任划分执行：7 天无理由（不喜欢/拍错）由用户承担，质量问题/破损/发错货由商家承担。P003 戴森 V12 虽然包邮，但不等于退货运费全免。",
     "adversarial": true
-    },
+  },
   {
     "question": "S1 Pro 吸奶器吸不出奶了怎么办？",
     "ground_truth": "按《贝亲 S1 Pro 电动吸奶器排障指南》（P006）：吸不出奶/吸力不足先查硅胶隔膜是否反装或老化（凸面朝向主机、超过 3 个月建议更换），再查防溢阀是否装到位或破损、喇叭罩与乳房是否贴合漏气、奶瓶是否拧紧；有吸力但变弱时确认是否处于泌乳模式（应切换吸乳模式并上调档位），奶阵未到属正常现象可先热敷刺激 1-2 分钟；以上无效且主机无运转声为主机故障，建议申请售后。",
@@ -208,5 +208,45 @@
     "question": "追觅 S1 Pro 扫地机器人吸力变小了怎么排查？",
     "ground_truth": "按《追觅 S1 Pro 扫地机器人排障指南》（P007）：吸力变小多为尘盒/滤网/滚刷堵塞——先清空尘盒并更换基站尘袋，翻转主机清理缠绕在主刷两端的毛发、检查吸口异物，取出海帕滤网拍尘（水洗需晾干 24 小时再装回），检查边刷是否变形；另外确认 App 未设为安静模式（清扫地毯建议标准/强劲模式）；满电后吸口仍完全无吸风声则可能风机故障，建议申请售后。",
     "adversarial": false
+  },
+  {
+    "question": "同一件商品能同时享受促销价和满减优惠吗？",
+    "ground_truth": "不能。pms_product.promotion_type 是单选互斥字段，同一商品同一时间只能启用一种促销类型（0 无促销 / 1 促销价 / 2 会员价 / 3 阶梯价 / 4 满减 / 5 限时购），促销价与满减、阶梯价、限时购互斥。",
+    "adversarial": false
+  },
+  {
+    "question": "满减活动和阶梯价可以跨商品合并计算吗？",
+    "ground_truth": "不可以。满减（pms_product_full_reduction）与阶梯价（pms_product_ladder）都只针对单个商品，不能跨商品合并计算；这一点与「全场通用」类型的优惠券不同。",
+    "adversarial": false
+  },
+  {
+    "question": "限时购活动的限购数量由哪个字段控制？超出限购的部分怎么计价？",
+    "ground_truth": "由 pms_product 的 promotion_per_limit 控制活动限购数量，超出限购的部分按原价计算；限时购同时受 promotion_start_time / promotion_end_time 时间窗约束。",
+    "adversarial": false
+  },
+  {
+    "question": "优惠券的使用范围（use_type）有哪几种？",
+    "ground_truth": "sms_coupon.use_type 有三种取值：0 全场通用、1 指定分类、2 指定商品。",
+    "adversarial": false
+  },
+  {
+    "question": "订单的实付金额 pay_amount 是怎么计算出来的？",
+    "ground_truth": "pay_amount = total_amount - promotion_amount - coupon_amount - integration_amount + freight_amount，即商品总额依次减去促销优惠、优惠券抵扣、积分抵扣，再加运费；管理员调整订单使用的折扣金额单独记录在 discount_amount。",
+    "adversarial": false
+  },
+  {
+    "question": "发货后多久系统会自动确认收货？会自动变更哪些字段？",
+    "ground_truth": "发货后超过 confirm_overtime（演示默认 15 天）用户仍未确认收货，系统自动确认：confirm_status 由 0 未确认变为 1 已确认，订单状态由 2 已发货变为 3 已完成；订单行的 auto_confirm_day 记录该订单的自动确认天数。",
+    "adversarial": false
+  },
+  {
+    "question": "什么情况下订单可以免运费？",
+    "ground_truth": "有两种情况：一是会员免邮特权（ums_member_level.priviledge_free_freight，订单金额达到 free_freight_point 免运费标准时包邮）；二是商品本身带「免费包邮」服务（pms_product.service_ids 含 3，如演示商品 P001、P003），此时 oms_order.freight_amount 为 0。",
+    "adversarial": false
+  },
+  {
+    "question": "我是钻石会员，是不是所有商品都能按会员价结算？",
+    "ground_truth": "不是。会员价只在商品 promotion_type=2 时生效，并且需要该会员等级开通 priviledge_member_price 特权（演示为铂金会员起开通）；promotion_type 不是 2 的商品按促销价、阶梯价或原价等其他规则结算，与会员等级无关。",
+    "adversarial": true
   }
 ]

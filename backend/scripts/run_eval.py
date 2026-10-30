@@ -197,48 +197,36 @@ class _GlobalRateLimiter:
         await asyncio.to_thread(self.acquire)
 
 
-class _LimitedCompletions:
-    """把 judge / answer_relevancy 的 OpenAI 调用也接入同一个限速器。
-
-    ragas 判分与 collections 版 answer_relevancy 走 OpenAI 客户端，不经
-    llm_factory.call_llm；只有把它们也排队，整体 RPM 才真正可控。
-    """
-
-    def __init__(self, inner, limiter: _GlobalRateLimiter) -> None:
-        self._inner = inner
-        self._limiter = limiter
-
-    def create(self, *args, **kwargs):
-        result = self._inner.create(*args, **kwargs)
-        if inspect.isawaitable(result):
-
-            async def _wrapped():
-                await self._limiter.acquire_async()
-                return await result
-
-            return _wrapped()
-        return result
-
-
-class _LimitedChat:
-    def __init__(self, inner_chat, limiter: _GlobalRateLimiter) -> None:
-        self.completions = _LimitedCompletions(inner_chat.completions, limiter)
-        self._inner_chat = inner_chat
-
-    def __getattr__(self, name):
-        return getattr(self._inner_chat, name)
-
-
-class _LimitedClient:
-    def __init__(self, inner, limiter: _GlobalRateLimiter) -> None:
-        self.chat = _LimitedChat(inner.chat, limiter)
-        self._inner = inner
-
-    def __getattr__(self, name):
-        return getattr(self._inner, name)
-
-
 _LLM_LIMITER: _GlobalRateLimiter | None = None
+
+
+def _install_async_rate_limit(llm) -> None:
+    """给已构造好的 Instructor 异步客户端补上全局限速。
+
+    instructor 用 `isinstance(client, OpenAI)` 校验，任何包在外层的 client 代理都会
+    被拒（"Client must be an instance of one of: OpenAI, AsyncOpenAI"），所以限速
+    只能在 llm_factory 之后、对 instructor 内部的 completions 打补丁。
+
+    失败只 warning 并退化为不限速，不中断评估——限速是保护措施，不是正确性前提。
+    """
+    limiter = _LLM_LIMITER
+    if limiter is None:
+        return
+    try:
+        completions = llm.client.chat.completions
+        original = completions.create
+    except AttributeError:
+        logger.warning("[Eval] answer_relevancy 限速挂载失败：客户端结构不符预期，本次不限速")
+        return
+
+    async def limited_create(*args, **kwargs):
+        await limiter.acquire_async()
+        return await original(*args, **kwargs)
+
+    try:
+        completions.create = limited_create
+    except Exception as e:  # 只读属性 / __slots__ 等
+        logger.warning("[Eval] answer_relevancy 限速挂载失败（%s），本次不限速", e)
 
 
 def install_llm_rate_limit(rpm: int) -> None:
@@ -658,11 +646,17 @@ def build_ragas_llm(async_client: bool = False, max_tokens: int | None = None):
         except ValueError:
             max_tokens = 8192
     client_cls = openai.AsyncOpenAI if async_client else openai.OpenAI
+    # 判分是长 JSON 结构化输出，30s（交互链路 LLM_TIMEOUT）不够：
+    # flash-lite 关思考后单条仍需 10-20s，开着思考直接超时丢行。
+    try:
+        judge_timeout = int(os.environ.get("EVAL_JUDGE_TIMEOUT", "90"))
+    except ValueError:
+        judge_timeout = 90
     if settings.LLM_PROVIDER == "ollama":
         client = client_cls(
             api_key="ollama",
             base_url=settings.OLLAMA_BASE_URL + "/v1",
-            timeout=90,
+            timeout=judge_timeout,
         )
         model = settings.OLLAMA_MODEL
     else:
@@ -670,26 +664,36 @@ def build_ragas_llm(async_client: bool = False, max_tokens: int | None = None):
         client = client_cls(
             api_key=api_key,
             base_url=base_url,
-            timeout=settings.LLM_TIMEOUT,
+            timeout=judge_timeout,
         )
+    # 关思考：与主链路共用 LLM_EXTRA_BODY，避免推理 token 吃满超时预算。
+    # 只能走 llm_factory 的 **kwargs（→ InstructorLLM.model_args → 原样透传给
+    # chat.completions.create）；包一层 client 会被 instructor 的
+    # isinstance(client, OpenAI) 校验拒掉（"Client must be an instance of ..."）。
+    judge_extra = settings.llm_extra_body() if settings.LLM_PROVIDER != "ollama" else {}
     if _JUDGE_CAPTURE:
         raw_client = client
         client = _CaptureClient(client, _JUDGE_CALL_SINK, "async" if async_client else "sync")
-    if async_client and _LLM_LIMITER is not None:
-        # answer_relevancy 的逐条 ascore 走这个异步客户端，必须排队（judge 批处理
-        # 的同步客户端由批间 sleep 控制节奏，避免阻塞事件循环）
-        client = _LimitedClient(client, _LLM_LIMITER)
+    extra_kwargs = {"extra_body": judge_extra} if judge_extra else {}
     try:
-        return llm_factory(
+        llm = llm_factory(
             model,
             client=client,
             max_tokens=max_tokens,
+            **extra_kwargs,
         )
     except Exception as e:
-        if _JUDGE_CAPTURE:
-            logger.warning("[Eval] judge 调用记录包装与 instructor 不兼容（%s），退回原始 client", e)
-            return llm_factory(model, client=raw_client, max_tokens=max_tokens)
-        raise
+        if not _JUDGE_CAPTURE:
+            raise
+        logger.warning("[Eval] judge 调用记录包装与 instructor 不兼容（%s），退回原始 client", e)
+        llm = llm_factory(model, client=raw_client, max_tokens=max_tokens, **extra_kwargs)
+    if async_client:
+        # answer_relevancy 的逐条 ascore 走这个异步客户端，必须排队：
+        # 单条 strictness=3 就是 3 次连打，50 条不限速会直接把 RPM 打爆（429
+        # rpm exhausted）。限速不能包在 client 外层（instructor 会 isinstance 拒绝），
+        # 只能在 llm_factory 之后给 instructor 内部的 completions 打补丁。
+        _install_async_rate_limit(llm)
+    return llm
 
 
 if RAGAS_AVAILABLE:
