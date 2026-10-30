@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Annotated, Any, TypedDict
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -16,6 +17,7 @@ from langgraph.graph import END, StateGraph, add_messages
 from app.config import get_settings
 from app.core.dialog import extract_query
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm
+from app.core.infra.tracing import finish_tool_span, new_tool_span
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -149,6 +151,8 @@ class BaseReActAgent:
         """行动节点：执行 think 决定的工具调用。
 
         返回 dict 更新 state。工具异常被捕获，作为 Observation 继续循环。
+        每次工具调用产生一个 `tool.<name>` span（未启用 Langfuse 时零开销），
+        让 trace 里「检索 → 工具 → 生成」形成完整证据链。
         """
         pending = state.get("pending_action")
         tool_calls = list(state.get("tool_calls", []))
@@ -156,13 +160,17 @@ class BaseReActAgent:
             return {}
         name = pending["name"]
         input_data = pending.get("input", {}) or {}
+        started = time.perf_counter()
+        span = new_tool_span(name, input_data)
         try:
             result = await self.execute_tool(name, input_data)
             observation = f"Observation: {result}"
+            finish_tool_span(span, started, result=result)
         except Exception as e:
             logger.warning("[Agent] 工具 %s 执行失败: %s", name, e)
             observation = f"Observation: 工具 {name} 执行失败: {e}"
             result = {"error": str(e)}
+            finish_tool_span(span, started, result=result, error=e)
         tool_calls.append({"name": name, "input": input_data, "result": result})
         return {
             "messages": [

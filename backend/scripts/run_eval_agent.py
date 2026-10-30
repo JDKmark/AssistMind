@@ -38,9 +38,12 @@ import glob
 import json
 import logging
 import os
+import re
 import socket
 import sys
 import time
+from datetime import datetime
+from pathlib import Path
 
 # ===== 运行前环境设置（必须在 import 任何 app.* 模块之前） =====
 # 本地 Ollama 推理较慢，放宽备用 provider 超时（离线评估，非交互链路）
@@ -51,6 +54,7 @@ os.environ["TQDM_DISABLE"] = "1"
 import uvicorn  # noqa: E402
 
 from app.agents.tool_agent import ToolAgent  # noqa: E402
+from app.config import get_settings  # noqa: E402
 from app.core.infra.llm_factory import LLMUnavailableError, call_llm  # noqa: E402
 from app.core.mall import data_source as mall_ds  # noqa: E402
 from app.core.mcp.client import MCPClient  # noqa: E402
@@ -94,6 +98,19 @@ def _result_of(turn: dict, name: str) -> dict | list | None:
     """返回指定工具调用的 result。"""
     tc = _find(turn, name)
     return tc.get("result") if tc is not None else None
+
+
+def _ticket_id_of(tc: dict | None) -> str:
+    """从 create_ticket / transfer_human 的返回里取工单号（取不到返回空串）。"""
+    if tc is None:
+        return ""
+    result = tc.get("result")
+    if isinstance(result, dict):
+        for key in ("ticket_id", "ticketId", "ticket_sn"):
+            if result.get(key):
+                return str(result[key])
+    m = re.search(r"TK-\d{7,}", str(result or ""))
+    return m.group(0) if m else ""
 
 
 # ===== 任务断言（每个 check(ctx, turn) -> (ok, reason)） =====
@@ -249,6 +266,47 @@ def check_refund_timeline(ctx: dict, turn: dict) -> tuple[bool, str]:
     return True, "回答命中退款时限承诺（3 个工作日 / 快速退款 24 小时）"
 
 
+def check_transfer_human(ctx: dict, turn: dict) -> tuple[bool, str]:
+    """明确要求转人工：必须真的调 transfer_human，并把工单号回显给用户。
+
+    只检查回答里出现「人工」二字是不够的——模型完全可以口头答应却不调工具
+    （与「说要读文档但没读」同构：话术正确、动作缺失）。这里要求
+    工具调用 + 工单号回显双满足，缺一即判失败。
+    """
+    tc = _find(turn, "transfer_human")
+    if tc is None:
+        return False, f"未调用 transfer_human（实际工具: {_names(turn) or '无'}）"
+    ticket_id = _ticket_id_of(tc)
+    if not ticket_id:
+        return False, f"transfer_human 未返回工单号: {str(tc.get('result'))[:80]}"
+    if ticket_id not in turn["answer"]:
+        return False, f"回答未回显工单号 {ticket_id}（用户拿不到凭证）: {turn['answer'][:80]}"
+    return True, f"调用 transfer_human 且回显工单号 {ticket_id}"
+
+
+def check_create_ticket(ctx: dict, turn: dict) -> tuple[bool, str]:
+    """投诉建单：必须调 create_ticket，且答案回显工具返回的工单号。
+
+    这是「底层成功、交付失败」的典型面：建单接口返回成功，但答案没带单号，
+    用户拿不到凭证——按任务完成度口径应判 0，不能因为工具调用成功就算过。
+    同时校验 title/description 两个必填参数非空（模型漏参时 MCP 会报错，
+    但错误被 act() 捕获成 Observation，答案仍可能编出「已创建」）。
+    """
+    tc = _find(turn, "create_ticket")
+    if tc is None:
+        return False, f"未调用 create_ticket（实际工具: {_names(turn) or '无'}）"
+    title = _arg(tc, "title", "")
+    description = _arg(tc, "description", "")
+    if not title or not description:
+        return False, f"create_ticket 缺必填参数: title={title!r} description={description!r}"
+    ticket_id = _ticket_id_of(tc)
+    if not ticket_id:
+        return False, f"create_ticket 未返回工单号: {str(tc.get('result'))[:80]}"
+    if ticket_id not in turn["answer"]:
+        return False, f"回答未回显工单号 {ticket_id}（用户拿不到凭证）: {turn['answer'][:80]}"
+    return True, f"调用 create_ticket 且回显工单号 {ticket_id}"
+
+
 # ===== 任务列表（多轮客服任务） =====
 # reset_mall=True 的任务在执行前重置 mall 数据源（清空进程内售后单记录），
 # 保证 apply_refund 结果确定性（AF{order_sn} 新创建而非幂等复用）
@@ -310,6 +368,18 @@ TASKS: list[dict] = [
         "name": "退款时限咨询（知识库路径）",
         "turns": [
             {"user": "退货审核通过后，退款多久到账？", "check": check_refund_timeline},
+        ],
+    },
+    {
+        "name": "明确要求转人工（transfer_human + 单号回显）",
+        "turns": [
+            {"user": "我要转人工客服，这个问题机器人解决不了", "check": check_transfer_human},
+        ],
+    },
+    {
+        "name": "投诉建单（create_ticket + 单号回显）",
+        "turns": [
+            {"user": "你们商品质量太差了，我要投诉，帮我建个工单", "check": check_create_ticket},
         ],
     },
 ]
@@ -495,6 +565,50 @@ def _summarize(results: list[dict], label: str) -> tuple[int, int, dict[str, boo
     return passed, total, per_task
 
 
+def build_report(results: list[dict], label: str) -> dict:
+    """把一次评估结果转成可落盘、可版本对比的结构。
+
+    只保留可序列化的字段：task 里的 check 是函数，不能进 JSON；工具调用只留
+    名字（入参/结果体积大且含业务数据，逐轮明细看控制台输出）。
+
+    为什么要有这个文件：此前评估结果只 print 到终端，无法跨版本对比，
+    「这次比上次好还是差」只能靠人眼。落盘后可按 model / data_source /
+    entity_fill 三个维度对齐同一批任务的通过率。
+    """
+    tasks = []
+    for r in results:
+        tasks.append(
+            {
+                "name": r["task"]["name"],
+                "ok": r["ok"],
+                "turns": len(r["turns"]),
+                "tools_called": [_names(t) for t in r["turns"]],
+                "failed_checks": [
+                    {"turn": i, "reason": c["reason"]}
+                    for i, c in enumerate(r["checks"], 1)
+                    if not c["passed"]
+                ],
+            }
+        )
+    passed = sum(1 for t in tasks if t["ok"])
+    total = len(tasks)
+    return {
+        "label": label,
+        "passed": passed,
+        "total": total,
+        "rate": round(passed / total, 4) if total else 0.0,
+        "tasks": tasks,
+    }
+
+
+def write_report(report: dict, report_dir: Path) -> Path:
+    """落盘 JSON 报告，返回写入路径。"""
+    report_dir.mkdir(parents=True, exist_ok=True)
+    path = report_dir / f"agent_eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
 def _print_comparison(on: tuple, off: tuple) -> None:
     """打印实体识别 on/off 对比表。"""
     print("\n===== 实体识别开关对比（before/after） =====")
@@ -528,6 +642,11 @@ async def main() -> None:
         default="mock",
         help="mall 数据源模式（默认 mock：演示数据；real：PostgreSQL，需先跑 scripts/seed_mall_db.py；"
         "auto：健康探测通过用 real 否则降级 mock）",
+    )
+    parser.add_argument(
+        "--report-dir",
+        default=os.path.join(os.path.dirname(__file__), "..", "eval", "reports"),
+        help="结构化 JSON 报告输出目录（默认 backend/eval/reports）",
     )
     args = parser.parse_args()
 
@@ -566,17 +685,33 @@ async def main() -> None:
         # ---- 逐任务评估（实体识别开关对比） ----
         mode = args.entity_fill
         summary: dict[str, tuple[int, int, dict[str, bool]]] = {}
+        runs: dict[str, dict] = {}
         if mode in ("on", "both"):
             agent_on = ToolAgent(mcp_client=client, entity_fill=True)
             results_on = await run_all_tasks(agent_on, "实体识别 ON")
             summary["on"] = _summarize(results_on, "实体识别 ON")
+            runs["on"] = build_report(results_on, "实体识别 ON")
         if mode in ("off", "both"):
             agent_off = ToolAgent(mcp_client=client, entity_fill=False)
             results_off = await run_all_tasks(agent_off, "实体识别 OFF")
             summary["off"] = _summarize(results_off, "实体识别 OFF")
+            runs["off"] = build_report(results_off, "实体识别 OFF")
 
         if mode == "both":
             _print_comparison(summary["on"], summary["off"])
+
+        # ---- 结构化报告（落盘后可跨版本对比同一批任务的通过率） ----
+        settings = get_settings()
+        report = {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "provider": settings.LLM_PROVIDER,
+            "model": settings.llm_profile()[2],
+            "data_source": args.data_source,
+            "entity_fill": args.entity_fill,
+            "runs": runs,
+        }
+        report_path = write_report(report, Path(args.report_dir))
+        print(f"\n[信息] 结构化报告已写入: {report_path}")
     finally:
         await client.close()
         await stop_mcp_server(server, server_task, session_cm)
