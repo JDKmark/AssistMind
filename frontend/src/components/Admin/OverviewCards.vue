@@ -1,10 +1,9 @@
 <template>
   <el-card shadow="never" class="panel-card">
     <template #header>
-      <div class="card-header">
-        <span class="card-title">数据概览</span>
+      <PanelHeader title="数据概览">
         <span v-if="dataLoading" class="muted-text">加载中…</span>
-      </div>
+      </PanelHeader>
     </template>
 
     <!-- 指标卡：大数字 + 灰标 + 状态点（Stripe 式数据呈现） -->
@@ -39,6 +38,7 @@
 </template>
 
 <script setup>
+import PanelHeader from '@/components/Admin/PanelHeader.vue'
 /**
  * 数据概览卡：文档数 / Chunk 数 / 工单总数 / 状态分布（Stripe 式指标卡）。
  *
@@ -61,14 +61,6 @@ defineProps({
 .muted-text {
   color: var(--am-text-3);
   font-size: 13px;
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.card-title {
-  font-weight: 600;
 }
 
 /* 指标卡网格（Stripe 式数据呈现） */

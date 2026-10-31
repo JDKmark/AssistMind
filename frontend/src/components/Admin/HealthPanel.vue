@@ -1,12 +1,11 @@
 <template>
   <el-card shadow="never" class="panel-card">
     <template #header>
-      <div class="card-header">
-        <span class="card-title">系统状态</span>
+      <PanelHeader title="系统状态">
         <el-tag :type="overallTagType" size="small" effect="plain">
           {{ overallLabel }}
         </el-tag>
-      </div>
+      </PanelHeader>
     </template>
     <el-table :data="depRows" size="small" border style="width: 100%">
       <el-table-column prop="label" label="组件" width="140" />
@@ -22,6 +21,7 @@
 </template>
 
 <script setup>
+import PanelHeader from '@/components/Admin/PanelHeader.vue'
 /**
  * 系统状态面板：四个依赖的连通状态 + 整体结论。
  *
@@ -35,13 +35,4 @@ defineProps({
 })
 </script>
 
-<style scoped>
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.card-title {
-  font-weight: 600;
-}
-</style>
+<style scoped></style>

@@ -1,8 +1,7 @@
 <template>
   <el-card shadow="never" class="panel-card">
     <template #header>
-      <div class="card-header">
-        <span class="card-title">工单管理</span>
+      <PanelHeader title="工单管理">
         <div class="ticket-filters">
           <el-select
             v-model="statusModel"
@@ -41,7 +40,7 @@
           />
           <el-button size="small" type="primary" @click="emit('search')">查询</el-button>
         </div>
-      </div>
+      </PanelHeader>
     </template>
     <!-- 窄屏容器内横滚（P0-3）：页面不横向溢出，表格可滑动查看 -->
     <div class="table-scroll">
@@ -96,6 +95,7 @@
  * 筛选值用 v-model 双向绑定回页面（三个筛选条件与查询动作分属两处状态）。
  */
 import { computed } from 'vue'
+import PanelHeader from '@/components/Admin/PanelHeader.vue'
 import {
   ticketStatusLabel,
   ticketStatusTagType,
@@ -133,15 +133,6 @@ const customerModel = computed({
 </script>
 
 <style scoped>
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.card-title {
-  font-weight: 600;
-}
-
 /* 工单筛选 */
 .ticket-filters {
   display: flex;

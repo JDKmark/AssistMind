@@ -60,11 +60,11 @@
       </div>
 
       <!-- 后端精确阶段耗时（faq：检索/生成/总耗时；其余意图仅前端总耗时） -->
-      <div v-if="stageBreakdown(m).length" class="diag-block">
+      <div v-if="stages.length" class="diag-block">
         <div class="diag-caption">
           阶段耗时{{ hasBackendTimings(m) ? '（后端计时）' : '（前端由事件间隔推断）' }}
         </div>
-        <div v-for="row in stageBreakdown(m)" :key="row[0]" class="diag-stage-row">
+        <div v-for="row in stages" :key="row[0]" class="diag-stage-row">
           <span class="diag-stage-name">{{ row[0] }}</span>
           <span class="diag-stage-val">{{ fmtMs(row[1]) }}</span>
         </div>
@@ -102,9 +102,9 @@
       </div>
 
       <!-- 事件时间线：每个 SSE 事件的相对时刻与间隔，定位卡在哪个环节 -->
-      <div v-if="displayEvents(m).length" class="diag-block">
+      <div v-if="events.length" class="diag-block">
         <div class="diag-caption">事件时间线（相对发送时刻 · 间隔=与上条间隔）</div>
-        <div v-for="(e, i) in displayEvents(m)" :key="i" class="diag-line">
+        <div v-for="(e, i) in events" :key="i" class="diag-line">
           <span class="diag-line-t">{{ fmtMs(e.t) }}</span>
           <span class="diag-line-name" :class="`evt-${e.name}`">{{ eventLabel(e.name) }}</span>
           <span v-if="e.dt >= 100" class="diag-line-gap">+{{ fmtMs(e.dt) }}</span>
@@ -206,6 +206,11 @@ const props = defineProps({
 
 const authStore = useAuthStore()
 const m = computed(() => props.message)
+
+// 阶段耗时与事件时间线：模板里 v-if 与 v-for 各用一次，此前每处都重新扫一遍
+// 事件日志；流式期间每条 delta 都会重渲染，改成 computed 后每次渲染只算一次
+const stages = computed(() => stageBreakdown(m.value))
+const events = computed(() => displayEvents(m.value))
 
 // 展开/收起某条检索来源的片段全文（查看溯因）
 function toggleSourceDetail(i) {

@@ -2,8 +2,7 @@
   <!-- 反馈与追溯（Bad Case 归因）：差评列表 → 会话时间线抽屉，借鉴 agent harness 的步骤可视化 -->
   <el-card shadow="never" class="panel-card feedback-card">
     <template #header>
-      <div class="card-header">
-        <span class="card-title">反馈与追溯</span>
+      <PanelHeader title="反馈与追溯">
         <div class="feedback-filters">
           <el-select
             v-model="scoreModel"
@@ -29,7 +28,7 @@
           <el-divider direction="vertical" />
           <EvalPanel :running="evalRunning" :status-text="evalStatusText" @run="emit('run-eval')" />
         </div>
-      </div>
+      </PanelHeader>
     </template>
 
     <!-- 窄屏容器内横滚（P0-3） -->
@@ -80,6 +79,7 @@
  * 评估入口单独抽成 EvalPanel（header 内的两个并列控件）。
  */
 import { computed } from 'vue'
+import PanelHeader from '@/components/Admin/PanelHeader.vue'
 import EvalPanel from '@/components/Admin/EvalPanel.vue'
 import { fmtTime } from '@/utils/datetime'
 
@@ -115,14 +115,6 @@ const exportedModel = computed({
 .muted-text {
   color: var(--am-text-3);
   font-size: 13px;
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.card-title {
-  font-weight: 600;
 }
 
 /* 反馈与追溯 */

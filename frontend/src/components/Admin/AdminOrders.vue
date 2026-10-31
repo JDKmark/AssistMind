@@ -154,6 +154,18 @@ defineExpose({ load, search })
 </script>
 
 <style scoped>
+/* 卡片头部：父页面 Admin/index.vue 的 scoped 规则进不到子组件内部
+   （只有子组件根节点继承父作用域），此前这两个类在此处缺失，
+   导致标题与筛选行退化成块级堆叠、标题也不加粗 */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.card-title {
+  font-weight: 600;
+}
+
 /* 商城订单 */
 .mall-card {
   margin-top: 16px;
