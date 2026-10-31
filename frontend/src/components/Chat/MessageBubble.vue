@@ -28,8 +28,20 @@
           </template>
         </el-alert>
 
-        <!-- 回答 -->
-        <div v-if="m.content" class="bubble-text md-body" v-html="answerHtml" />
+        <!-- 回答：长回答走块级渲染（v-memo 保证已完成块不重渲染、不重写 DOM），
+             短回答仍整篇渲染——块级在单块文本上没有收益，反而多一层节点 -->
+        <template v-if="m.content">
+          <div v-if="answer.blocks" class="bubble-text md-body">
+            <div
+              v-for="(b, i) in answer.blocks"
+              :key="i"
+              v-memo="[b.html]"
+              class="md-block"
+              v-html="b.html"
+            />
+          </div>
+          <div v-else class="bubble-text md-body" v-html="answer.html" />
+        </template>
         <div v-else-if="m.status === 'done'" class="bubble-text muted-text">
           （暂无回答，可尝试转人工客服）
         </div>
@@ -101,7 +113,7 @@ import ChatDiagnostics from '@/components/Chat/ChatDiagnostics.vue'
 import MessageFeedback from '@/components/Chat/MessageFeedback.vue'
 import ToolCallCard from '@/components/Chat/ToolCallCard.vue'
 import { stageText } from '@/utils/chatDiagnostics'
-import { renderMarkdown } from '@/utils/markdown'
+import { renderAnswer } from '@/utils/markdown'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -119,9 +131,9 @@ const emit = defineEmits(['disambig-choice', 'feedback-submit'])
 // 与消息列表共享同一份状态（不是组件内部副本）
 const m = computed(() => props.message)
 
-// 回答 HTML：只在正文变化时重解析。流式期间 staff 的实时耗时每 500ms 改写消息对象
-// 会触发重渲染，若在模板里直接调用 renderMd，每次重渲染都要重跑 markdown + DOMPurify
-const answerHtml = computed(() => renderMarkdown(m.value.content))
+// 回答渲染结果：只在正文变化时重算。流式期间 staff 的实时耗时每 500ms 改写消息对象
+// 会触发重渲染，若在模板里直接调用渲染函数，每次重渲染都要重跑 markdown + DOMPurify
+const answer = computed(() => renderAnswer(m.value.content))
 
 function sendDisambigChoice(candidate) {
   emit('disambig-choice', candidate)
