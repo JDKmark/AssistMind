@@ -130,13 +130,11 @@ const isDelimiterLike = (line) => isTableDelimiter(line) || TABLE_DELIM_PARTIAL.
  * 表头行里还有未闭合行内标记时也不动（补的分隔行会被挤到标记后面而失效）。
  */
 function completeTable(tail) {
-  // 尾部空白（含表头刚输出完的那一个换行）先剥掉再判断，否则会多出一个空行、
+  // 尾部空白（含表头刚输出完的那一个换行）先剥掉再判断，否则会多出空行、
   // 让表头和分隔行之间出现空行（表格立刻失效）
   const core = tail.replace(/\s+$/, '')
   const gap = tail.slice(core.length)
   const lines = core.split('\n')
-  // 多行（表头 + 分隔行 + 数据行）：表格结构已经成型，交给正常渲染
-  if (lines.length > 2) return tail
 
   const header = lines[0]
   if (!TABLE_ROW.test(header)) return tail
@@ -149,17 +147,29 @@ function completeTable(tail) {
   // 单列表头多半是「表头还没输完」的中间态（`| 商品 |` 之后还会来第二列），
   // 这时候补会先渲染成 1 列再跳成 2 列；等列数 ≥2 再补，表格形态一次到位
   if (cols < 2) return tail
+
   const delimiter = buildDelimiter(cols)
-  if (lines.length === 1) return `${core}\n${delimiter}${gap}`
-  // 第二行是分隔行但列数不对（半截状态）→ 重写成与表头一致
-  if (isDelimiterLike(lines[1]) && columnCount(lines[1]) !== cols) {
-    return `${header}\n${delimiter}${gap}`
+  const second = lines[1]
+  if (second === undefined) return `${core}\n${delimiter}${gap}`
+  // 第二行已是列数匹配的分隔行 → 表格成立，不动
+  if (isTableDelimiter(second) && columnCount(second) === cols) return tail
+  // 第二行是半截分隔行（`| ---`、`|`）或列数不对 → 按表头列数重写
+  if (isDelimiterLike(second)) return `${header}\n${delimiter}${gap}`
+  // 第二行是数据行：模型漏了分隔行。只有整块都长得像表格行时才插入，
+  // 否则可能是「以竖线开头的散文」，不猜
+  if (lines.every((l) => l.trim() === '' || TABLE_ROW.test(l))) {
+    return `${header}\n${delimiter}\n${lines.slice(1).join('\n')}${gap}`
   }
   return tail
 }
 
 /**
- * 补齐流式中「还没收到闭合标记」的行内语法。
+ * 补齐「没有闭合标记」的行内语法（幂等：完整文本原样返回）。
+ *
+ * 对齐成熟方案（vercel/streamdown 的 remend）：它是个**每次渲染都跑**的预处理，
+ * 不是「只在流式期间跑」的开关（FAQ: parseIncompleteMarkdown 默认 true，
+ * 渲染前统一预处理）。这里同样不区分流式/结束——否则最后一帧到 done 之间会
+ * 出现「补过 → 退回原文」的跳变（表格缺分隔行时尤其明显）。
  *
  * 解决的是观感问题：LLM 逐 token 输出时，`**加粗` 会先原样显示 `**`，等闭合标记
  * 到了再突然变成加粗（一次跳变）。这里在渲染前把能确定「后面一定会闭合」的标记补上，
@@ -174,7 +184,7 @@ function completeTable(tail) {
  * @param {string} text 流式中的 markdown 源串
  * @returns {string} 补好闭合标记的源串（无未闭合语法时原样返回）
  */
-export function completeStreamingMarkdown(text) {
+export function completeMarkdown(text) {
   if (!text) return text
   // 绝大多数回答没有任何行内标记或表格：先做一次廉价预判，避免每帧都 split 全文
   if (!/[*~`[|]/.test(text)) return text
@@ -230,14 +240,13 @@ export function completeStreamingMarkdown(text) {
  * - `{ html }`：整篇渲染，短回答 / 有引用式链接定义 / 解析异常时走这条
  *
  * @param {string} text markdown 源串
- * @param {object} [options]
- * @param {boolean} [options.streaming] 是否处于流式输出（补齐未闭合语法，避免标记跳变）
  * @returns {{ html: string, blocks: Array<{ html: string }> | null }}
  */
-export function renderAnswer(text, { streaming = false } = {}) {
+export function renderAnswer(text) {
   if (!text) return { html: '', blocks: null }
-  // 流式中补齐未闭合语法：只影响渲染观感，补出的标记不会变成可见字符
-  const source = streaming ? completeStreamingMarkdown(text) : text
+  // 无条件补齐未闭合语法：补出的标记不产生可见字符，完整文本上是 no-op。
+  // 不做「流式才补」的门控——那会让 done 时退回原文，产生最后一帧的跳变。
+  const source = completeMarkdown(text)
   // 短文本直接整篇：连定义检测的正则都不跑（62% 的真实回答是单块短文）
   if (source.length < BLOCK_MIN_LENGTH) return { html: renderAnswerWhole(source), blocks: null }
   // 没有空行的文档只可能是单块（标题连排等极少数情况也走整篇，仅放弃优化、不影响结果），

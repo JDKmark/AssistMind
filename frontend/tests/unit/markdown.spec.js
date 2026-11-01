@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils'
 import { ref, computed, nextTick } from 'vue'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
-import { completeStreamingMarkdown, renderAnswer } from '@/utils/markdown'
+import { completeMarkdown, renderAnswer } from '@/utils/markdown'
 
 // 块级渲染的正确性：分组必须与 markdown 语义一致，否则「快」是拿错渲染换来的。
 // 关键反例：按空行切文本会把松散列表切成两个列表、把含空行的代码块切断。
@@ -172,76 +172,75 @@ describe('块级渲染的模板契约', () => {
 
 // 流式补齐：目标不是「更好看」，而是「补出来的标记不能变成可见字符、也不能改变语义」。
 // 断言方式一律是「补齐后的渲染 == 真收到闭合标记后的渲染」。
-describe('completeStreamingMarkdown 未闭合语法补齐', () => {
-  const stream = (t) => renderAnswer(t, { streaming: true }).html
-  const final = (t) => renderAnswer(t).html
+describe('completeMarkdown 未闭合语法补齐', () => {
+  // 补齐不再区分流式/结束（对齐 remend：预处理每次渲染都跑），
+  // final 保留用于对比「未闭合 vs 已闭合」两个输入的渲染结果
+  const stream = (t) => renderAnswer(t).html
+  const final = stream
 
   it('未闭合加粗：补齐后与闭合后的渲染完全一致', () => {
-    expect(completeStreamingMarkdown('abc**def')).toBe('abc**def**')
+    expect(completeMarkdown('abc**def')).toBe('abc**def**')
     expect(stream('abc**def')).toBe(final('abc**def**'))
     expect(stream('abc**def')).toContain('<strong>def</strong>')
   })
 
   it('结尾带空白时，闭合标记插在空白之前（否则 CommonMark 不认）', () => {
-    expect(completeStreamingMarkdown('abc**def ')).toBe('abc**def** ')
+    expect(completeMarkdown('abc**def ')).toBe('abc**def** ')
     expect(stream('abc**def ')).toBe(final('abc**def** '))
   })
 
   it('未闭合行内代码', () => {
-    expect(completeStreamingMarkdown('a`code')).toBe('a`code`')
+    expect(completeMarkdown('a`code')).toBe('a`code`')
     expect(stream('a`code')).toContain('<code>code</code>')
   })
 
   it('未闭合代码段里的 ** 不被当成加粗（只补反引号）', () => {
-    expect(completeStreamingMarkdown('`a**b')).toBe('`a**b`')
+    expect(completeMarkdown('`a**b')).toBe('`a**b`')
     expect(stream('`a**b')).toBe(final('`a**b`'))
   })
 
   it('已闭合代码段里的 ** 不触发补齐', () => {
-    expect(completeStreamingMarkdown('`a**b`')).toBe('`a**b`')
+    expect(completeMarkdown('`a**b`')).toBe('`a**b`')
   })
 
   it('未闭合删除线', () => {
-    expect(completeStreamingMarkdown('~~del')).toBe('~~del~~')
+    expect(completeMarkdown('~~del')).toBe('~~del~~')
     expect(stream('~~del')).toContain('<s>del</s>')
   })
 
   it('未闭合链接目标补右括号', () => {
-    expect(completeStreamingMarkdown('[文档](https://example.com/a')).toBe(
-      '[文档](https://example.com/a)',
-    )
+    expect(completeMarkdown('[文档](https://example.com/a')).toBe('[文档](https://example.com/a)')
     expect(stream('[文档](https://example.com/a')).toBe(final('[文档](https://example.com/a)'))
   })
 
   it('列表项里的加粗照常补齐', () => {
-    expect(completeStreamingMarkdown('- **重点')).toBe('- **重点**')
+    expect(completeMarkdown('- **重点')).toBe('- **重点**')
     expect(stream('- **重点')).toContain('<strong>重点</strong>')
   })
 
   it('围栏代码块内不补（否则会多出可见字符）', () => {
     const text = '```js\nconst a = "**x"'
-    expect(completeStreamingMarkdown(text)).toBe(text)
-    expect(stream(text)).toBe(final(text))
+    expect(completeMarkdown(text)).toBe(text)
+    expect(stream(text)).toContain('<pre>')
   })
 
   it('已闭合的文本原样返回', () => {
     for (const t of ['**a**', '`a`', '~~a~~', '普通文本', '[a](b)']) {
-      expect(completeStreamingMarkdown(t)).toBe(t)
+      expect(completeMarkdown(t)).toBe(t)
     }
   })
 
   it('只补最后一段，不改动已定稿的前文', () => {
-    expect(completeStreamingMarkdown('a**b\n\nc**d')).toBe('a**b\n\nc**d**')
+    expect(completeMarkdown('a**b\n\nc**d')).toBe('a**b\n\nc**d**')
   })
 
   it('加粗与删除线同时未闭合时按后开的先关收尾', () => {
-    expect(completeStreamingMarkdown('**a~~b')).toBe('**a~~b~~**')
-    expect(completeStreamingMarkdown('~~a**b')).toBe('~~a**b**~~')
+    expect(completeMarkdown('**a~~b')).toBe('**a~~b~~**')
+    expect(completeMarkdown('~~a**b')).toBe('~~a**b**~~')
   })
 
-  it('非流式（done 之后）不补齐：按模型原文渲染', () => {
-    expect(renderAnswer('abc**def').html).not.toContain('<strong>')
-    expect(renderAnswer('abc**def').html).toContain('**')
+  it('done 之后同样补齐（不再有「退回原文」的窗口）', () => {
+    expect(renderAnswer('abc**def').html).toContain('<strong>')
   })
 })
 
@@ -249,7 +248,7 @@ describe('流式补齐与块级渲染的配合', () => {
   it('块级路径下尾块也补齐未闭合语法，且不污染已完成块', () => {
     const done = fill('甲', 160)
     const text = `${done}\n\n${fill('乙', 160)}\n\n**重点`
-    const r = renderAnswer(text, { streaming: true })
+    const r = renderAnswer(text)
     expect(r.blocks).not.toBeNull()
     expect(r.blocks.at(-1).html).toContain('<strong>重点</strong>')
     expect(r.blocks[0].html).toBe(renderAnswer(done).html)
@@ -257,12 +256,12 @@ describe('流式补齐与块级渲染的配合', () => {
 })
 
 describe('流式补齐的边界与收尾', () => {
-  const stream = (t) => renderAnswer(t, { streaming: true }).html
-  const final = (t) => renderAnswer(t).html
+  // 补齐不再区分流式/结束（对齐 remend：预处理每次渲染都跑）
+  const stream = (t) => renderAnswer(t).html
 
   it('只收到开标记时不补（补成 **** 会被渲染成 <hr>）', () => {
     for (const t of ['**', 'abc**', '~~', '`', 'a`', '[a](']) {
-      expect(completeStreamingMarkdown(t)).toBe(t)
+      expect(completeMarkdown(t)).toBe(t)
     }
     expect(stream('**')).not.toContain('<hr')
   })
@@ -272,24 +271,27 @@ describe('流式补齐的边界与收尾', () => {
     let checked = 0
     for (let i = 1; i <= full.length; i++) {
       const prefix = full.slice(0, i)
-      if (completeStreamingMarkdown(prefix) === prefix) continue
+      if (completeMarkdown(prefix) === prefix) continue
       checked += 1
       expect(root(stream(prefix)).textContent).not.toContain('**')
     }
     expect(checked).toBeGreaterThan(5)
   })
 
-  it('done 之后与流式中最后一次渲染一致，收尾不跳变', () => {
-    const full = '退货申请通过后 **48 小时内** 原路退回，`运费`由商家承担。'
-    expect(stream(full)).toBe(final(full))
+  it('done 之后不退回原文：畸形输出在流式与结束两个阶段渲染一致', () => {
+    // 之前按 status 门控，done 会关掉补齐 → 最后一眼的内容「退回原文」（跳变）。
+    // 现在 renderAnswer 恒做补齐，这个窗口不存在了。
+    const malformed = '| 商品 | 价格 |\n| 华为 | 5499 |'
+    expect(renderAnswer(malformed).html).toContain('<table>')
+    expect(renderAnswer(malformed).html).toBe(renderAnswer(`${malformed}\n`).html)
   })
 })
 
 // 表格：分隔行（|---|）到达前，整块会被 markdown 当成普通段落 → 用户先看到带竖线的
 // 乱文本，再整体重排成表格。成熟方案（Vercel remend）没有 table handler，这块得自己补。
 describe('表格补齐', () => {
-  const stream = (t) => renderAnswer(t, { streaming: true }).html
-  const final = (t) => renderAnswer(t).html
+  // 补齐不再区分流式/结束（对齐 remend：预处理每次渲染都跑）
+  const stream = (t) => renderAnswer(t).html
   const hasDelimiter = (t) => t.split('\n').some((l, i) => i > 0 && /^\|[\s:|-]+\|$/.test(l.trim()))
 
   it('表头到达、分隔行未到：直接渲染成表格，而不是带竖线的段落', () => {
@@ -304,29 +306,48 @@ describe('表格补齐', () => {
   })
 
   it('半截分隔行被替换而不是叠加', () => {
-    expect(completeStreamingMarkdown('| a | b |\n|')).toBe('| a | b |\n| --- | --- |')
-    expect(completeStreamingMarkdown('| a | b |\n| ---')).toBe('| a | b |\n| --- | --- |')
+    expect(completeMarkdown('| a | b |\n|')).toBe('| a | b |\n| --- | --- |')
+    expect(completeMarkdown('| a | b |\n| ---')).toBe('| a | b |\n| --- | --- |')
   })
 
   it('列数按表头单元格数生成', () => {
-    expect(completeStreamingMarkdown('| a | b | c |')).toBe('| a | b | c |\n| --- | --- | --- |')
+    expect(completeMarkdown('| a | b | c |')).toBe('| a | b | c |\n| --- | --- | --- |')
   })
 
   it('已完整的表格原样返回，且流式与 done 渲染一致', () => {
     const t = '| a | b |\n| --- | --- |\n| 1 | 2 |'
-    expect(completeStreamingMarkdown(t)).toBe(t)
-    expect(stream(t)).toBe(final(t))
+    expect(completeMarkdown(t)).toBe(t)
+    expect(stream(t)).toContain('<table>')
+  })
+
+  it('模型漏写分隔行（表头 + 数据行）也补出来', () => {
+    const t = '| 商品 | 价格 |\n| 华为 Mate 70 | 5499 |'
+    expect(completeMarkdown(t)).toBe('| 商品 | 价格 |\n| --- | --- |\n| 华为 Mate 70 | 5499 |')
+    expect(stream(t)).toContain('<table>')
+    expect(stream(t)).toContain('5499')
+  })
+
+  it('多行数据同样补（不是只处理两行）', () => {
+    const t = '| a | b |\n| 1 | 2 |\n| 3 | 4 |'
+    expect(completeMarkdown(t)).toContain('| --- | --- |')
+    expect(root(stream(t)).querySelectorAll('tbody tr').length).toBe(2)
+  })
+
+  it('第二行不是表格行时不硬塞分隔行（避免把散文变成表格）', () => {
+    const t = '| 商品 | 价格 |\n这是一段普通说明'
+    expect(completeMarkdown(t)).toBe(t)
+    expect(stream(t)).not.toContain('<table>')
   })
 
   it('不以竖线开头的行不被误判成表格', () => {
     const t = '见下表 A | B |'
-    expect(completeStreamingMarkdown(t)).toBe(t)
+    expect(completeMarkdown(t)).toBe(t)
     expect(stream(t)).not.toContain('<table>')
   })
 
   it('表头里有未闭合加粗时不补表格（否则分隔行会被挤到标记之后）', () => {
     const t = '| **商品 | 价格 |'
-    expect(completeStreamingMarkdown(t)).not.toContain('---')
+    expect(completeMarkdown(t)).not.toContain('---')
   })
 
   it('流式全程：只要分隔行已在，渲染结果一定是表格', () => {
@@ -334,7 +355,7 @@ describe('表格补齐', () => {
     let checked = 0
     for (let i = 1; i <= full.length; i++) {
       const prefix = full.slice(0, i)
-      if (!hasDelimiter(completeStreamingMarkdown(prefix))) continue
+      if (!hasDelimiter(completeMarkdown(prefix))) continue
       checked += 1
       expect(stream(prefix)).toContain('<table>')
     }

@@ -133,12 +133,8 @@ const m = computed(() => props.message)
 
 // 回答渲染结果：只在正文变化时重算。流式期间 staff 的实时耗时每 500ms 改写消息对象
 // 会触发重渲染，若在模板里直接调用渲染函数，每次重渲染都要重跑 markdown + DOMPurify。
-// streaming 标记用于补齐未闭合语法（`**加粗` 先按加粗渲染，避免标记原样显示再跳变）
-const answer = computed(() =>
-  renderAnswer(m.value.content, {
-    streaming: m.value.status !== 'done' && m.value.status !== 'error',
-  }),
-)
+// 未闭合语法的补齐在 renderAnswer 内部无条件进行（幂等），不按 status 门控
+const answer = computed(() => renderAnswer(m.value.content))
 
 function sendDisambigChoice(candidate) {
   emit('disambig-choice', candidate)
