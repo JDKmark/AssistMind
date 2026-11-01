@@ -69,6 +69,88 @@ function blockSource(token, lines) {
   return lines.slice(start, Math.min(end, lines.length)).join('\n')
 }
 
+// 已闭合的行内代码段：统计强调标记前要剔除，否则代码里的 ** 会被当成未闭合
+const CODE_SPAN = /`[^`]*`/g
+// 围栏代码块起始行（0-3 空格缩进 + 至少三个反引号或波浪号）
+const FENCE_LINE = /^ {0,3}(```|~~~)/
+
+// 文末是否处于未闭合的围栏代码块内：围栏内不解析行内语法，补标记会变成可见字符
+function isInsideFence(text) {
+  let open = false
+  for (const line of text.split('\n')) {
+    if (FENCE_LINE.test(line)) open = !open
+  }
+  return open
+}
+
+const countOf = (text, token) => text.split(token).length - 1
+
+// 开标记后面是否已经有内容：只有收到内容才补闭合。
+// 否则 `**` + `**` = `****` 会被 markdown-it 当成 <hr>（实测），`[a](` + `)` 会变成空链接
+function hasContentAfter(text, marker) {
+  const i = text.lastIndexOf(marker)
+  return i !== -1 && text.length > i + marker.length
+}
+
+/**
+ * 补齐流式中「还没收到闭合标记」的行内语法。
+ *
+ * 解决的是观感问题：LLM 逐 token 输出时，`**加粗` 会先原样显示 `**`，等闭合标记
+ * 到了再突然变成加粗（一次跳变）。这里在渲染前把能确定「后面一定会闭合」的标记补上，
+ * 补出来的标记本身不会变成可见字符，所以内容不变、只是少了一次跳变。
+ *
+ * 只补行内代码 / 加粗 / 删除线 / 链接右括号：
+ * - 围栏代码块不用补（CommonMark 规定未闭合围栏延续到文末，markdown-it 已正确渲染）
+ * - 单个 `*` `_` 斜体不补：与列表符号、下划线命名歧义太大，误判会改内容
+ * - 只处理最后一个空行之后的段落：更早的块已定稿，往中间插闭合标记会改已渲染内容
+ * - 尾段在围栏代码块内则原样返回（代码块内补标记会多出可见字符）
+ *
+ * @param {string} text 流式中的 markdown 源串
+ * @returns {string} 补好闭合标记的源串（无未闭合语法时原样返回）
+ */
+export function completeStreamingMarkdown(text) {
+  if (!text) return text
+  // 绝大多数回答没有任何行内标记：先做一次廉价预判，避免每帧都 split 全文
+  if (!/[*~`[]/.test(text)) return text
+  // 围栏代码块内不解析行内语法，补标记会变成可见字符
+  if ((text.includes('```') || text.includes('~~~')) && isInsideFence(text)) return text
+
+  const idx = text.lastIndexOf('\n\n')
+  const head = idx === -1 ? '' : text.slice(0, idx + 2)
+  const tail = idx === -1 ? text : text.slice(idx + 2)
+  if (!tail) return text
+
+  // 结尾空白要留在闭合标记之后：`**` 紧跟空格无法闭合（CommonMark 要求右侧不是空白）
+  const trailing = tail.match(/\s+$/)
+  const gap = trailing ? trailing[0] : ''
+  const core = gap ? tail.slice(0, -gap.length) : tail
+
+  let suffix = ''
+  // 未闭合的链接目标：[文本](https://exa（至少收到一个 URL 字符才补右括号）
+  if (/\[[^\]\n]*\]\([^)\s]+$/.test(core)) suffix += ')'
+
+  // 未闭合的行内代码：反引号奇数个且后面已有内容；代码段内的 ** 不算强调，故先截掉
+  let body = core
+  if (countOf(core, '`') % 2 === 1 && hasContentAfter(core, '`')) {
+    suffix += '`'
+    body = core.slice(0, core.lastIndexOf('`'))
+  }
+
+  // 加粗 / 删除线：成对计数为奇数、且开标记后已有内容。两种同时未闭合时按「后开的先关」收尾
+  const plain = body.replace(CODE_SPAN, '')
+  const boldOpen = countOf(plain, '**') % 2 === 1 && hasContentAfter(plain, '**')
+  const strikeOpen = countOf(plain, '~~') % 2 === 1 && hasContentAfter(plain, '~~')
+  if (boldOpen && strikeOpen) {
+    suffix += plain.lastIndexOf('**') > plain.lastIndexOf('~~') ? '**~~' : '~~**'
+  } else if (boldOpen) {
+    suffix += '**'
+  } else if (strikeOpen) {
+    suffix += '~~'
+  }
+
+  return suffix ? `${head}${core}${suffix}${gap}` : text
+}
+
 /**
  * 渲染一条回答。
  *
@@ -78,24 +160,28 @@ function blockSource(token, lines) {
  * - `{ html }`：整篇渲染，短回答 / 有引用式链接定义 / 解析异常时走这条
  *
  * @param {string} text markdown 源串
+ * @param {object} [options]
+ * @param {boolean} [options.streaming] 是否处于流式输出（补齐未闭合语法，避免标记跳变）
  * @returns {{ html: string, blocks: Array<{ html: string }> | null }}
  */
-export function renderAnswer(text) {
+export function renderAnswer(text, { streaming = false } = {}) {
   if (!text) return { html: '', blocks: null }
+  // 流式中补齐未闭合语法：只影响渲染观感，补出的标记不会变成可见字符
+  const source = streaming ? completeStreamingMarkdown(text) : text
   // 短文本直接整篇：连定义检测的正则都不跑（62% 的真实回答是单块短文）
-  if (text.length < BLOCK_MIN_LENGTH) return { html: renderAnswerWhole(text), blocks: null }
+  if (source.length < BLOCK_MIN_LENGTH) return { html: renderAnswerWhole(source), blocks: null }
   // 没有空行的文档只可能是单块（标题连排等极少数情况也走整篇，仅放弃优化、不影响结果），
   // 用一次 indexOf 换掉「parse + 分组」的整轮开销，保证单块回答与改造前等价
-  if (!text.includes('\n\n')) return { html: renderAnswerWhole(text), blocks: null }
-  if (LINK_DEFINITION.test(text)) return { html: renderAnswerWhole(text), blocks: null }
+  if (!source.includes('\n\n')) return { html: renderAnswerWhole(source), blocks: null }
+  if (LINK_DEFINITION.test(source)) return { html: renderAnswerWhole(source), blocks: null }
 
   let tokens
   const env = {}
   try {
-    tokens = md.parse(text, env)
+    tokens = md.parse(source, env)
   } catch {
     // 解析异常（畸形输入）不阻断回答：退回整篇渲染，行为与改造前一致
-    return { html: renderAnswerWhole(text), blocks: null }
+    return { html: renderAnswerWhole(source), blocks: null }
   }
 
   const groups = groupTopLevelBlocks(tokens)
@@ -103,7 +189,7 @@ export function renderAnswer(text) {
     return { html: renderWhole(tokens, env), blocks: null }
   }
 
-  const lines = text.split('\n')
+  const lines = source.split('\n')
   const blocks = []
   for (const group of groups) {
     const key = blockSource(group[0], lines)

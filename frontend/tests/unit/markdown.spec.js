@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils'
 import { ref, computed, nextTick } from 'vue'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
-import { renderAnswer } from '@/utils/markdown'
+import { completeStreamingMarkdown, renderAnswer } from '@/utils/markdown'
 
 // 块级渲染的正确性：分组必须与 markdown 语义一致，否则「快」是拿错渲染换来的。
 // 关键反例：按空行切文本会把松散列表切成两个列表、把含空行的代码块切断。
@@ -167,5 +167,120 @@ describe('块级渲染的模板契约', () => {
     expect(wrapper.text().replace(/\s+/g, '')).toBe(
       '甲乙'.repeat(0) + '甲'.repeat(150) + '乙'.repeat(150),
     )
+  })
+})
+
+// 流式补齐：目标不是「更好看」，而是「补出来的标记不能变成可见字符、也不能改变语义」。
+// 断言方式一律是「补齐后的渲染 == 真收到闭合标记后的渲染」。
+describe('completeStreamingMarkdown 未闭合语法补齐', () => {
+  const stream = (t) => renderAnswer(t, { streaming: true }).html
+  const final = (t) => renderAnswer(t).html
+
+  it('未闭合加粗：补齐后与闭合后的渲染完全一致', () => {
+    expect(completeStreamingMarkdown('abc**def')).toBe('abc**def**')
+    expect(stream('abc**def')).toBe(final('abc**def**'))
+    expect(stream('abc**def')).toContain('<strong>def</strong>')
+  })
+
+  it('结尾带空白时，闭合标记插在空白之前（否则 CommonMark 不认）', () => {
+    expect(completeStreamingMarkdown('abc**def ')).toBe('abc**def** ')
+    expect(stream('abc**def ')).toBe(final('abc**def** '))
+  })
+
+  it('未闭合行内代码', () => {
+    expect(completeStreamingMarkdown('a`code')).toBe('a`code`')
+    expect(stream('a`code')).toContain('<code>code</code>')
+  })
+
+  it('未闭合代码段里的 ** 不被当成加粗（只补反引号）', () => {
+    expect(completeStreamingMarkdown('`a**b')).toBe('`a**b`')
+    expect(stream('`a**b')).toBe(final('`a**b`'))
+  })
+
+  it('已闭合代码段里的 ** 不触发补齐', () => {
+    expect(completeStreamingMarkdown('`a**b`')).toBe('`a**b`')
+  })
+
+  it('未闭合删除线', () => {
+    expect(completeStreamingMarkdown('~~del')).toBe('~~del~~')
+    expect(stream('~~del')).toContain('<s>del</s>')
+  })
+
+  it('未闭合链接目标补右括号', () => {
+    expect(completeStreamingMarkdown('[文档](https://example.com/a')).toBe(
+      '[文档](https://example.com/a)',
+    )
+    expect(stream('[文档](https://example.com/a')).toBe(final('[文档](https://example.com/a)'))
+  })
+
+  it('列表项里的加粗照常补齐', () => {
+    expect(completeStreamingMarkdown('- **重点')).toBe('- **重点**')
+    expect(stream('- **重点')).toContain('<strong>重点</strong>')
+  })
+
+  it('围栏代码块内不补（否则会多出可见字符）', () => {
+    const text = '```js\nconst a = "**x"'
+    expect(completeStreamingMarkdown(text)).toBe(text)
+    expect(stream(text)).toBe(final(text))
+  })
+
+  it('已闭合的文本原样返回', () => {
+    for (const t of ['**a**', '`a`', '~~a~~', '普通文本', '[a](b)']) {
+      expect(completeStreamingMarkdown(t)).toBe(t)
+    }
+  })
+
+  it('只补最后一段，不改动已定稿的前文', () => {
+    expect(completeStreamingMarkdown('a**b\n\nc**d')).toBe('a**b\n\nc**d**')
+  })
+
+  it('加粗与删除线同时未闭合时按后开的先关收尾', () => {
+    expect(completeStreamingMarkdown('**a~~b')).toBe('**a~~b~~**')
+    expect(completeStreamingMarkdown('~~a**b')).toBe('~~a**b**~~')
+  })
+
+  it('非流式（done 之后）不补齐：按模型原文渲染', () => {
+    expect(renderAnswer('abc**def').html).not.toContain('<strong>')
+    expect(renderAnswer('abc**def').html).toContain('**')
+  })
+})
+
+describe('流式补齐与块级渲染的配合', () => {
+  it('块级路径下尾块也补齐未闭合语法，且不污染已完成块', () => {
+    const done = fill('甲', 160)
+    const text = `${done}\n\n${fill('乙', 160)}\n\n**重点`
+    const r = renderAnswer(text, { streaming: true })
+    expect(r.blocks).not.toBeNull()
+    expect(r.blocks.at(-1).html).toContain('<strong>重点</strong>')
+    expect(r.blocks[0].html).toBe(renderAnswer(done).html)
+  })
+})
+
+describe('流式补齐的边界与收尾', () => {
+  const stream = (t) => renderAnswer(t, { streaming: true }).html
+  const final = (t) => renderAnswer(t).html
+
+  it('只收到开标记时不补（补成 **** 会被渲染成 <hr>）', () => {
+    for (const t of ['**', 'abc**', '~~', '`', 'a`', '[a](']) {
+      expect(completeStreamingMarkdown(t)).toBe(t)
+    }
+    expect(stream('**')).not.toContain('<hr')
+  })
+
+  it('流式全程不把 ** 原样显示（只收到开标记的那一帧除外）', () => {
+    const full = '退货申请通过后 **48 小时内** 原路退回，**运费**由商家承担。'
+    let checked = 0
+    for (let i = 1; i <= full.length; i++) {
+      const prefix = full.slice(0, i)
+      if (completeStreamingMarkdown(prefix) === prefix) continue
+      checked += 1
+      expect(root(stream(prefix)).textContent).not.toContain('**')
+    }
+    expect(checked).toBeGreaterThan(5)
+  })
+
+  it('done 之后与流式中最后一次渲染一致，收尾不跳变', () => {
+    const full = '退货申请通过后 **48 小时内** 原路退回，`运费`由商家承担。'
+    expect(stream(full)).toBe(final(full))
   })
 })
