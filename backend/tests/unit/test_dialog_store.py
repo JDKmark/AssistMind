@@ -257,7 +257,13 @@ async def test_summary_bg_task_exception_never_propagates(monkeypatch, caplog):
 
     store, _ = _make_store()
 
+    # 用 Event 把后台任务卡住再断言：任务若在 append_round 后续的 await 里就跑完，
+    # done_callback 会立刻把它从 _bg_tasks 移除，断言结果取决于事件循环调度顺序
+    # （CI 的 3.11 上稳定失败、本地 3.13 恰好没跑完 —— 典型 flaky）
+    release = asyncio.Event()
+
     async def _boom(username, conversation_id, raw_messages):
+        await release.wait()
         raise RuntimeError("boom")
 
     monkeypatch.setattr(store, "summarize_trimmed", _boom)
@@ -266,6 +272,7 @@ async def test_summary_bg_task_exception_never_propagates(monkeypatch, caplog):
     tasks = list(store._bg_tasks)
     assert tasks, "超窗应调度后台任务"
     with caplog.at_level(logging.WARNING, logger="app.core.dialog.store"):
+        release.set()
         await asyncio.gather(*tasks, return_exceptions=True)
     assert any("摘要后台任务异常" in r.message for r in caplog.records)
 

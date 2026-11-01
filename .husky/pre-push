@@ -54,13 +54,16 @@ if [ "$RUN_BACKEND" = 0 ] && [ "$RUN_FRONTEND" = 0 ]; then
 fi
 
 # ---------- 2. 解析后端解释器 ----------
-# 兼容 Windows(venv/Scripts) 与 *nix(venv/bin)
-if [ -x "$ROOT/backend/venv/Scripts/python.exe" ]; then
+# 优先 uv + 锁文件：与 CI 的 `uv sync --frozen` 用同一套依赖。
+# 本地手工 venv 会掩盖依赖漂移——ragas 锁在 0.3.1 而 venv 装了 0.4.3，
+# 本地全绿、CI 直接红（评估指标整段降级）。门禁必须和 CI 同环境才有意义。
+# 兜底：手工 venv（Windows venv/Scripts 与 *nix venv/bin）
+if command -v uv >/dev/null 2>&1 && [ -f "$ROOT/backend/uv.lock" ]; then
+  PY="uv run --frozen --extra dev python"
+elif [ -x "$ROOT/backend/venv/Scripts/python.exe" ]; then
   PY="$ROOT/backend/venv/Scripts/python.exe"
 elif [ -x "$ROOT/backend/venv/bin/python" ]; then
   PY="$ROOT/backend/venv/bin/python"
-elif command -v uv >/dev/null 2>&1; then
-  PY="uv run --frozen --extra dev python"
 else
   PY=""
 fi
@@ -73,10 +76,10 @@ PID_F=""
 if [ "$RUN_BACKEND" = 1 ]; then
   if [ -n "$PY" ]; then
     echo "[pre-push] backend unit tests …"
-    (cd backend && $PY -m pytest tests -q -k "not integration" --color=no) >"$LOG_DIR/backend.log" 2>&1 &
+    (cd backend && $PY -m pytest tests -k "not integration" --color=no) >"$LOG_DIR/backend.log" 2>&1 &
     PID_B=$!
   else
-    echo "[pre-push] 未找到后端 Python 环境（backend/venv 或 uv），跳过后端单测" >&2
+    echo "[pre-push] 未找到后端环境（uv+uv.lock 或 backend/venv），跳过后端单测" >&2
   fi
 fi
 
