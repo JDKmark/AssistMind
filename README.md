@@ -1,316 +1,318 @@
-# AssistMind —— 电商智能客服系统
+# AssistMind — E-commerce AI Customer Service
 
-**仓库地址**：[github.com/JDKmark/AssistMind](https://github.com/JDKmark/AssistMind)
+**English** · [简体中文](README.zh-CN.md)
 
-> 电商智能客服系统：RAG + Agent，覆盖**电商客服问答**（商品咨询 / 订单查询 / 物流查询 / 售后申请）与**转人工 / 工单闭环**。
-> 知识库素材取自开源项目 [macrozheng/mall](https://github.com/macrozheng/mall) 的文档与表结构，业务数据为项目自建（见[知识来源与致谢](#知识来源与致谢)）。
+**Repository**: [github.com/JDKmark/AssistMind](https://github.com/JDKmark/AssistMind)
 
-**目录**：[界面预览](#界面预览) · [功能特性](#功能特性) · [核心场景](#核心场景) · [快速开始](#快速开始) · [配置说明](#配置说明) · [设计细节](#设计细节) · [技术栈](#技术栈) · [评估](#评估) · [项目结构](#项目结构) · [知识来源与致谢](#知识来源与致谢) · [License](#license)
+> An e-commerce customer-service system built on RAG + Agent: **customer Q&A** (product enquiries, order lookup, logistics, after-sales requests) plus **human hand-off and ticket lifecycle**.
+> Knowledge-base material is derived from the open-source [macrozheng/mall](https://github.com/macrozheng/mall) docs and table schema; business data is authored for this project (see [Credits](#credits)).
+> Note: the UI and seeded demo data are in Chinese, matching the target scenario.
 
-![AssistMind 系统架构](docs/architecture-archify.png)
+**Contents**: [Screenshots](#screenshots) · [Features](#features) · [Core scenarios](#core-scenarios) · [Quick start](#quick-start) · [Configuration](#configuration) · [Design notes](#design-notes) · [Tech stack](#tech-stack) · [Evaluation](#evaluation) · [Project layout](#project-layout) · [Credits](#credits) · [License](#license)
 
-> 交互版：[docs/assistmind-architecture.html](docs/assistmind-architecture.html)，支持缩放，每个组件可溯源到对应源码路径。
+![AssistMind architecture](docs/architecture-archify.png)
 
-## 界面预览
+> Interactive version: [docs/assistmind-architecture.html](docs/assistmind-architecture.html) — zoomable, and every component links back to its source path.
 
-> 以下截图来自本地演示环境（真实对话链路：RAG 检索生成、Agent 经 MCP 调用业务工具）。
+## Screenshots
+
+> Captured from a local demo instance (real pipeline: RAG retrieval and generation, Agent tool calls over MCP).
 
 | | |
 |---|---|
-| ![登录页](docs/screenshots/01-login.png) | ![RAG 问答（L1 语义缓存命中）](docs/screenshots/02-chat-faq.png) |
-| ![Agent 工具调用：订单售后办理](docs/screenshots/03-chat-agent.png) | ![知识库管理（上传 / 启停 / 重灌）](docs/screenshots/04-knowledge.png) |
-| ![工单列表](docs/screenshots/05-tickets.png) | ![我的订单（演示账号 user1）](docs/screenshots/06-orders.png) |
-| ![管理后台](docs/screenshots/07-admin.png) | ![召回测试（RRF 融合命中）](docs/screenshots/08-recall-test.png) |
+| ![Login](docs/screenshots/01-login.png) | ![RAG Q&A (L1 semantic cache hit)](docs/screenshots/02-chat-faq.png) |
+| ![Agent tool calls: after-sales handling](docs/screenshots/03-chat-agent.png) | ![Knowledge base management (upload / toggle / reindex)](docs/screenshots/04-knowledge.png) |
+| ![Ticket list](docs/screenshots/05-tickets.png) | ![My orders (demo account user1)](docs/screenshots/06-orders.png) |
+| ![Admin console](docs/screenshots/07-admin.png) | ![Recall test (RRF fusion hits)](docs/screenshots/08-recall-test.png) |
 
+## Features
 
+- **Hybrid retrieval**: Qdrant vector recall + BM25 keyword recall (jieba word-level tokenisation) run in parallel, fused with RRF (configurable weights), then reranked
+- **Query rewriting**: Multi-Query on by default (3 variants recalled in parallel) + optional HyDE + passive rewrite when CRAG scores low
+- **Structure-aware chunking**: Markdown headings, fenced code blocks kept intact, tables never split mid-row, `mall_tables.sql` chunked per `CREATE TABLE`
+- **Agent tool calling**: ToolAgent (ReAct) calls tools over MCP to validate an order → file an after-sales request → create a ticket, streaming every step to the frontend as SSE events
+- **MCP server + client**: FastMCP server (8 tools) and client; ToolAgent never calls local functions directly, so tools and agent stay decoupled
+- **Three-tier intent routing**: rules → semantic → LLM, 4 intent classes (faq / task / chat / unclear), routes hot-reloaded from config
+- **Fallback everywhere**: circuit breakers plus a full fallback matrix; BM25 is a first-class path (answers still work when Qdrant is down)
+- **Async task queue (RQ)**: knowledge-base rebuild / bad-case export / evaluation runs are Redis jobs — the HTTP call returns a `job_id` immediately, a separate worker consumes it, failures retry, status is pollable
+- **Voice**: ASR via the browser Web Speech API (on-device) + two-tier TTS (backend edge-tts cloud voices → browser `speechSynthesis` fallback)
+- **Persona tones**: an external `personas.json` (professional / gentle / lively) hot-reloaded by mtime; tone is switched at the prompt layer, no fine-tuning required
+- **Observability**: end-to-end Langfuse traces (single instrumentation point for LLM calls + per-conversation FAQ traces)
+- **Evaluation**: 4 RAGAS metrics over a 50-item mall dataset (6 adversarial samples included)
+- **Bad-case loop**: user feedback → conversation-level evidence chain in Langfuse → visual trace in the admin console → low-score samples reflowed into the evaluation set (see `docs/rag-iteration.md`)
+- **CI/CD**: GitHub Actions (ruff + pytest + vitest) + husky pre-commit hooks
 
-## 功能特性
+## Core scenarios
 
-- **RAG 混合检索**：Qdrant 向量召回 + BM25 关键词召回（jieba 词粒度）双路并行，RRF 融合（权重可配），Reranker 精排
-- **查询改写**：Multi-Query 默认启用（3 变体并行召回）+ HyDE 可选 + CRAG 低分被动改写
-- **结构感知切块**：Markdown 标题 / fenced 代码块整体保留 / 表格不拆行 / mall_tables.sql 按 CREATE TABLE 表级切块
-- **Agent 工具调用**：ToolAgent（ReAct）经 MCP 调用工具完成订单校验 → 售后申请 → 工单创建，每步以 SSE 事件推送到前端
-- **MCP Server + Client**：FastMCP 实现 Server（8 个工具）+ Client，ToolAgent 与工具实现解耦
-- **三级意图路由**：规则 → 语义 → LLM，4 类意图（faq / task / chat / unclear），配置外置热加载
-- **失败降级体系**：断路器 + 全链路降级表，BM25 为一等公民（Qdrant 挂掉仍可答）
-- **异步任务队列（RQ）**：知识库重建 / 坏例回流 / 评估运行收编为 Redis 异步任务，HTTP 秒回 job_id、独立 worker 进程消费、失败自动重试、状态可轮询
-- **语音 AI**：ASR 用浏览器 Web Speech API（本地识别）+ TTS 两级降级（后端 edge-tts 云端音色 → 浏览器合成兜底）
-- **角色语气定制**：人格库外置 `personas.json`（专业/温柔/活泼），mtime 热加载，提示词层实现语气切换，无需 GPU 微调
-- **可观测性**：Langfuse 全链路 trace（LLM 单点埋点 + FAQ 会话级 trace）
-- **评估体系**：RAGAS 4 指标（mall 数据集 40 条，含 5 条对抗样本）
-- **Bad Case 回归**：用户反馈 → Langfuse 会话级证据链 → 管理端可视化追溯 → 低分样本自动回流评估集回归（详见 `docs/rag-iteration.md`）
-- **CI/CD**：GitHub Actions（ruff + pytest + vitest）+ husky pre-commit
+### E-commerce support: RAG Q&A + Agent tool calls
 
-## 核心场景
+Two families of questions, routed automatically by intent:
 
-### 电商客服：RAG 问答 + Agent 工具调用
-
-面向电商客服的两类典型问题，系统按意图自动分流：
-
-| 场景 | 用户问题示例 | 处理链路 |
+| Scenario | Example question | Pipeline |
 |---|---|---|
-| 商品 / 政策咨询 | "运费谁出？""优惠券能叠加吗？""退货政策是什么？" | faq 意图 → RAG 检索（向量 + BM25 + RRF + Rerank + CRAG）→ 基于知识库生成 |
-| 订单 / 物流查询 | "查一下我的订单""物流到哪了？" | task 意图 → ToolAgent → MCP 调 `query_order` / `query_logistics` |
-| 售后申请 | "我要退货""我要申请售后" | task 意图 → ToolAgent → `query_order` 校验状态 → `apply_refund` 创建售后单 → 生成工单 |
-| 转人工 / 建工单 | "帮我转人工""提交一个工单" | task 意图 → ToolAgent → `transfer_human` / `create_ticket` |
+| Product / policy questions | "Who pays for shipping?" "Can coupons stack?" "What is the return policy?" | faq intent → RAG retrieval (vector + BM25 + RRF + rerank + CRAG) → grounded generation |
+| Order / logistics lookup | "Look up my order" "Where is my parcel?" | task intent → ToolAgent → MCP `query_order` / `query_logistics` |
+| After-sales request | "I want to return this" "I need after-sales service" | task intent → ToolAgent → `query_order` validates status → `apply_refund` creates the request → ticket created |
+| Human hand-off / ticket | "Connect me to a human" "File a ticket" | task intent → ToolAgent → `transfer_human` / `create_ticket` |
 
-前端以 SSE 流式呈现全过程：意图分流标签 → 查询改写提示 → 工具调用步骤（工具名 + 参数 + 结果）→ 知识来源引用 → 最终答案。
+The frontend renders the whole run as an SSE stream: intent badge → query-rewrite hint → tool-call steps (tool name + arguments + result) → cited sources → final answer.
 
-### 示例：「我要退货」的完整调用过程
+### Example: the full call chain for "I want to return this"
 
-一次完整调用：
+A complete run:
 
-> 用户输入"我要退货" →
-> 1. **意图路由**：命中 task 意图（关键词 + 语义样本命中，不消耗 LLM）；
-> 2. **ToolAgent 决策**：ReAct 循环中先按"Retrieval Before Agency"原则检索售后政策知识（确认退货前提：订单已发货/已完成、7 天无理由等），再决定动作；
-> 3. **校验订单状态**：调用 `query_order("20260801001")`，返回订单状态"已发货"（可售后），如实转述，不编造；
-> 4. **创建售后单**：调用 `apply_refund(order_sn, reason)`，数据源校验状态并创建售后单（`refund_id=AF{order_sn}`，重复申请幂等返回已存在记录）；
-> 5. **生成工单**：按需调用 `create_ticket` 沉淀售后/问题工单，与用户核对处理时效；
-> 6. **告知结果**：结构化输出售后单号、当前状态（处理中）与后续流程。
+> User types "I want to return this" →
+> 1. **Intent routing**: matches the task intent via keywords + semantic samples, no LLM call needed;
+> 2. **ToolAgent decides**: inside the ReAct loop it first retrieves after-sales policy knowledge following "Retrieval Before Agency" (confirming preconditions: order shipped/completed, 7-day no-reason return, etc.), then chooses an action;
+> 3. **Validate order status**: calls `query_order("20260801001")`, gets "shipped" (eligible), and relays that faithfully instead of making it up;
+> 4. **Create the after-sales request**: calls `apply_refund(order_sn, reason)`; the data source re-validates status and creates the record (`refund_id=AF{order_sn}`, idempotent on repeat);
+> 5. **Create a ticket**: calls `create_ticket` when needed, and confirms the turnaround time with the user;
+> 6. **Report the result**: structured output with the request id, current status (processing) and what happens next.
 
-每一步的工具调用都以 `tool_call` / `tool_result` SSE 事件实时推送到前端，用户可见"正在查订单 → 正在申请售后 → 已创建售后工单"的过程。
+Every tool call is pushed to the frontend as `tool_call` / `tool_result` SSE events, so the user watches "checking order → filing after-sales request → ticket created" happen live.
 
-> 说明：订单 / 物流 / 售后数据默认走内存 mock（零依赖）；配置 `MALL_DATA_SOURCE=real` 后可落 PostgreSQL 持久化（含售后单跨进程幂等），见[配置说明](#配置说明)。
+> Note: order / logistics / after-sales data uses an in-memory mock by default (zero dependencies). Set `MALL_DATA_SOURCE=real` to persist in PostgreSQL (with cross-process idempotency for after-sales requests) — see [Configuration](#configuration).
 
-## 快速开始
+## Quick start
 
-### 1. 环境准备
+### 1. Prerequisites
 
 ```powershell
-# 克隆仓库
+# Clone the repo
 git clone https://github.com/JDKmark/AssistMind.git
 cd AssistMind
 
-# 后端虚拟环境
+# Backend virtualenv
 cd backend
 python -m venv venv
 venv\Scripts\activate
 pip install -e ".[dev]"
 cp .env.example .env
-# 编辑 .env 填入 DEEPSEEK_API_KEY
+# Edit .env and set DEEPSEEK_API_KEY
 ```
 
-> 可选：已安装 uv 时可用 `uv sync --frozen --extra dev` 按 `backend/uv.lock` 锁定版本安装。
+> Optional: with uv installed, `uv sync --frozen --extra dev` installs the exact versions pinned in `backend/uv.lock`.
 
-### 2. 启动依赖服务（docker-compose）
+### 2. Start dependencies (docker-compose)
 
 ```powershell
 docker-compose up -d
 ```
 
-核心服务一览（langfuse 依赖的 redis/clickhouse/minio/worker 等子服务从略）：
+Core services (Langfuse's own redis/clickhouse/minio/worker sub-services omitted):
 
-| 服务 | 容器 | 端口 | 说明 |
+| Service | Container | Port | Purpose |
 |---|---|---|---|
-| qdrant | smart-cs-qdrant | 6333 / 6334 | 向量库 |
-| redis | smart-cs-redis | 6379 | 缓存 / 语义缓存 |
-| postgres | smart-cs-postgres | 5432 | 元数据库（用户/工单/反馈） |
-| langfuse-db / langfuse | smart-cs-langfuse-* | 3001 | 可观测平台（可选，开发环境默认启动） |
+| qdrant | smart-cs-qdrant | 6333 / 6334 | Vector store |
+| redis | smart-cs-redis | 6379 | Cache / semantic cache |
+| postgres | smart-cs-postgres | 5432 | Metadata (users / tickets / feedback) |
+| langfuse-db / langfuse | smart-cs-langfuse-* | 3001 | Observability platform (optional, on by default in dev) |
 
-> 应用层 backend / frontend / **worker** 由 `docker-compose.app.yml` 定义（与根 `docker-compose.yml` 叠加，`start-demo.ps1` 或 `docker compose -f docker-compose.yml -f docker-compose.app.yml up -d` 全量启动）。其中 **worker** 消费 RQ 异步任务队列（知识库重建等），rebuild 入队后需该进程执行——手动开发模式下请单独启动（见下节）。
+> The application layer — backend / frontend / **worker** — lives in `docker-compose.app.yml` (layered on top of the root `docker-compose.yml`; start everything with `start-demo.ps1` or `docker compose -f docker-compose.yml -f docker-compose.app.yml up -d`). **worker** consumes the RQ queue (knowledge-base rebuild etc.) — a rebuild stays `queued` until it runs, so start it separately in manual dev mode (next section).
 
-### 3. 初始化数据库 + 灌知识库
+### 3. Initialize the database and seed the knowledge base
 
 ```powershell
 cd backend
 
-# 建表 + 初始用户（admin/agent/user）
+# Create tables + seed users (admin/agent/user)
 venv\Scripts\python.exe scripts/init_db.py
 
-# 电商业务数据落 PostgreSQL（MALL_DATA_SOURCE=real 时使用；默认 mock 可跳过）
-# 数据来源与 mock 演示清单同源（scripts/seed_mall_db.py 从 mock_source 导入，幂等）
+# Load e-commerce data into PostgreSQL (only needed when MALL_DATA_SOURCE=real; skip for the mock)
+# Same source as the mock demo data (scripts/seed_mall_db.py imports from mock_source, idempotent)
 venv\Scripts\python.exe scripts/seed_mall_db.py
 
-# 电商知识库（knowledge/mall/：官方文档 + 自建业务规则，结构感知切块）
+# E-commerce knowledge base (knowledge/mall/: upstream docs + our own business rules, structure-aware chunking)
 venv\Scripts\python.exe scripts/seed_mall_kb.py --reset
 
 ```
 
-### 4. 启动开发服务器
+### 4. Start the dev servers
 
 ```powershell
-# 后端（终端 1）
+# Backend (terminal 1)
 cd backend
 uvicorn app.main:app --reload --port 8002
 
-# RQ worker（终端 2，可选但推荐）：消费异步任务（知识库重建/坏例回流/评估运行），
-# 不启动则 rebuild 入队后保持 queued 不执行
+# RQ worker (terminal 2, optional but recommended): consumes async jobs
+# (knowledge-base rebuild / bad-case export / evaluation). Without it a rebuild
+# stays queued and never runs.
 venv\Scripts\python.exe scripts/run_worker.py
 
-# 前端（终端 3）
+# Frontend (terminal 3)
 cd frontend
 npm install
 npm run dev
 ```
 
-### 5. 访问
+### 5. Open
 
-- 前端：http://localhost:5173
-- 后端 API 文档：http://localhost:8002/docs
-- Langfuse：http://localhost:3001
-- 测试账号：admin/admin123（管理员）· agent/agent123（客服）· user/user123（普通用户）
+- Frontend: http://localhost:5173
+- API docs: http://localhost:8002/docs
+- Langfuse: http://localhost:3001
+- Demo accounts: admin/admin123 (admin) · agent/agent123 (support agent) · user/user123 (customer)
 
-### 6. 一键启动与部署
+### 6. One-command start and deployment
 
-- **一键启动**（推荐）：仓库根直接 `.\start-demo.ps1` —— 预检环境、等依赖健康、自动建库 + 首启灌库（向量集合非空则秒起跳过）、拉起后端 + RQ worker + 前端，并打印演示数据速查表。开发模式可用 `start-dev.ps1`。
-- **云端部署**（外网远程访问）：见 `deploy/README.md` —— 含部署方案推荐（2C4G 轻量云主机 + Docker Compose 全量部署脚本 `bash deploy/deploy.sh`）与零成本应急方案（本机起服务 + `cloudflared tunnel` 拿公网 https 链接）。
+- **One command** (recommended): run `.\start-demo.ps1` from the repo root — it pre-checks the environment, waits for dependencies to become healthy, creates and seeds the database on first run (and skips seeding when the vector collection is already populated), then starts backend + RQ worker + frontend and prints a demo cheat-sheet. Use `start-dev.ps1` for dev mode.
+- **Cloud deployment** (public access): see `deploy/README.md` — recommended setup (a 2C4G lightweight cloud host plus the full Docker Compose script `bash deploy/deploy.sh`) and a zero-cost option (run locally and expose it with `cloudflared tunnel`).
 
-## 配置说明
+## Configuration
 
-### 数据源模式
+### Data source mode
 
-`MALL_DATA_SOURCE` 配置电商业务数据源模式：`mock`（默认，内存演示清单，零依赖）/ `real`（PostgreSQL，先跑 init_db + seed_mall_db）/ `auto`（`SELECT 1` 健康探测通过则用 real，否则降级 mock）。real 模式下售后单（apply_refund）落库持久化，跨进程幂等（order_sn 唯一约束）。
+`MALL_DATA_SOURCE` selects where e-commerce data comes from: `mock` (default — in-memory demo data, zero dependencies) / `real` (PostgreSQL; run init_db + seed_mall_db first) / `auto` (`SELECT 1` health probe decides; falls back to mock). In `real` mode, after-sales requests persist and are idempotent across processes (unique constraint on `order_sn`).
 
-### MCP 连接注意
+### MCP connection caveat
 
-`MCP_SERVER_URL` 必须以**尾斜杠结尾**（默认 `http://localhost:8002/mcp/`）——FastAPI 对无尾斜杠的 mount 路径返回 307 重定向，MCP 客户端不跟随重定向会连接失败（`Unexpected content type`）。`MCPClient` 构造时也会自动补全缺失的尾斜杠。
+`MCP_SERVER_URL` **must end with a trailing slash** (default `http://localhost:8002/mcp/`) — FastAPI answers a mounted path without the slash with a 307 redirect, and the MCP client does not follow redirects, so the connection fails with `Unexpected content type`. `MCPClient` also appends the missing slash when constructed.
 
-### 可观测（可选）
+### Observability (optional)
 
-未配置 Langfuse Key 时自动禁用埋点，不影响任何功能。
+Without Langfuse keys, instrumentation is disabled automatically and no functionality is affected.
 
-## 设计细节
+## Design notes
 
-### RAG 链路
+### RAG pipeline
 
 ```
-用户问题
-  → 查询改写（Multi-Query 3 变体，HyDE 可选）
-  → 混合检索：Qdrant 向量（bge-base-zh-v1.5, 768 维）+ BM25（jieba 词粒度, 一等公民）
-  → RRF 融合（Reciprocal Rank Fusion，向量/BM25 权重可配，默认等权）
-  → Reranker 精排（bge-reranker-v2-m3）
-  → CRAG 相关性评估（高阈值直接生成 / 低阈值重检索 / 兜底）
-  → 语义缓存（Redis 版本号 INCR 失效 O(1) + 惰性清理，L2 相似度判定）
-  → 生成（DeepSeek 主 / Ollama 备）
+User question
+  → Query rewriting (Multi-Query, 3 variants; HyDE optional)
+  → Hybrid retrieval: Qdrant vectors (bge-base-zh-v1.5, 768-d) + BM25 (jieba word-level, first-class)
+  → RRF fusion (Reciprocal Rank Fusion, vector/BM25 weights configurable, equal by default)
+  → Reranking (bge-reranker-v2-m3)
+  → CRAG relevance check (high → generate / low → re-retrieve / fallback)
+  → Semantic cache (Redis version-key INCR invalidation O(1) + lazy cleanup, L2 similarity match)
+  → Generation (DeepSeek primary / Ollama fallback)
 ```
 
-- **结构感知切块**：`chunk_text` 识别 Markdown 标题（→ section_title）、fenced 代码块整体保留（允许超限）、表格不拆行；`mall_tables.sql` 按 CREATE TABLE 语句切块（→ table_comment）；取材说明类文档（SOURCES.md）不入库。
-- **意图路由前置**：RAG 只服务 faq 意图，task 走 Agent，避免无谓检索。
-- **RBAC**：Qdrant payload 按 `security_group` 字段过滤，不建独立权限表。
+- **Structure-aware chunking**: `chunk_text` recognises Markdown headings (→ `section_title`), keeps fenced code blocks intact (allowed to exceed the limit) and never splits tables; `mall_tables.sql` is chunked per `CREATE TABLE` (→ `table_comment`); provenance-only documents (SOURCES.md) are excluded from the index.
+- **Intent routing first**: RAG only serves the faq intent; task goes to the Agent, so no retrieval is wasted.
+- **RBAC**: Qdrant payloads are filtered by the `security_group` field — no separate permission table.
 
 ### Agent
 
-- **ToolAgent（电商客服 Agent）**：LangGraph StateGraph 驱动的 ReAct 循环（think → act → …），含 Loop Breaker（迭代上限熔断）、参数缺失澄清（`CLARIFY:` 追问）、**实体识别参数补填**（规则抽取订单号/商品 ID → 自动补填 query_order 等工具参数，减少 LLM 编造与追问，多轮对话从历史回溯实体）、MCP 不可用降级。设计原则 **Retrieval Before Agency**：Agent 在已排序检索结果之上工作，不取代检索。
+- **ToolAgent**: a LangGraph StateGraph-driven ReAct loop (think → act → …) with a loop breaker (iteration cap), missing-argument clarification (`CLARIFY:` follow-up), **entity-based argument filling** (rule-based extraction of order numbers / product IDs auto-fills `query_order` and friends, reducing hallucination and follow-ups; entities are also recovered from conversation history), and MCP-unavailable fallback. Design principle: **Retrieval Before Agency** — the agent works on top of ranked retrieval results instead of replacing retrieval.
 
-### MCP Server + Client
+### MCP server + client
 
-FastMCP（Python 官方 SDK）实现 **Server（AssistMind-MCP，8 个工具）+ Client**，ToolAgent 不直接调本地工具函数，一律通过 MCP Client → Server 协议调用，工具实现与 Agent 完全解耦：
+FastMCP (the official Python SDK) implements a **server** (AssistMind-MCP, 8 tools) and a **client**. ToolAgent never calls local tool functions directly — everything goes through the MCP client → server protocol, so tool implementations and the agent stay fully decoupled:
 
-| 分组 | 工具 |
+| Group | Tools |
 |---|---|
-| 知识检索（1） | `search_knowledge` |
-| 电商业务操作（4） | `query_order` / `query_logistics` / `query_product` / `apply_refund` |
-| 工单（3） | `create_ticket` / `transfer_human` / `get_ticket_status` |
+| Knowledge retrieval (1) | `search_knowledge` |
+| E-commerce operations (4) | `query_order` / `query_logistics` / `query_product` / `apply_refund` |
+| Tickets (3) | `create_ticket` / `transfer_human` / `get_ticket_status` |
 
-### 降级体系（全链路降级表）
+### Fallback matrix
 
-每个外部调用失败都有明确降级路径（断路器 aiobreaker + 超时 + 重试），不可静默失败：
+Every external call has an explicit fallback path (aiobreaker circuit breaker + timeout + retry); nothing fails silently:
 
-| 组件失败 | 降级策略 |
+| Component failure | Fallback |
 |---|---|
-| LLM 调用失败 | 重试 → 切 Ollama → 缓存近似 → 模板兜底 |
-| Qdrant 失败 | 仅 BM25 召回（BM25 不可被关闭） |
-| BM25 失败 | 仅向量召回 |
-| 两路召回均失败 | 返回"未找到相关文档" + 建议转人工 |
-| Reranker 失败 | 跳过重排，用 RRF 结果 |
-| Redis 缓存失败 | 跳过缓存直查 |
-| PostgreSQL 失败 | 工单类返回 503，聊天类不受影响 |
-| edge-tts TTS 失败 | 后端返回 503 + warning；前端回落浏览器 speechSynthesis（两级降级） |
+| LLM call fails | retry → switch to Ollama → approximate from cache → template answer |
+| Qdrant fails | BM25-only recall (BM25 can never be disabled) |
+| BM25 fails | vector-only recall |
+| Both recall paths fail | "no relevant documents found" + suggest human hand-off |
+| Reranker fails | skip reranking, use RRF order |
+| Redis cache fails | skip the cache, query directly |
+| PostgreSQL fails | ticket APIs return 503; chat is unaffected |
+| edge-tts fails | backend returns 503 + warning; frontend falls back to browser `speechSynthesis` |
 
-### 可观测性
+### Observability
 
-- Langfuse 全链路 trace：**LLM 单点埋点**（所有 LLM 调用统一走 `llm_factory.call_llm`，每次调用一个 `llm.call` span），调用方只负责编排级 span（如 `chat_faq` FAQ 问答链路），避免重复埋点；
-- **FAQ 会话级 trace**：每条 FAQ 问答创建 `chat_faq` 根 trace，`query → 检索来源 → 回答` 形成可按会话归因的证据链，`trace_id` 随 SSE done 事件回传并写入反馈表（bad case 归因入口）。
+- End-to-end Langfuse traces: **one instrumentation point for LLM calls** (everything goes through `llm_factory.call_llm`, one `llm.call` span per call); callers only own orchestration-level spans (e.g. `chat_faq`), so nothing is instrumented twice.
+- **Conversation-level FAQ traces**: each FAQ answer opens a `chat_faq` root trace where `query → retrieved sources → answer` forms an attributable evidence chain; the `trace_id` is returned in the SSE `done` event and stored with the feedback row (the entry point for bad-case attribution).
 
-### 前端
+### Frontend
 
-Vue 3 + Element Plus + Pinia（JavaScript），原生 fetch 解析 SSE 流（`POST /api/v1/chat/ask`，事件：start / retrieving / rewriting / generating / delta / tool_call / tool_result / done / error，其中 delta 为生成阶段逐 chunk 文本，驱动前端打字机效果），意图分流过程可视化（改写提示、工具调用步骤、知识来源）。内置**语音交互**（麦克风识别 + 云端音色播报，TTS 两级降级）与**客服人格选择器**（专业/温柔/活泼，随 SSE 请求体传 `persona`）。
+Vue 3 + Element Plus + Pinia (plain JavaScript). SSE is parsed with native `fetch` (`POST /api/v1/chat/ask`; events: start / retrieving / rewriting / generating / delta / tool_call / tool_result / done / error — `delta` carries per-chunk text and drives the typewriter effect). The routing process is visualised (rewrite hints, tool-call steps, cited sources). Built-in **voice interaction** (microphone ASR + cloud TTS with two-tier fallback) and a **persona selector** (professional / gentle / lively, sent as `persona` in the SSE request body).
 
-## 技术栈
+## Tech stack
 
-| 层 | 技术 |
+| Layer | Technology |
 |---|---|
-| 后端 | Python 3.11 + FastAPI + LangChain 0.3 + LangGraph 0.2 |
-| 前端 | Vue 3 + Element Plus + Pinia |
-| 向量库 | Qdrant 1.12 |
-| 缓存 | Redis 7 |
-| 元数据库 | PostgreSQL 15 |
-| LLM | DeepSeek API（主）+ Ollama（备） |
-| Embedding / Reranker | BAAI/bge-base-zh-v1.5（768 维）/ BAAI/bge-reranker-v2-m3 |
-| 异步任务 | RQ（Redis 队列，独立 worker 进程） |
-| 语音 | Web Speech API（ASR）+ edge-tts（TTS 云端神经音色，免费无 key） |
-| MCP | FastMCP（Python 官方 SDK） |
-| 可观测 | Langfuse |
-| 评估 | RAGAS |
-| CI/CD | GitHub Actions + husky pre-commit（ruff + pytest + vitest） |
+| Backend | Python 3.11 + FastAPI + LangChain 0.3 + LangGraph 0.2 |
+| Frontend | Vue 3 + Element Plus + Pinia |
+| Vector store | Qdrant 1.12 |
+| Cache | Redis 7 |
+| Metadata DB | PostgreSQL 15 |
+| LLM | DeepSeek API (primary) + Ollama (fallback) |
+| Embedding / Reranker | BAAI/bge-base-zh-v1.5 (768-d) / BAAI/bge-reranker-v2-m3 |
+| Async jobs | RQ (Redis queue, dedicated worker process) |
+| Voice | Web Speech API (ASR) + edge-tts (cloud neural TTS, free, no key) |
+| MCP | FastMCP (official Python SDK) |
+| Observability | Langfuse |
+| Evaluation | RAGAS |
+| CI/CD | GitHub Actions + husky pre-commit (ruff + pytest + vitest) |
 
-## 评估
+## Evaluation
 
-| 评估项 | 脚本 / 数据 | 口径 |
+| Area | Script / data | Details |
 |---|---|---|
-| RAG 质量 | `scripts/run_eval.py` + RAGAS 4 指标（faithfulness / answer_relevancy / context_precision / context_recall） | **40 条 mall 数据集**（DeepSeek 评分）：`eval_mall_qa.json`（含 5 条对抗，对抗样本单独分组）。实测（常规样本）：faithfulness 0.941 / context_precision 0.895 / context_recall 0.859 / answer_relevancy 0.887 |
-| Agent 工具调用 | 单测覆盖（`tests/unit/test_tool_agent.py` 等）：task 意图触发工具、Retrieval Before Agency、参数缺失澄清、MCP 不可用降级、循环熔断 | 工具调用路径行为由测试保障 |
-| Agent 端到端成功率 | `scripts/run_eval_agent.py --entity-fill both`：9 个多轮客服任务（查单/查物流/多轮物流/商品/退货流程/退款被拒/未找到订单/服务承诺/退款时限），进程内 MCP + BM25 兜底，逐任务断言工具链与回答 | 实测 **9/9（100%）**，含实体识别 on/off 对比 |
-| Bad Case 回归 | `scripts/export_feedback_badcases.py`（低分反馈 score<=2 → `app/data/eval_feedback.json`）+ `scripts/run_eval.py app/data/eval_feedback.json`（无 ground_truth 模式自动跳过 context_recall） | 线上差评回流为对抗回归样本，改造前后 A/B diff 归因防回退，见 `docs/rag-iteration.md` |
+| RAG quality | `scripts/run_eval.py` + 4 RAGAS metrics (faithfulness / answer_relevancy / context_precision / context_recall) | **50-item mall dataset** (scored by DeepSeek): `eval_mall_qa.json` (6 adversarial samples, grouped separately). Measured on the 44 regular samples (see `backend/eval/reports/eval_mall_50_20261029.json`): faithfulness 0.999 / context_precision 0.894 / context_recall 0.909 / answer_relevancy 0.903 |
+| Agent tool calling | Unit tests (`tests/unit/test_tool_agent.py` and friends): task intent triggers tools, Retrieval Before Agency, missing-argument clarification, MCP-unavailable fallback, loop breaker | Tool-call paths are covered by tests |
+| Agent end-to-end success | `scripts/run_eval_agent.py --entity-fill both`: 11 multi-turn support tasks (order lookup / logistics / multi-turn logistics / product / return flow / rejected refund / order not found / service promise / refund timeline / human hand-off / ticket creation), in-process MCP + BM25 fallback, asserting the tool chain and answer per task | Last full run **9/9 (100%)**; the human hand-off and ticket-creation tasks were added later and need a re-run |
+| Bad-case regression | `scripts/export_feedback_badcases.py` (feedback with score ≤ 2 → `app/data/eval_feedback.json`) + `scripts/run_eval.py app/data/eval_feedback.json` (no-ground-truth mode skips context_recall automatically) | Production complaints become adversarial regression samples; A/B diffing before/after a change catches regressions — see `docs/rag-iteration.md` |
 
-已知限制：`answer_relevancy` 受反向生成问题与原问题意图偏差影响存在波动——属指标语义特性，不作为质量闸门；事实性看 faithfulness、检索质量看 context_precision / context_recall。
+Known limitation: `answer_relevancy` fluctuates because the reverse-generated question can drift from the original intent — that is inherent to the metric, so it is not used as a quality gate. Read faithfulness for factuality, context_precision / context_recall for retrieval quality.
 
-评估命令：
+Evaluation commands:
 
 ```powershell
 cd backend
 
-# RAGAS 评估（默认 eval_mall_qa.json，也可传自定义数据集路径）
+# RAGAS evaluation (defaults to eval_mall_qa.json; a custom dataset path also works)
 venv\Scripts\python.exe scripts/run_eval.py
 
-# Bad Case 回归：低分反馈（score<=2）回流评估集，跑无 ground_truth 模式（自动跳过 context_recall）
+# Bad-case regression: reflow low-score feedback (score<=2) into the eval set, then run in no-ground-truth mode
 venv\Scripts\python.exe scripts/export_feedback_badcases.py [--limit 50]
 venv\Scripts\python.exe scripts/run_eval.py app/data/eval_feedback.json
 
 ```
 
-运行要求：`.env` 配置 `DEEPSEEK_API_KEY`；Qdrant 已启动并灌库（不可用时自动降级仅 BM25）。脚本以非 0 退出码区分失败原因（LLM 不可用 / 知识来源不可用 / 无有效得分）。
+Requirements: `DEEPSEEK_API_KEY` set in `.env`; Qdrant running and seeded (falls back to BM25-only when unavailable). The script uses distinct non-zero exit codes to distinguish failure causes (LLM unavailable / knowledge source unavailable / no valid scores).
 
-## 项目结构
+## Project layout
 
 ```
 AssistMind/
 ├── backend/
 │   ├── app/
-│   │   ├── api/            # FastAPI 路由（chat/auth/knowledge/jobs/ticket/feedback/mall/admin/tts/health）
-│   │   ├── agents/         # ToolAgent（LangGraph ReAct）
+│   │   ├── api/            # FastAPI routes (chat/auth/knowledge/jobs/ticket/feedback/mall/admin/tts/health)
+│   │   ├── agents/         # ToolAgent (LangGraph ReAct)
 │   │   ├── core/
-│   │   │   ├── rag/        # RAG 引擎（召回+RRF 融合+重排+CRAG）+ 文档解析（parsers：pdf/docx ETL）
-│   │   │   ├── router/     # 意图路由（规则→语义→LLM，4 类意图）
-│   │   │   ├── cache/      # L2 语义缓存（Redis 版本号失效）
-│   │   │   ├── dialog/     # 对话上下文管理（裁剪/提取/格式化 + 槽位状态机）
-│   │   │   ├── infra/      # Qdrant/Redis/PostgreSQL/LLM/Langfuse/TTS/断路器
-│   │   │   ├── mcp/        # MCP Server（8 工具）+ Client
-│   │   │   ├── mall/       # 电商业务数据源（门面 + mock/real 双实现 + 实体识别，字段锚定 mall.sql）
-│   │   │   ├── tasks/      # RQ 异步任务队列（rebuild_knowledge_base / export_badcases / run_evaluation）
+│   │   │   ├── rag/        # RAG engine (recall + RRF fusion + rerank + CRAG) + document parsers (pdf/docx ETL)
+│   │   │   ├── router/     # Intent routing (rules → semantic → LLM, 4 intents)
+│   │   │   ├── cache/      # L2 semantic cache (Redis version-key invalidation)
+│   │   │   ├── dialog/     # Conversation context (trim / extract / format + slot state machine)
+│   │   │   ├── infra/      # Qdrant/Redis/PostgreSQL/LLM/Langfuse/TTS/circuit breaker
+│   │   │   ├── mcp/        # MCP server (8 tools) + client
+│   │   │   ├── mall/       # E-commerce data source (facade + mock/real impls + entity extraction, fields anchored to mall.sql)
+│   │   │   ├── tasks/      # RQ async jobs (rebuild_knowledge_base / export_badcases / run_evaluation)
 │   │   │   └── security/   # JWT + RBAC
-│   │   ├── models/         # SQLAlchemy 模型（user/ticket/feedback/mall 业务表）
-│   │   ├── schemas/        # Pydantic 模型
+│   │   ├── models/         # SQLAlchemy models (user/ticket/feedback/mall tables)
+│   │   ├── schemas/        # Pydantic models
 │   │   └── data/           # intent_routes.json / personas.json / eval_mall_qa.json / eval_feedback.json
 │   ├── scripts/            # init_db / seed_mall_db / seed_mall_kb / run_eval / run_worker / export_feedback_badcases / check_kb_quality
-│   └── tests/              # 单元 + 集成测试
+│   └── tests/              # unit + integration tests
 ├── frontend/
 │   └── src/
-│       ├── views/          # 页面：Login / Chat / Knowledge / Tickets / Admin / Orders
-│       ├── stores/         # Pinia（auth/chat/knowledge/ticket/persona）
-│       ├── api/            # axios 封装；chat/tts 为原生 fetch（SSE 流 / 二进制音频）
-│       └── utils/          # speech.js（ASR 识别 + TTS 两级降级播报）
-├── knowledge/              # 知识库源文档（mall/ 官方取材 + 自建业务规则）
-├── docs/                   # 项目文档（架构说明/迭代记录等）
-├── deploy/                 # 云端部署脚本与说明
-├── docker-compose.yml      # 基础设施（qdrant/redis/postgres/langfuse）
-├── docker-compose.app.yml  # 应用层（backend/frontend/worker 叠加编排）
-└── AGENTS.md               # AI 编码规则
+│       ├── views/          # pages: Login / Chat / Knowledge / Tickets / Admin / Orders
+│       ├── stores/         # Pinia (auth/chat/knowledge/ticket/persona)
+│       ├── api/            # axios wrappers; chat/tts use native fetch (SSE stream / binary audio)
+│       └── utils/          # speech.js (ASR + two-tier TTS playback)
+├── knowledge/              # knowledge-base sources (mall/ upstream material + our own business rules)
+├── docs/                   # project docs (architecture, iteration notes)
+├── deploy/                 # cloud deployment script and notes
+├── docker-compose.yml      # infrastructure (qdrant/redis/postgres/langfuse)
+├── docker-compose.app.yml  # application layer (backend/frontend/worker overlay)
+└── AGENTS.md               # AI coding rules
 ```
 
-## 知识来源与致谢
+## Credits
 
-- **[macrozheng/mall](https://github.com/macrozheng/mall)**：电商知识库素材（`knowledge/mall/` 下的官方 README、部署文档、配置文件与 `mall_tables.sql` 表结构节选）取材自该项目，取材范围见 `knowledge/mall/SOURCES.md`。业务规则文档（`knowledge/mall/business/`）为本项目自建，字段锚定 mall.sql 官方表结构。
+- **[macrozheng/mall](https://github.com/macrozheng/mall)**: the e-commerce knowledge-base material (upstream README, deployment docs, config files and an excerpt of the `mall_tables.sql` schema under `knowledge/mall/`) is taken from that project — see `knowledge/mall/SOURCES.md` for the exact scope. The business-rule documents (`knowledge/mall/business/`) are authored for this project, with fields anchored to the official `mall.sql` schema.
 
 ## License
 
