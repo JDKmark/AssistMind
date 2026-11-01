@@ -1,13 +1,60 @@
 #!/usr/bin/env sh
-# pre-push：跑单测做最后一道拦截（跳过需要外部依赖的 integration 用例）。
+# pre-push：按改动范围跑单测（只跑受影响的一侧；两侧都要跑时并行）。
 # 临时跳过：HUSKY=0 git push，或 git push --no-verify。
 set -e
 
 # 解释器路径必须是绝对路径：下面会 cd backend 执行，仓库根相对路径会解析成
 # backend/backend/venv/...（该 bug 曾让本钩子从加入起就无法通过，push 全部被拦）
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
 
-# 后端：按优先级解析解释器，兼容 Windows(venv/Scripts) 与 *nix(venv/bin)
+# ---------- 1. 本次推送改了哪些文件 ----------
+# git 通过 stdin 传入：<local ref> <local sha> <remote ref> <remote sha>
+# stdin 可能是「永不关闭的管道」（手动执行 / 某些 CI 包装）：用 timeout 兜底读取，
+# 否则 while read 会永久挂起（实测把一次手动验证卡死 5 分钟）
+if [ -t 0 ]; then
+  REFS_TEXT=""
+elif command -v timeout >/dev/null 2>&1; then
+  REFS_TEXT="$(timeout 5 cat 2>/dev/null || true)"
+else
+  REFS_TEXT="$(cat 2>/dev/null || true)"
+fi
+
+CHANGED="$(mktemp)"
+NEED_ALL=0
+REFS=0
+while read -r _lref lsha _rref rsha; do
+  [ -n "$lsha" ] || continue
+  REFS=$((REFS + 1))
+  if [ -n "$rsha" ] && [ "$rsha" != "0000000000000000000000000000000000000000" ]; then
+    git diff --name-only "$rsha" "$lsha" >>"$CHANGED" 2>/dev/null || NEED_ALL=1
+  else
+    NEED_ALL=1 # 新分支 / 远端无基线：判定不了范围，跑全量
+  fi
+done <<EOF
+$REFS_TEXT
+EOF
+# 没有 ref 行（手动执行 / stdin 无内容）时跑全量，避免「跳过一切」把问题藏起来
+if [ "$REFS" -eq 0 ]; then NEED_ALL=1; fi
+
+touched() {
+  if [ "$NEED_ALL" = 1 ]; then return 0; fi
+  grep -qE "$1" "$CHANGED"
+}
+
+RUN_BACKEND=0
+RUN_FRONTEND=0
+if touched '^backend/'; then RUN_BACKEND=1; fi
+if touched '^frontend/'; then RUN_FRONTEND=1; fi
+
+if [ "$RUN_BACKEND" = 0 ] && [ "$RUN_FRONTEND" = 0 ]; then
+  echo "[pre-push] 本次推送未涉及 backend/ 或 frontend/，跳过单测"
+  rm -f "$CHANGED" 2>/dev/null || true
+  exit 0
+fi
+
+# ---------- 2. 解析后端解释器 ----------
+# 兼容 Windows(venv/Scripts) 与 *nix(venv/bin)
 if [ -x "$ROOT/backend/venv/Scripts/python.exe" ]; then
   PY="$ROOT/backend/venv/Scripts/python.exe"
 elif [ -x "$ROOT/backend/venv/bin/python" ]; then
@@ -18,18 +65,60 @@ else
   PY=""
 fi
 
-if [ -n "$PY" ]; then
-  echo "[pre-push] backend unit tests"
-  (cd backend && $PY -m pytest tests -q -k "not integration")
-else
-  echo "[pre-push] 未找到后端 Python 环境（backend/venv 或 uv），跳过后端单测" >&2
+# ---------- 3. 并行跑（各写日志，成功只回一行，失败打全文） ----------
+LOG_DIR="$(mktemp -d)"
+PID_B=""
+PID_F=""
+
+if [ "$RUN_BACKEND" = 1 ]; then
+  if [ -n "$PY" ]; then
+    echo "[pre-push] backend unit tests …"
+    (cd backend && $PY -m pytest tests -q -k "not integration" --color=no) >"$LOG_DIR/backend.log" 2>&1 &
+    PID_B=$!
+  else
+    echo "[pre-push] 未找到后端 Python 环境（backend/venv 或 uv），跳过后端单测" >&2
+  fi
 fi
 
-if [ -d frontend/node_modules ]; then
-  echo "[pre-push] frontend unit tests"
-  # --no-file-parallelism：默认并行模式在部分环境会因写缓存 EPERM 静默丢测试文件，
-  # 汇总行仍显示 passed，容易误判（见 docs 里的门禁说明）
-  (cd frontend && npx --no-install vitest run --no-file-parallelism)
-else
-  echo "[pre-push] frontend/node_modules 不存在，跳过前端单测" >&2
+if [ "$RUN_FRONTEND" = 1 ]; then
+  if [ -d frontend/node_modules ]; then
+    echo "[pre-push] frontend unit tests …"
+    # --no-file-parallelism：默认并行模式在部分环境会因写缓存 EPERM 静默丢测试文件，
+    # 汇总行仍显示 passed，容易误判（见 docs 里的门禁说明）
+    # NO_COLOR：输出重定向到日志，关掉颜色让汇总行可 grep（带转义码会取错行）
+    (cd frontend && NO_COLOR=1 npx --no-install vitest run --no-file-parallelism) >"$LOG_DIR/frontend.log" 2>&1 &
+    PID_F=$!
+  else
+    echo "[pre-push] frontend/node_modules 不存在，跳过前端单测" >&2
+  fi
 fi
+
+RC=0
+SB=0
+SF=0
+if [ -n "$PID_B" ]; then wait "$PID_B" || { SB=1; RC=1; }; fi
+if [ -n "$PID_F" ]; then wait "$PID_F" || { SF=1; RC=1; }; fi
+
+summary() {
+  # 取含 passed/failed 的汇总行（pytest 的末行是文档链接、vitest 的末行是空行）
+  line="$(grep -E '(passed|failed|error)' "$1" 2>/dev/null | tail -n 1 | sed -e 's/^[[:space:]]*//')"
+  if [ -z "$line" ]; then line="$(tail -n 1 "$1" 2>/dev/null)"; fi
+  printf '%s' "$line"
+}
+
+report() {
+  # $1 名称 $2 状态 $3 日志
+  if [ "$2" = 0 ]; then
+    echo "[pre-push] $1 ✓ $(summary "$3")"
+  else
+    echo "[pre-push] $1 ✗ 失败输出：" >&2
+    cat "$3" 2>/dev/null >&2 || true
+  fi
+}
+
+if [ -f "$LOG_DIR/backend.log" ]; then report backend "$SB" "$LOG_DIR/backend.log"; fi
+if [ -f "$LOG_DIR/frontend.log" ]; then report frontend "$SF" "$LOG_DIR/frontend.log"; fi
+
+rm -rf "$LOG_DIR" 2>/dev/null || true
+rm -f "$CHANGED" 2>/dev/null || true
+exit "$RC"
