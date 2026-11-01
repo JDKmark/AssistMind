@@ -284,3 +284,60 @@ describe('流式补齐的边界与收尾', () => {
     expect(stream(full)).toBe(final(full))
   })
 })
+
+// 表格：分隔行（|---|）到达前，整块会被 markdown 当成普通段落 → 用户先看到带竖线的
+// 乱文本，再整体重排成表格。成熟方案（Vercel remend）没有 table handler，这块得自己补。
+describe('表格补齐', () => {
+  const stream = (t) => renderAnswer(t, { streaming: true }).html
+  const final = (t) => renderAnswer(t).html
+  const hasDelimiter = (t) => t.split('\n').some((l, i) => i > 0 && /^\|[\s:|-]+\|$/.test(l.trim()))
+
+  it('表头到达、分隔行未到：直接渲染成表格，而不是带竖线的段落', () => {
+    const html = stream('| 商品 | 价格 |')
+    expect(html).toContain('<table>')
+    expect(html).toContain('<th>商品</th>')
+    expect(html).not.toContain('| 商品')
+  })
+
+  it('真分隔行到达后渲染结果不变（不跳变）', () => {
+    expect(stream('| 商品 | 价格 |')).toBe(stream('| 商品 | 价格 |\n| --- | --- |'))
+  })
+
+  it('半截分隔行被替换而不是叠加', () => {
+    expect(completeStreamingMarkdown('| a | b |\n|')).toBe('| a | b |\n| --- | --- |')
+    expect(completeStreamingMarkdown('| a | b |\n| ---')).toBe('| a | b |\n| --- | --- |')
+  })
+
+  it('列数按表头单元格数生成', () => {
+    expect(completeStreamingMarkdown('| a | b | c |')).toBe('| a | b | c |\n| --- | --- | --- |')
+  })
+
+  it('已完整的表格原样返回，且流式与 done 渲染一致', () => {
+    const t = '| a | b |\n| --- | --- |\n| 1 | 2 |'
+    expect(completeStreamingMarkdown(t)).toBe(t)
+    expect(stream(t)).toBe(final(t))
+  })
+
+  it('不以竖线开头的行不被误判成表格', () => {
+    const t = '见下表 A | B |'
+    expect(completeStreamingMarkdown(t)).toBe(t)
+    expect(stream(t)).not.toContain('<table>')
+  })
+
+  it('表头里有未闭合加粗时不补表格（否则分隔行会被挤到标记之后）', () => {
+    const t = '| **商品 | 价格 |'
+    expect(completeStreamingMarkdown(t)).not.toContain('---')
+  })
+
+  it('流式全程：只要分隔行已在，渲染结果一定是表格', () => {
+    const full = '| 商品 | 价格 |\n| --- | --- |\n| 华为 Mate 70 | 5499 |'
+    let checked = 0
+    for (let i = 1; i <= full.length; i++) {
+      const prefix = full.slice(0, i)
+      if (!hasDelimiter(completeStreamingMarkdown(prefix))) continue
+      checked += 1
+      expect(stream(prefix)).toContain('<table>')
+    }
+    expect(checked).toBeGreaterThan(10)
+  })
+})

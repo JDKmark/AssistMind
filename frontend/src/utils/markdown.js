@@ -92,6 +92,72 @@ function hasContentAfter(text, marker) {
   return i !== -1 && text.length > i + marker.length
 }
 
+// 表格行：以竖线开头、以竖线结尾（LLM 输出表格几乎都带首尾竖线）。
+// 不要求「以 | 开头」会误判正文里带竖线的句子（如 "A | B |"）。
+const TABLE_ROW = /^\s*\|[\s\S]*\|\s*$/
+// 分隔行：含竖线且含至少一个短横（`| --- | --- |`、`|:--|--:|`）
+const TABLE_DELIM = /^\s*\|?[\s:|-]*-[\s:|-]*\|[\s:|-]*$/
+// 正在输入的分隔行：只由竖线/短横/冒号/空白组成（`| ---`、`|` 这种半截状态）
+const TABLE_DELIM_PARTIAL = /^[\s|:-]+$/
+
+const isTableDelimiter = (line) => TABLE_DELIM.test(line)
+
+// 单元格数：`| a | b |` → 2（去掉首尾竖线后按竖线切）
+function columnCount(row) {
+  const inner = row.trim().replace(/^\|/, '').replace(/\|$/, '')
+  return inner.split('|').length
+}
+
+function buildDelimiter(cols) {
+  return `| ${Array.from({ length: cols }, () => '---').join(' | ')} |`
+}
+
+// 第二行是不是「分隔行」——完整或半截都算（`| ---`、`|` 这种是正在输入）
+const isDelimiterLike = (line) => isTableDelimiter(line) || TABLE_DELIM_PARTIAL.test(line)
+
+/**
+ * 表格补齐：表头行已完整、但分隔行还没到。
+ *
+ * 不补的话，这段时间整块会被当成普通段落渲染——用户看到的是带竖线的乱文本，
+ * 等 `| --- | --- |` 到达再整体变成表格（一次明显的重排）。补一行合成分隔行后，
+ * 表头一到就立刻是表格，后续行正常追加；真分隔行到达时合成的那行被替换掉，
+ * 渲染结果不变，所以不会再有跳变。
+ *
+ * 关键：分隔行的**列数必须与表头一致**，否则 markdown 不认（`| --- |` 配两列表头
+ * 依然会被当成段落）。所以半截分隔行要按表头列数重写，而不是简单叠加。
+ *
+ * 保守起见只在两种状态动手：只有表头一行、表头 + 第二行是分隔行；其余原样返回。
+ * 表头行里还有未闭合行内标记时也不动（补的分隔行会被挤到标记后面而失效）。
+ */
+function completeTable(tail) {
+  // 尾部空白（含表头刚输出完的那一个换行）先剥掉再判断，否则会多出一个空行、
+  // 让表头和分隔行之间出现空行（表格立刻失效）
+  const core = tail.replace(/\s+$/, '')
+  const gap = tail.slice(core.length)
+  const lines = core.split('\n')
+  // 多行（表头 + 分隔行 + 数据行）：表格结构已经成型，交给正常渲染
+  if (lines.length > 2) return tail
+
+  const header = lines[0]
+  if (!TABLE_ROW.test(header)) return tail
+  // 表头里有未闭合标记：先让行内补齐处理，这一帧不补表格
+  if (countOf(header, '**') % 2 === 1) return tail
+  if (countOf(header, '~~') % 2 === 1) return tail
+  if (countOf(header, '`') % 2 === 1) return tail
+
+  const cols = columnCount(header)
+  // 单列表头多半是「表头还没输完」的中间态（`| 商品 |` 之后还会来第二列），
+  // 这时候补会先渲染成 1 列再跳成 2 列；等列数 ≥2 再补，表格形态一次到位
+  if (cols < 2) return tail
+  const delimiter = buildDelimiter(cols)
+  if (lines.length === 1) return `${core}\n${delimiter}${gap}`
+  // 第二行是分隔行但列数不对（半截状态）→ 重写成与表头一致
+  if (isDelimiterLike(lines[1]) && columnCount(lines[1]) !== cols) {
+    return `${header}\n${delimiter}${gap}`
+  }
+  return tail
+}
+
 /**
  * 补齐流式中「还没收到闭合标记」的行内语法。
  *
@@ -110,8 +176,8 @@ function hasContentAfter(text, marker) {
  */
 export function completeStreamingMarkdown(text) {
   if (!text) return text
-  // 绝大多数回答没有任何行内标记：先做一次廉价预判，避免每帧都 split 全文
-  if (!/[*~`[]/.test(text)) return text
+  // 绝大多数回答没有任何行内标记或表格：先做一次廉价预判，避免每帧都 split 全文
+  if (!/[*~`[|]/.test(text)) return text
   // 围栏代码块内不解析行内语法，补标记会变成可见字符
   if ((text.includes('```') || text.includes('~~~')) && isInsideFence(text)) return text
 
@@ -119,6 +185,10 @@ export function completeStreamingMarkdown(text) {
   const head = idx === -1 ? '' : text.slice(0, idx + 2)
   const tail = idx === -1 ? text : text.slice(idx + 2)
   if (!tail) return text
+
+  // 表格：表头已到、分隔行未到 —— 先补合成分隔行，避免整块被当成段落渲染
+  const withTable = completeTable(tail)
+  if (withTable !== tail) return head + withTable
 
   // 结尾空白要留在闭合标记之后：`**` 紧跟空格无法闭合（CommonMark 要求右侧不是空白）
   const trailing = tail.match(/\s+$/)
