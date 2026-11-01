@@ -3,11 +3,15 @@
 # 临时跳过：HUSKY=0 git push，或 git push --no-verify。
 set -e
 
+# 解释器路径必须是绝对路径：下面会 cd backend 执行，仓库根相对路径会解析成
+# backend/backend/venv/...（该 bug 曾让本钩子从加入起就无法通过，push 全部被拦）
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 # 后端：按优先级解析解释器，兼容 Windows(venv/Scripts) 与 *nix(venv/bin)
-if [ -x backend/venv/Scripts/python.exe ]; then
-  PY="backend/venv/Scripts/python.exe"
-elif [ -x backend/venv/bin/python ]; then
-  PY="backend/venv/bin/python"
+if [ -x "$ROOT/backend/venv/Scripts/python.exe" ]; then
+  PY="$ROOT/backend/venv/Scripts/python.exe"
+elif [ -x "$ROOT/backend/venv/bin/python" ]; then
+  PY="$ROOT/backend/venv/bin/python"
 elif command -v uv >/dev/null 2>&1; then
   PY="uv run --frozen --extra dev python"
 else
@@ -23,7 +27,9 @@ fi
 
 if [ -d frontend/node_modules ]; then
   echo "[pre-push] frontend unit tests"
-  (cd frontend && npx --no-install vitest run)
+  # --no-file-parallelism：默认并行模式在部分环境会因写缓存 EPERM 静默丢测试文件，
+  # 汇总行仍显示 passed，容易误判（见 docs 里的门禁说明）
+  (cd frontend && npx --no-install vitest run --no-file-parallelism)
 else
   echo "[pre-push] frontend/node_modules 不存在，跳过前端单测" >&2
 fi
